@@ -1,0 +1,38 @@
+# Data files (large, downloaded)
+data/bulk/
+data/images/
+data/mtgink.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Next.js
+web/node_modules/
+web/.next/
+
+# Votes database (user-generated, never wiped)
+data/mtgink_votes.db
+
+# SQLite journal files
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+
+# Environment
+.env
+.env.local
