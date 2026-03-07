@@ -36,6 +36,8 @@ export default function Navbar() {
 
   const links = [
     { href: "/compare", label: "Compare" },
+    { href: "/bracket", label: "Bracket" },
+    { href: "/deck", label: "Deck" },
     { href: "/browse", label: "Browse" },
     { href: "/db", label: "Database" },
     ...(user
@@ -74,7 +76,8 @@ export default function Navbar() {
               href={link.href}
               className={`text-sm font-medium transition-colors ${
                 pathname === link.href ||
-                (link.href === "/db" && pathname.startsWith("/db/"))
+                (link.href === "/db" && pathname.startsWith("/db/")) ||
+                (link.href === "/deck" && pathname.startsWith("/deck/"))
                   ? "text-white"
                   : "text-gray-400 hover:text-white"
               }`}

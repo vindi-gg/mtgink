@@ -13,6 +13,8 @@ import type {
   FavoriteEntry,
   MtgSet,
   SetCard,
+  DecklistEntry,
+  DeckCardWithArt,
 } from "./types";
 
 /** Convert a card name to a URL slug */
@@ -329,8 +331,8 @@ export function recordVote(payload: VotePayload): {
   `);
 
   const insertVote = votesDb.prepare(`
-    INSERT INTO votes (oracle_id, winner_illustration_id, loser_illustration_id, session_id, user_id, voted_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO votes (oracle_id, winner_illustration_id, loser_illustration_id, session_id, user_id, vote_source, voted_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
   `);
 
   const runTransaction = votesDb.transaction(() => {
@@ -341,7 +343,8 @@ export function recordVote(payload: VotePayload): {
       payload.winner_illustration_id,
       payload.loser_illustration_id,
       payload.session_id,
-      payload.user_id ?? null
+      payload.user_id ?? null,
+      payload.vote_source ?? null
     );
   });
 
@@ -626,6 +629,79 @@ export function getCardsForSet(setCode: string): SetCard[] {
 }
 
 type RawOracleCardFull = Omit<OracleCardFull, "slug">;
+
+/** Look up a card by exact name (case-insensitive), with split-card fallback */
+export function lookupCardByName(name: string): OracleCard | null {
+  const db = getDb();
+
+  // Exact match (case-insensitive)
+  const exact = db
+    .prepare(
+      "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE LOWER(name) = LOWER(?) LIMIT 1"
+    )
+    .get(name) as RawOracleCard | undefined;
+  if (exact) return addSlug(exact);
+
+  // Split card fallback: "Fire" → match "Fire // Ice"
+  const split = db
+    .prepare(
+      "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE LOWER(name) LIKE LOWER(?) || ' // %' LIMIT 1"
+    )
+    .get(name) as RawOracleCard | undefined;
+  if (split) return addSlug(split);
+
+  return null;
+}
+
+/** Look up all cards from a decklist, returning matched cards with art and unmatched entries */
+export function lookupDeckCards(entries: DecklistEntry[]): {
+  matched: DeckCardWithArt[];
+  unmatched: DecklistEntry[];
+} {
+  const matched: DeckCardWithArt[] = [];
+  const unmatched: DecklistEntry[] = [];
+  const seen = new Map<string, number>(); // oracle_id → index in matched
+
+  for (const entry of entries) {
+    const card = lookupCardByName(entry.name);
+    if (!card) {
+      unmatched.push(entry);
+      continue;
+    }
+
+    // Deduplicate: if same card in different sections, merge quantity
+    const existingIdx = seen.get(card.oracle_id);
+    if (existingIdx !== undefined) {
+      matched[existingIdx].quantity += entry.quantity;
+      continue;
+    }
+
+    const illustrations = getIllustrationsForCard(card.oracle_id);
+    const ratings = getRatingsForCard(card.oracle_id);
+    const ratingMap = new Map(ratings.map((r) => [r.illustration_id, r]));
+
+    const illustrationsWithRatings = illustrations
+      .map((ill) => ({
+        ...ill,
+        rating: ratingMap.get(ill.illustration_id) ?? null,
+      }))
+      .sort((a, b) => {
+        const aElo = a.rating?.elo_rating ?? 1500;
+        const bElo = b.rating?.elo_rating ?? 1500;
+        return bElo - aElo;
+      });
+
+    seen.set(card.oracle_id, matched.length);
+    matched.push({
+      card,
+      quantity: entry.quantity,
+      section: entry.section,
+      illustrations: illustrationsWithRatings,
+    });
+  }
+
+  return { matched, unmatched };
+}
 
 /** Search all oracle cards by name (no illustration count filter) */
 export function searchAllCards(query: string, limit = 50): OracleCardFull[] {

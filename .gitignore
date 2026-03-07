@@ -1,7 +1,5 @@
-# Data files (large, downloaded)
-data/bulk/
-data/images/
-data/mtgink.db
+# Data files (large, downloaded/generated)
+data/
 
 # Python
 __pycache__/
@@ -24,14 +22,6 @@ Thumbs.db
 # Next.js
 web/node_modules/
 web/.next/
-
-# Votes database (user-generated, never wiped)
-data/mtgink_votes.db
-
-# SQLite journal files
-data/*.db-shm
-data/*.db-wal
-data/*.db-journal
 
 # Environment
 .env

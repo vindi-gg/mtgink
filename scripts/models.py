@@ -198,6 +198,58 @@ def create_tag_tables(conn: sqlite3.Connection):
     conn.commit()
 
 
+def create_edhrec_tables(conn: sqlite3.Connection):
+    conn.executescript("""
+        DROP TABLE IF EXISTS edhrec_card_popularity;
+        DROP TABLE IF EXISTS edhrec_recommendations;
+        DROP TABLE IF EXISTS edhrec_commanders;
+
+        CREATE TABLE edhrec_commanders (
+            oracle_id TEXT PRIMARY KEY,
+            scryfall_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            sanitized TEXT NOT NULL UNIQUE,
+            color_identity TEXT,          -- JSON array e.g. ["W","U"]
+            num_decks INTEGER NOT NULL,
+            rank INTEGER,
+            deck_size INTEGER,
+            salt REAL,
+            imported_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE edhrec_recommendations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            commander_oracle_id TEXT NOT NULL REFERENCES edhrec_commanders(oracle_id),
+            card_oracle_id TEXT,           -- NULL if card not in our DB
+            scryfall_id TEXT NOT NULL,
+            card_name TEXT NOT NULL,
+            category TEXT NOT NULL,        -- "Top Cards", "Creatures", etc.
+            synergy REAL,
+            inclusion INTEGER NOT NULL,
+            potential_decks INTEGER,
+            UNIQUE(commander_oracle_id, scryfall_id, category)
+        );
+
+        CREATE TABLE edhrec_card_popularity (
+            oracle_id TEXT PRIMARY KEY,
+            total_inclusions INTEGER NOT NULL,
+            commander_count INTEGER NOT NULL,
+            avg_synergy REAL,
+            max_synergy REAL,
+            avg_inclusion_pct REAL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_edhrec_commanders_num_decks ON edhrec_commanders(num_decks DESC);
+        CREATE INDEX IF NOT EXISTS idx_edhrec_rec_commander ON edhrec_recommendations(commander_oracle_id);
+        CREATE INDEX IF NOT EXISTS idx_edhrec_rec_card ON edhrec_recommendations(card_oracle_id);
+        CREATE INDEX IF NOT EXISTS idx_edhrec_rec_inclusion ON edhrec_recommendations(inclusion DESC);
+        CREATE INDEX IF NOT EXISTS idx_edhrec_rec_synergy ON edhrec_recommendations(synergy DESC);
+        CREATE INDEX IF NOT EXISTS idx_edhrec_pop_inclusions ON edhrec_card_popularity(total_inclusions DESC);
+        CREATE INDEX IF NOT EXISTS idx_edhrec_pop_commanders ON edhrec_card_popularity(commander_count DESC);
+    """)
+    conn.commit()
+
+
 if __name__ == "__main__":
     conn = get_connection()
     create_tables(conn)

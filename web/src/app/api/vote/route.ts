@@ -30,6 +30,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Preserve vote_source if provided (e.g. 'deck', 'bracket')
+    if (body.vote_source && typeof body.vote_source !== "string") {
+      delete body.vote_source;
+    }
+
     const { winnerRating, loserRating } = recordVote(body);
     const next = getComparisonPair();
 

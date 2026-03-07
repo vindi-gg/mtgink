@@ -50,6 +50,7 @@ export interface VotePayload {
   loser_illustration_id: string;
   session_id: string;
   user_id?: string;
+  vote_source?: string;
 }
 
 export interface VoteResponse {
@@ -101,6 +102,116 @@ export interface OracleCardFull extends OracleCard {
   mana_cost: string | null;
   colors: string | null;
   cmc: number | null;
+}
+
+export interface BracketCard {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  type_line: string | null;
+  artist: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  illustration_id: string;
+}
+
+export interface BracketMatchup {
+  index: number;
+  seedA: number;
+  seedB: number;
+  winner: number | null;
+}
+
+export interface BracketState {
+  cards: BracketCard[];
+  rounds: BracketMatchup[][];
+  currentRound: number;
+  currentMatchup: number;
+  completed: boolean;
+  createdAt: string;
+}
+
+export interface DecklistEntry {
+  quantity: number;
+  name: string;
+  section: string;
+}
+
+export interface DeckCardWithArt {
+  card: OracleCard;
+  quantity: number;
+  section: string;
+  illustrations: (Illustration & { rating: ArtRating | null })[];
+}
+
+export interface DeckImportResponse {
+  cards: DeckCardWithArt[];
+  unmatched: DecklistEntry[];
+  stats: { total: number; matched: number; unmatched: number };
+}
+
+export interface Deck {
+  id: string;
+  user_id: string;
+  name: string;
+  format: string | null;
+  source_url: string | null;
+  is_public: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeckSummary extends Deck {
+  card_count: number;
+  unique_cards: number;
+}
+
+export interface DeckCard {
+  deck_id: string;
+  oracle_id: string;
+  quantity: number;
+  section: string;
+  selected_illustration_id: string | null;
+  to_buy: number;
+}
+
+export interface DeckCardDetail extends DeckCard {
+  card: OracleCard;
+  illustrations: (Illustration & { rating: ArtRating | null })[];
+}
+
+export interface DeckDetail extends Deck {
+  cards: DeckCardDetail[];
+  unmatched: string[];
+}
+
+export interface PurchaseListItem {
+  deck_id: string;
+  deck_name: string;
+  oracle_id: string;
+  card_name: string;
+  card_slug: string;
+  illustration_id: string | null;
+  artist: string;
+  set_code: string;
+  collector_number: string;
+  tcgplayer_id: number | null;
+}
+
+export interface MoxfieldDeck {
+  id: string;
+  name: string;
+  format: string;
+  mainboard: Record<string, MoxfieldCard>;
+  sideboard: Record<string, MoxfieldCard>;
+  commanders: Record<string, MoxfieldCard>;
+  companions: Record<string, MoxfieldCard>;
+}
+
+export interface MoxfieldCard {
+  quantity: number;
+  card: { name: string; oracle_id?: string };
 }
 
 export interface FavoriteEntry {
