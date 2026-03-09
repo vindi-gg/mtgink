@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   getCardBySlug,
   getIllustrationsForCard,
@@ -5,11 +6,49 @@ import {
   getPrintingsForCard,
 } from "@/lib/queries";
 import ArtGallery from "@/components/ArtGallery";
-import { normalCardUrl } from "@/lib/image-utils";
+import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const card = await getCardBySlug(slug);
+  if (!card) return { title: "Card Not Found — MTG Ink" };
+
+  const illustrations = await getIllustrationsForCard(card.oracle_id);
+  const topIll = illustrations[0];
+
+  const title = `${card.name} — MTG Ink`;
+  const description = `${illustrations.length} unique illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art versions and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
+
+  const ogImage = topIll
+    ? artCropUrl(topIll.set_code, topIll.collector_number)
+    : undefined;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: `/card/${card.slug}`,
+      ...(ogImage ? { images: [{ url: ogImage, width: 626, height: 457, alt: `${card.name} art by ${topIll.artist}` }] } : {}),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      ...(ogImage ? { images: [ogImage] } : {}),
+    },
+  };
+}
 
 export default async function CardPage({
   params,
@@ -17,13 +56,15 @@ export default async function CardPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const card = getCardBySlug(slug);
+  const card = await getCardBySlug(slug);
 
   if (!card) notFound();
 
-  const illustrations = getIllustrationsForCard(card.oracle_id);
-  const ratings = getRatingsForCard(card.oracle_id);
-  const printingsMap = getPrintingsForCard(card.oracle_id);
+  const [illustrations, ratings, printingsMap] = await Promise.all([
+    getIllustrationsForCard(card.oracle_id),
+    getRatingsForCard(card.oracle_id),
+    getPrintingsForCard(card.oracle_id),
+  ]);
   const ratingsMap = new Map(ratings.map((r) => [r.illustration_id, r]));
 
   const illustrationsWithRatings = illustrations
@@ -58,12 +99,14 @@ export default async function CardPage({
               {card.type_line && ` · ${card.type_line}`}
             </p>
           </div>
-          <Link
-            href={`/compare?oracle_id=${card.oracle_id}`}
-            className="px-4 py-2 text-sm bg-amber-500 text-black font-medium rounded-lg hover:bg-amber-400 transition-colors"
-          >
-            Compare arts
-          </Link>
+          {illustrations.length >= 2 && (
+            <Link
+              href={`/ink?oracle_id=${card.oracle_id}`}
+              className="px-4 py-2 text-sm bg-amber-500 text-black font-medium rounded-lg hover:bg-amber-400 transition-colors"
+            >
+              Compare arts
+            </Link>
+          )}
         </div>
 
         <ArtGallery illustrations={illustrationsWithRatings} oracleId={card.oracle_id} />

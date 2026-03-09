@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10), 0);
 
-    const result = getUserVoteHistory(user.id, limit, offset);
+    const result = await getUserVoteHistory(user.id, limit, offset);
 
     return NextResponse.json(result);
   } catch (error) {

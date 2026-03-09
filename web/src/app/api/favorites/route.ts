@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Batch check mode: ?illustration_ids=a,b,c
     if (illustrationIds) {
       const ids = illustrationIds.split(",").filter(Boolean);
-      const favorited = getFavoritedIllustrations(user.id, ids);
+      const favorited = await getFavoritedIllustrations(user.id, ids);
       return NextResponse.json({ favorited: Array.from(favorited) });
     }
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10), 0);
 
-    const result = getUserFavorites(user.id, limit, offset);
+    const result = await getUserFavorites(user.id, limit, offset);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

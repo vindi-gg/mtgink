@@ -15,7 +15,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = getDecksByUser(user.id);
+  const result = await getDecksByUser(user.id);
   return NextResponse.json(result);
 }
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No cards provided" }, { status: 400 });
   }
 
-  const { deckId, unmatched } = lookupAndCreateDeck(user.id, name, entries, {
+  const { deckId, unmatched } = await lookupAndCreateDeck(user.id, name, entries, {
     format,
     sourceUrl: source_url,
     isPublic: is_public,

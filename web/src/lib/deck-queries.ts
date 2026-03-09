@@ -1,5 +1,5 @@
-import crypto from "crypto";
-import { getVotesDb } from "./votes-db";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import {
   getIllustrationsForCard,
   getRatingsForCard,
@@ -15,155 +15,157 @@ import type {
   DecklistEntry,
   PurchaseListItem,
 } from "./types";
-import { getDb } from "./db";
 
-export function createDeck(params: {
+export async function createDeck(params: {
   userId: string;
   name: string;
   format?: string;
   sourceUrl?: string;
   isPublic?: boolean;
-}): string {
-  const votesDb = getVotesDb();
-  const id = crypto.randomUUID();
-  votesDb
-    .prepare(
-      `INSERT INTO decks (id, user_id, name, format, source_url, is_public)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      id,
-      params.userId,
-      params.name,
-      params.format ?? null,
-      params.sourceUrl ?? null,
-      params.isPublic === false ? 0 : 1
-    );
-  return id;
+}): Promise<string> {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase not configured");
+
+  const { data, error } = await supabase
+    .from("decks")
+    .insert({
+      user_id: params.userId,
+      name: params.name,
+      format: params.format ?? null,
+      source_url: params.sourceUrl ?? null,
+      is_public: params.isPublic !== false,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(`Failed to create deck: ${error.message}`);
+  return data.id;
 }
 
-export function getDecksByUser(
+export async function getDecksByUser(
   userId: string,
   limit = 50,
   offset = 0
-): { decks: DeckSummary[]; total: number } {
-  const votesDb = getVotesDb();
+): Promise<{ decks: DeckSummary[]; total: number }> {
+  const supabase = await createClient();
+  if (!supabase) return { decks: [], total: 0 };
 
-  const { total } = votesDb
-    .prepare("SELECT COUNT(*) as total FROM decks WHERE user_id = ?")
-    .get(userId) as { total: number };
+  const { count } = await supabase
+    .from("decks")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
 
-  const decks = votesDb
-    .prepare(
-      `SELECT d.*,
-              COALESCE(SUM(dc.quantity), 0) as card_count,
-              COUNT(dc.oracle_id) as unique_cards
-       FROM decks d
-       LEFT JOIN deck_cards dc ON d.id = dc.deck_id
-       WHERE d.user_id = ?
-       GROUP BY d.id
-       ORDER BY d.updated_at DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(userId, limit, offset) as DeckSummary[];
+  const { data } = await supabase
+    .from("decks")
+    .select("*, deck_cards(quantity, oracle_id)")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  return { decks, total };
-}
-
-export function getDeckById(deckId: string): Deck | null {
-  const votesDb = getVotesDb();
-  const row = votesDb
-    .prepare("SELECT * FROM decks WHERE id = ?")
-    .get(deckId) as Deck | undefined;
-  return row ?? null;
-}
-
-export function updateDeck(
-  deckId: string,
-  updates: { name?: string; format?: string; isPublic?: boolean }
-): void {
-  const votesDb = getVotesDb();
-  const sets: string[] = [];
-  const values: (string | number)[] = [];
-
-  if (updates.name !== undefined) {
-    sets.push("name = ?");
-    values.push(updates.name);
-  }
-  if (updates.format !== undefined) {
-    sets.push("format = ?");
-    values.push(updates.format);
-  }
-  if (updates.isPublic !== undefined) {
-    sets.push("is_public = ?");
-    values.push(updates.isPublic ? 1 : 0);
-  }
-
-  if (sets.length === 0) return;
-  sets.push("updated_at = datetime('now')");
-  values.push(deckId);
-
-  votesDb
-    .prepare(`UPDATE decks SET ${sets.join(", ")} WHERE id = ?`)
-    .run(...values);
-}
-
-export function deleteDeck(deckId: string): void {
-  const votesDb = getVotesDb();
-  // deck_cards has ON DELETE CASCADE, but sqlite needs PRAGMA foreign_keys = ON
-  votesDb.exec("PRAGMA foreign_keys = ON");
-  votesDb.prepare("DELETE FROM decks WHERE id = ?").run(deckId);
-}
-
-export function setDeckCards(
-  deckId: string,
-  cards: { oracleId: string; quantity: number; section: string }[]
-): void {
-  const votesDb = getVotesDb();
-
-  const deleteAll = votesDb.prepare(
-    "DELETE FROM deck_cards WHERE deck_id = ?"
-  );
-  const insert = votesDb.prepare(
-    `INSERT INTO deck_cards (deck_id, oracle_id, quantity, section)
-     VALUES (?, ?, ?, ?)`
-  );
-  const updateTimestamp = votesDb.prepare(
-    "UPDATE decks SET updated_at = datetime('now') WHERE id = ?"
-  );
-
-  const tx = votesDb.transaction(() => {
-    deleteAll.run(deckId);
-    for (const card of cards) {
-      insert.run(deckId, card.oracleId, card.quantity, card.section);
-    }
-    updateTimestamp.run(deckId);
+  const decks: DeckSummary[] = (data ?? []).map((d) => {
+    const cards = (d.deck_cards ?? []) as { quantity: number; oracle_id: string }[];
+    return {
+      id: d.id,
+      user_id: d.user_id,
+      name: d.name,
+      format: d.format,
+      source_url: d.source_url,
+      is_public: d.is_public,
+      created_at: d.created_at,
+      updated_at: d.updated_at,
+      card_count: cards.reduce((sum, c) => sum + c.quantity, 0),
+      unique_cards: cards.length,
+    };
   });
 
-  tx();
+  return { decks, total: count ?? 0 };
 }
 
-export function getDeckDetail(deckId: string): DeckDetail | null {
-  const deck = getDeckById(deckId);
+export async function getDeckById(deckId: string): Promise<Deck | null> {
+  const { data } = await getAdminClient()
+    .from("decks")
+    .select("*")
+    .eq("id", deckId)
+    .single();
+  return data as Deck | null;
+}
+
+export async function updateDeck(
+  deckId: string,
+  updates: { name?: string; format?: string; isPublic?: boolean }
+): Promise<void> {
+  const supabase = await createClient();
+  if (!supabase) return;
+
+  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.name !== undefined) updateData.name = updates.name;
+  if (updates.format !== undefined) updateData.format = updates.format;
+  if (updates.isPublic !== undefined) updateData.is_public = updates.isPublic;
+
+  await supabase
+    .from("decks")
+    .update(updateData)
+    .eq("id", deckId);
+}
+
+export async function deleteDeck(deckId: string): Promise<void> {
+  const supabase = await createClient();
+  if (!supabase) return;
+  await supabase.from("decks").delete().eq("id", deckId);
+}
+
+export async function setDeckCards(
+  deckId: string,
+  cards: { oracleId: string; quantity: number; section: string }[]
+): Promise<void> {
+  const supabase = await createClient();
+  if (!supabase) return;
+
+  // Delete existing cards
+  await supabase.from("deck_cards").delete().eq("deck_id", deckId);
+
+  // Insert new cards
+  if (cards.length > 0) {
+    await supabase.from("deck_cards").insert(
+      cards.map((c) => ({
+        deck_id: deckId,
+        oracle_id: c.oracleId,
+        quantity: c.quantity,
+        section: c.section,
+      }))
+    );
+  }
+
+  // Update deck timestamp
+  await supabase
+    .from("decks")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", deckId);
+}
+
+export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> {
+  const deck = await getDeckById(deckId);
   if (!deck) return null;
 
-  const votesDb = getVotesDb();
-  const deckCards = votesDb
-    .prepare("SELECT * FROM deck_cards WHERE deck_id = ?")
-    .all(deckId) as DeckCard[];
+  const { data: deckCards } = await getAdminClient()
+    .from("deck_cards")
+    .select("*")
+    .eq("deck_id", deckId);
 
   const cards: DeckCardDetail[] = [];
   const unmatched: string[] = [];
 
-  for (const dc of deckCards) {
-    const card = getCardByOracleId(dc.oracle_id);
+  for (const dc of (deckCards ?? []) as DeckCard[]) {
+    const card = await getCardByOracleId(dc.oracle_id);
     if (!card) {
       unmatched.push(dc.oracle_id);
       continue;
     }
 
-    const illustrations = getIllustrationsForCard(dc.oracle_id);
-    const ratings = getRatingsForCard(dc.oracle_id);
+    const [illustrations, ratings] = await Promise.all([
+      getIllustrationsForCard(dc.oracle_id),
+      getRatingsForCard(dc.oracle_id),
+    ]);
     const ratingMap = new Map(ratings.map((r) => [r.illustration_id, r]));
 
     const illustrationsWithRatings = illustrations
@@ -187,110 +189,96 @@ export function getDeckDetail(deckId: string): DeckDetail | null {
   return { ...deck, cards, unmatched };
 }
 
-export function updateDeckCard(
+export async function updateDeckCard(
   deckId: string,
   oracleId: string,
   updates: { selected_illustration_id?: string; to_buy?: boolean }
-): void {
-  const votesDb = getVotesDb();
-  const sets: string[] = [];
-  const values: (string | number)[] = [];
+): Promise<void> {
+  const supabase = await createClient();
+  if (!supabase) return;
 
-  if (updates.selected_illustration_id !== undefined) {
-    sets.push("selected_illustration_id = ?");
-    values.push(updates.selected_illustration_id);
-  }
-  if (updates.to_buy !== undefined) {
-    sets.push("to_buy = ?");
-    values.push(updates.to_buy ? 1 : 0);
-  }
+  const updateData: Record<string, unknown> = {};
+  if (updates.selected_illustration_id !== undefined)
+    updateData.selected_illustration_id = updates.selected_illustration_id;
+  if (updates.to_buy !== undefined) updateData.to_buy = updates.to_buy;
 
-  if (sets.length === 0) return;
-  values.push(deckId, oracleId);
+  if (Object.keys(updateData).length === 0) return;
 
-  votesDb
-    .prepare(
-      `UPDATE deck_cards SET ${sets.join(", ")} WHERE deck_id = ? AND oracle_id = ?`
-    )
-    .run(...values);
+  await supabase
+    .from("deck_cards")
+    .update(updateData)
+    .eq("deck_id", deckId)
+    .eq("oracle_id", oracleId);
 
-  votesDb
-    .prepare("UPDATE decks SET updated_at = datetime('now') WHERE id = ?")
-    .run(deckId);
+  await supabase
+    .from("decks")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", deckId);
 }
 
-export function getUserPurchaseList(userId: string): PurchaseListItem[] {
-  const votesDb = getVotesDb();
-  const db = getDb();
+export async function getUserPurchaseList(userId: string): Promise<PurchaseListItem[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
 
-  const rows = votesDb
-    .prepare(
-      `SELECT dc.deck_id, d.name as deck_name, dc.oracle_id,
-              dc.selected_illustration_id
-       FROM deck_cards dc
-       JOIN decks d ON dc.deck_id = d.id
-       WHERE d.user_id = ? AND dc.to_buy = 1`
-    )
-    .all(userId) as {
-    deck_id: string;
-    deck_name: string;
-    oracle_id: string;
-    selected_illustration_id: string | null;
-  }[];
+  const { data: rows } = await supabase
+    .from("deck_cards")
+    .select("deck_id, oracle_id, selected_illustration_id, decks!inner(name, user_id)")
+    .eq("to_buy", true)
+    .eq("decks.user_id", userId);
 
-  const getCard = db.prepare(
-    "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE oracle_id = ?"
-  );
-  const getPrinting = db.prepare(
-    `SELECT p.artist, p.set_code, p.collector_number, p.tcgplayer_id
-     FROM printings p
-     WHERE p.illustration_id = ? AND p.oracle_id = ?
-     LIMIT 1`
-  );
-  const getDefaultPrinting = db.prepare(
-    `SELECT p.illustration_id, p.artist, p.set_code, p.collector_number, p.tcgplayer_id
-     FROM printings p
-     WHERE p.oracle_id = ?
-     ORDER BY p.released_at DESC
-     LIMIT 1`
-  );
+  if (!rows || rows.length === 0) return [];
+
+  // Batch lookups
+  const oracleIds = [...new Set(rows.map((r) => r.oracle_id))];
+  const illustrationIds = rows
+    .map((r) => r.selected_illustration_id)
+    .filter((id): id is string => id != null);
+
+  const [{ data: cards }, { data: printingRows }] = await Promise.all([
+    getAdminClient()
+      .from("oracle_cards")
+      .select("oracle_id, name, slug")
+      .in("oracle_id", oracleIds),
+    illustrationIds.length > 0
+      ? getAdminClient()
+          .from("printings")
+          .select("illustration_id, oracle_id, artist, set_code, collector_number, tcgplayer_id")
+          .in("illustration_id", illustrationIds)
+      : Promise.resolve({ data: [] as { illustration_id: string; oracle_id: string; artist: string; set_code: string; collector_number: string; tcgplayer_id: number | null }[] }),
+  ]);
+
+  const cardMap = new Map((cards ?? []).map((c) => [c.oracle_id, c]));
+  const printingMap = new Map((printingRows ?? []).map((p) => [p.illustration_id, p]));
 
   const items: PurchaseListItem[] = [];
-
   for (const row of rows) {
-    const card = getCard.get(row.oracle_id) as
-      | { oracle_id: string; name: string; layout: string | null; type_line: string | null }
-      | undefined;
+    const card = cardMap.get(row.oracle_id);
     if (!card) continue;
 
-    const slug = card.name
-      .toLowerCase()
-      .replace(/'/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+    const deck = row.decks as unknown as { name: string; user_id: string };
+    let printing = row.selected_illustration_id
+      ? printingMap.get(row.selected_illustration_id)
+      : undefined;
 
-    let printing: {
-      illustration_id?: string;
-      artist: string;
-      set_code: string;
-      collector_number: string;
-      tcgplayer_id: number | null;
-    } | undefined;
-
-    if (row.selected_illustration_id) {
-      printing = getPrinting.get(row.selected_illustration_id, row.oracle_id) as typeof printing;
-    }
+    // Fallback: get default printing if no selected illustration
     if (!printing) {
-      printing = getDefaultPrinting.get(row.oracle_id) as typeof printing;
+      const { data: defaultPrinting } = await getAdminClient()
+        .from("printings")
+        .select("illustration_id, oracle_id, artist, set_code, collector_number, tcgplayer_id")
+        .eq("oracle_id", row.oracle_id)
+        .order("released_at", { ascending: false })
+        .limit(1)
+        .single();
+      printing = defaultPrinting ?? undefined;
     }
 
     items.push({
       deck_id: row.deck_id,
-      deck_name: row.deck_name,
+      deck_name: deck.name,
       oracle_id: row.oracle_id,
       card_name: card.name,
-      card_slug: slug,
-      illustration_id: row.selected_illustration_id ?? printing?.illustration_id ?? null,
+      card_slug: card.slug,
+      illustration_id: row.selected_illustration_id ?? (printing as { illustration_id?: string })?.illustration_id ?? null,
       artist: printing?.artist ?? "Unknown",
       set_code: printing?.set_code ?? "",
       collector_number: printing?.collector_number ?? "",
@@ -301,13 +289,13 @@ export function getUserPurchaseList(userId: string): PurchaseListItem[] {
   return items;
 }
 
-export function lookupAndCreateDeck(
+export async function lookupAndCreateDeck(
   userId: string,
   name: string,
   entries: DecklistEntry[],
   options?: { format?: string; sourceUrl?: string; isPublic?: boolean }
-): { deckId: string; unmatched: string[] } {
-  const deckId = createDeck({
+): Promise<{ deckId: string; unmatched: string[] }> {
+  const deckId = await createDeck({
     userId,
     name,
     format: options?.format,
@@ -320,7 +308,7 @@ export function lookupAndCreateDeck(
   const seen = new Set<string>();
 
   for (const entry of entries) {
-    const card = lookupCardByName(entry.name);
+    const card = await lookupCardByName(entry.name);
     if (!card) {
       unmatched.push(entry.name);
       continue;
@@ -334,6 +322,6 @@ export function lookupAndCreateDeck(
     });
   }
 
-  setDeckCards(deckId, cards);
+  await setDeckCards(deckId, cards);
   return { deckId, unmatched };
 }

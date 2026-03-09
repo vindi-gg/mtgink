@@ -79,7 +79,7 @@ export default function DeckDetailPage() {
     );
   }
 
-  const hasPurchases = deck.cards.some((c) => c.to_buy === 1);
+  const hasPurchases = deck.cards.some((c) => c.to_buy);
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8">

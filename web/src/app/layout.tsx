@@ -14,9 +14,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MTG Ink - Art Rankings",
+  title: {
+    default: "MTG Ink — Discover & Rank Magic Cards and Art",
+    template: "%s",
+  },
   description:
-    "Discover and rank the most popular Magic: The Gathering art versions",
+    "Discover and rank the best Magic: The Gathering cards and art. Compare card art, explore printings, and find your favorites.",
+  openGraph: {
+    type: "website",
+    siteName: "MTG Ink",
+    title: "MTG Ink — Discover & Rank Magic Cards and Art",
+    description:
+      "Discover and rank the best Magic: The Gathering cards and art.",
+  },
+  twitter: {
+    card: "summary",
+    title: "MTG Ink — Discover & Rank Magic Cards and Art",
+    description:
+      "Discover and rank the best Magic: The Gathering cards and art.",
+  },
 };
 
 export default function RootLayout({

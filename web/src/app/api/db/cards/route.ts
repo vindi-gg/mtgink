@@ -8,6 +8,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  const results = searchAllCards(q.trim());
+  const results = await searchAllCards(q.trim());
   return NextResponse.json({ results });
 }

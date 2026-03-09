@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordVote, getComparisonPair } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
-import type { VotePayload } from "@/lib/types";
+import type { VotePayload, CompareFilters } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as VotePayload;
+    const raw = await request.json();
+    const body = raw as VotePayload;
+    const filters = raw.filters as CompareFilters | undefined;
 
     if (
       !body.oracle_id ||
@@ -35,8 +37,15 @@ export async function POST(request: NextRequest) {
       delete body.vote_source;
     }
 
-    const { winnerRating, loserRating } = recordVote(body);
-    const next = getComparisonPair();
+    const { winnerRating, loserRating } = await recordVote(body);
+
+    let next;
+    try {
+      next = await getComparisonPair(undefined, filters);
+    } catch {
+      // Filters too narrow — fall back to unfiltered
+      next = await getComparisonPair();
+    }
 
     return NextResponse.json({
       winner_rating: winnerRating,

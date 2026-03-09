@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { matched, unmatched } = lookupDeckCards(entries);
+  const { matched, unmatched } = await lookupDeckCards(entries);
 
   return NextResponse.json({
     cards: matched,

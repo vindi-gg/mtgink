@@ -3,6 +3,11 @@ import { getPlayableSets, getAllSets } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Expansions — MTG Ink",
+  description: "Browse all Magic: The Gathering expansions and sets.",
+};
+
 export default async function ExpansionsPage({
   searchParams,
 }: {
@@ -10,7 +15,7 @@ export default async function ExpansionsPage({
 }) {
   const params = await searchParams;
   const showAll = params.all === "1";
-  const sets = showAll ? getAllSets() : getPlayableSets();
+  const sets = showAll ? await getAllSets() : await getPlayableSets();
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">

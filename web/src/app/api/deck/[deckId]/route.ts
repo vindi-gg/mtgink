@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ deckId: string }> }
 ) {
   const { deckId } = await params;
-  const deck = getDeckById(deckId);
+  const deck = await getDeckById(deckId);
   if (!deck) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
@@ -28,7 +28,7 @@ export async function GET(
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   const isOwner = user?.id === deck.user_id;
 
-  const detail = getDeckDetail(deckId);
+  const detail = await getDeckDetail(deckId);
   return NextResponse.json({ ...detail, is_owner: isOwner });
 }
 
@@ -47,7 +47,7 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const deck = getDeckById(deckId);
+  const deck = await getDeckById(deckId);
   if (!deck || deck.user_id !== user.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -60,12 +60,12 @@ export async function PUT(
     cards?: DecklistEntry[];
   };
 
-  updateDeck(deckId, { name, format, isPublic: is_public });
+  await updateDeck(deckId, { name, format, isPublic: is_public });
 
   if (cards && Array.isArray(cards)) {
     const cardEntries: { oracleId: string; quantity: number; section: string }[] = [];
     for (const entry of cards) {
-      const card = lookupCardByName(entry.name);
+      const card = await lookupCardByName(entry.name);
       if (card) {
         cardEntries.push({
           oracleId: card.oracle_id,
@@ -74,7 +74,7 @@ export async function PUT(
         });
       }
     }
-    setDeckCards(deckId, cardEntries);
+    await setDeckCards(deckId, cardEntries);
   }
 
   return NextResponse.json({ ok: true });
@@ -95,11 +95,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const deck = getDeckById(deckId);
+  const deck = await getDeckById(deckId);
   if (!deck || deck.user_id !== user.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  deleteDeck(deckId);
+  await deleteDeck(deckId);
   return NextResponse.json({ ok: true });
 }

@@ -1,13 +1,12 @@
-import { getDb } from "./db";
-import { getVotesDb } from "./votes-db";
-import { calculateElo, DEFAULT_RATING, K_AUTHENTICATED, K_ANONYMOUS } from "./elo";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import type {
   OracleCard,
-  OracleCardFull,
   Illustration,
   Printing,
   ArtRating,
   ComparisonPair,
+  CompareFilters,
   VotePayload,
   VoteHistoryEntry,
   FavoriteEntry,
@@ -15,7 +14,51 @@ import type {
   SetCard,
   DecklistEntry,
   DeckCardWithArt,
+  ClashCard,
+  ClashPair,
+  CardRating,
+  CardVotePayload,
 } from "./types";
+
+/** Row shape returned by get_comparison_pair / get_cross_comparison_pair RPCs */
+interface IllustrationWithRating {
+  illustration_id: string;
+  oracle_id: string;
+  artist: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  released_at: string;
+  elo_rating: number | null;
+  vote_count: number | null;
+  win_count: number | null;
+  loss_count: number | null;
+}
+
+function toIllustration(row: IllustrationWithRating): Illustration {
+  return {
+    illustration_id: row.illustration_id,
+    oracle_id: row.oracle_id,
+    artist: row.artist,
+    set_code: row.set_code,
+    set_name: row.set_name,
+    collector_number: row.collector_number,
+    released_at: row.released_at,
+  };
+}
+
+function toRating(row: IllustrationWithRating): ArtRating | null {
+  if (row.elo_rating == null) return null;
+  return {
+    illustration_id: row.illustration_id,
+    oracle_id: row.oracle_id,
+    elo_rating: row.elo_rating,
+    vote_count: row.vote_count ?? 0,
+    win_count: row.win_count ?? 0,
+    loss_count: row.loss_count ?? 0,
+    updated_at: "",
+  };
+}
 
 /** Convert a card name to a URL slug */
 export function slugify(name: string): string {
@@ -26,278 +69,272 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-type RawOracleCard = Omit<OracleCard, "slug">;
+const VALID_COLORS = new Set(["W", "U", "B", "R", "G"]);
 
-/** Compute full slug for a card, disambiguating duplicate names (tokens) */
-function computeSlug(card: RawOracleCard): string {
-  const db = getDb();
-  const base = slugify(card.name);
+// --- In-memory card cache for fast random selection ---
+interface CachedCard {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  layout: string | null;
+  type_line: string | null;
+  mana_cost: string | null;
+  colors: string[];
+  cmc: number | null;
+  illustration_count: number;
+}
 
-  const dupeCount = (
-    db
-      .prepare(
-        "SELECT COUNT(*) as cnt FROM oracle_cards WHERE name = ? AND oracle_id != ?"
-      )
-      .get(card.name, card.oracle_id) as { cnt: number }
-  ).cnt;
+let cardCache: CachedCard[] | null = null;
 
-  if (dupeCount === 0) return base;
+async function getCardCache(): Promise<CachedCard[]> {
+  if (cardCache) return cardCache;
 
-  const isToken = card.type_line?.startsWith("Token") ?? false;
+  const { data, error } = await getAdminClient().rpc("get_card_cache");
+  if (error) throw new Error(`Failed to load card cache: ${error.message}`);
 
-  if (!isToken) {
-    // Non-token: gets plain slug unless another non-token shares the name
-    const nonTokenDupes = (
-      db
-        .prepare(
-          "SELECT COUNT(*) as cnt FROM oracle_cards WHERE name = ? AND oracle_id != ? AND (type_line IS NULL OR type_line NOT LIKE 'Token%')"
-        )
-        .get(card.name, card.oracle_id) as { cnt: number }
-    ).cnt;
-    if (nonTokenDupes === 0) return base;
-    return `${base}-${card.oracle_id.slice(0, 8)}`;
+  cardCache = (data as { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: string[] | null; cmc: number | null; illustration_count: number }[]).map((r) => ({
+    ...r,
+    colors: r.colors ?? [],
+  }));
+  return cardCache;
+}
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function filterCards(cards: CachedCard[], filters?: CompareFilters, minIllustrations = 2): CachedCard[] {
+  let result = cards.filter((c) => c.illustration_count >= minIllustrations);
+
+  if (!filters) return result;
+
+  if (filters.colors && filters.colors.length > 0) {
+    const hasColorless = filters.colors.includes("C");
+    const realColors = filters.colors.filter((c) => VALID_COLORS.has(c));
+
+    if (hasColorless && realColors.length === 0) {
+      result = result.filter((c) => c.colors.length === 0);
+    } else {
+      for (const color of realColors) {
+        result = result.filter((c) => c.colors.includes(color));
+      }
+    }
   }
 
-  // Token: add -token suffix
-  const tokenDupes = (
-    db
-      .prepare(
-        "SELECT COUNT(*) as cnt FROM oracle_cards WHERE name = ? AND oracle_id != ? AND type_line LIKE 'Token%'"
-      )
-      .get(card.name, card.oracle_id) as { cnt: number }
-  ).cnt;
+  if (filters.type) {
+    const t = filters.type;
+    result = result.filter((c) => c.type_line?.includes(t));
+  }
 
-  if (tokenDupes === 0) return `${base}-token`;
-  return `${base}-token-${card.oracle_id.slice(0, 8)}`;
+  if (filters.subtype) {
+    const st = filters.subtype;
+    result = result.filter((c) => {
+      if (!c.type_line) return false;
+      const afterDash = c.type_line.split("\u2014")[1];
+      return afterDash?.includes(st);
+    });
+  }
+
+  return result;
 }
 
-/** Add slug field to a raw oracle card row */
-function addSlug(card: RawOracleCard): OracleCard {
-  return { ...card, slug: computeSlug(card) };
+function cachedToOracleCard(c: CachedCard): OracleCard {
+  return {
+    oracle_id: c.oracle_id,
+    name: c.name,
+    slug: c.slug,
+    layout: c.layout,
+    type_line: c.type_line,
+    mana_cost: c.mana_cost,
+    colors: c.colors.length > 0 ? JSON.stringify(c.colors) : null,
+    cmc: c.cmc,
+  };
 }
 
-/** Get a random card that has 2+ distinct illustrations */
-export function getRandomComparableCard(): OracleCard {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `
-    SELECT o.oracle_id, o.name, o.layout, o.type_line
-    FROM oracle_cards o
-    WHERE (
-      SELECT COUNT(DISTINCT p.illustration_id)
-      FROM printings p
-      WHERE p.oracle_id = o.oracle_id AND p.illustration_id IS NOT NULL
-    ) >= 2
-    ORDER BY RANDOM()
-    LIMIT 1
-  `
-    )
-    .get() as RawOracleCard;
-  return addSlug(row);
+/** Get a random card that has 2+ distinct illustrations (uses in-memory cache) */
+export async function getRandomComparableCard(filters?: CompareFilters): Promise<OracleCard> {
+  const candidates = filterCards(await getCardCache(), filters, 2);
+  if (candidates.length === 0) throw new Error("No cards match the selected filters");
+  return cachedToOracleCard(pickRandom(candidates));
 }
 
-/** Get all distinct illustrations for a card, picking one representative printing per illustration.
- *  Prefers main set printings (expansion, core) over promos for better image availability. */
-export function getIllustrationsForCard(
-  oracleId: string
-): Illustration[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `
-    SELECT
-      p.illustration_id,
-      p.oracle_id,
-      p.artist,
-      p.set_code,
-      s.name as set_name,
-      p.collector_number,
-      p.released_at
-    FROM printings p
-    JOIN sets s ON p.set_code = s.set_code
-    WHERE p.oracle_id = ?
-      AND p.illustration_id IS NOT NULL
-      AND p.scryfall_id = (
-        SELECT p2.scryfall_id
-        FROM printings p2
-        JOIN sets s2 ON p2.set_code = s2.set_code
-        WHERE p2.illustration_id = p.illustration_id
-          AND p2.oracle_id = p.oracle_id
-        ORDER BY
-          CASE s2.set_type
-            WHEN 'expansion' THEN 1
-            WHEN 'core' THEN 2
-            WHEN 'draft_innovation' THEN 3
-            WHEN 'masters' THEN 4
-            WHEN 'commander' THEN 5
-            ELSE 6
-          END,
-          p2.released_at ASC
-        LIMIT 1
-      )
-    ORDER BY p.released_at ASC
-  `
-    )
-    .all(oracleId) as Illustration[];
-  return rows;
+/** Get a cross-card comparison pair: two different cards matching filters, one illustration each */
+export async function getCrossCardPair(filters?: CompareFilters): Promise<ComparisonPair> {
+  const candidates = filterCards(await getCardCache(), filters, 1);
+  if (candidates.length < 2) throw new Error("Not enough cards match the selected filters");
+
+  const idxA = Math.floor(Math.random() * candidates.length);
+  let idxB = Math.floor(Math.random() * (candidates.length - 1));
+  if (idxB >= idxA) idxB++;
+
+  const cardA = cachedToOracleCard(candidates[idxA]);
+  const cardB = cachedToOracleCard(candidates[idxB]);
+
+  // Single RPC: get one random illustration from each card with ratings
+  const { data, error } = await getAdminClient().rpc("get_cross_comparison_pair", {
+    p_oracle_id_a: cardA.oracle_id,
+    p_oracle_id_b: cardB.oracle_id,
+  });
+
+  if (error || !data || data.length < 2) {
+    throw new Error(`Failed to get cross comparison pair: ${error?.message ?? "insufficient data"}`);
+  }
+
+  // Match rows back to cards (row oracle_id tells us which card it belongs to)
+  const rowA = data.find((r: IllustrationWithRating) => r.oracle_id === cardA.oracle_id) ?? data[0];
+  const rowB = data.find((r: IllustrationWithRating) => r.oracle_id === cardB.oracle_id) ?? data[1];
+
+  return {
+    card: cardA,
+    card_b: cardB,
+    a: toIllustration(rowA),
+    b: toIllustration(rowB),
+    a_rating: toRating(rowA),
+    b_rating: toRating(rowB),
+  };
+}
+
+/** Get all distinct illustrations for a card, picking one representative printing per illustration */
+export async function getIllustrationsForCard(oracleId: string): Promise<Illustration[]> {
+  const { data, error } = await getAdminClient().rpc("get_illustrations_for_card", {
+    p_oracle_id: oracleId,
+  });
+  if (error) throw new Error(`Failed to get illustrations: ${error.message}`);
+  return data as Illustration[];
 }
 
 /** Get ELO rating for an illustration, or null if unrated */
-export function getRating(illustrationId: string): ArtRating | null {
-  const votesDb = getVotesDb();
-  const row = votesDb
-    .prepare("SELECT * FROM art_ratings WHERE illustration_id = ?")
-    .get(illustrationId) as ArtRating | undefined;
-  return row ?? null;
-}
-
-/** Get or create an ELO rating for an illustration */
-function ensureRating(illustrationId: string, oracleId: string): ArtRating {
-  const votesDb = getVotesDb();
-  const existing = getRating(illustrationId);
-  if (existing) return existing;
-
-  votesDb
-    .prepare(
-      `INSERT INTO art_ratings (illustration_id, oracle_id, elo_rating, vote_count, win_count, loss_count, updated_at)
-       VALUES (?, ?, ?, 0, 0, 0, datetime('now'))`
-    )
-    .run(illustrationId, oracleId, DEFAULT_RATING);
-
-  return getRating(illustrationId)!;
+export async function getRating(illustrationId: string): Promise<ArtRating | null> {
+  const { data } = await getAdminClient()
+    .from("art_ratings")
+    .select("*")
+    .eq("illustration_id", illustrationId)
+    .single();
+  return data ?? null;
 }
 
 /** Build a comparison pair for a card - picks two random distinct illustrations */
-export function getComparisonPair(oracleId?: string): ComparisonPair {
-  const card = oracleId ? getCardByOracleId(oracleId) : getRandomComparableCard();
+export async function getComparisonPair(oracleId?: string, filters?: CompareFilters): Promise<ComparisonPair> {
+  if (!oracleId && filters?.mode === "cross") {
+    return getCrossCardPair(filters);
+  }
+
+  const card = oracleId
+    ? await getCardByOracleId(oracleId)
+    : await getRandomComparableCard(filters);
   if (!card) throw new Error("No comparable card found");
 
-  const illustrations = getIllustrationsForCard(card.oracle_id);
-  if (illustrations.length < 2) throw new Error("Card has fewer than 2 illustrations");
+  // Single RPC: get 2 random illustrations with their ratings
+  const { data, error } = await getAdminClient().rpc("get_comparison_pair", {
+    p_oracle_id: card.oracle_id,
+  });
 
-  // Pick two random distinct illustrations
-  const shuffled = illustrations.sort(() => Math.random() - 0.5);
-  const a = shuffled[0];
-  const b = shuffled[1];
+  if (error) throw new Error(`Failed to get comparison pair: ${error.message}`);
+  if (!data || data.length < 2) throw new Error("Card has fewer than 2 illustrations");
 
   return {
     card,
-    a,
-    b,
-    a_rating: getRating(a.illustration_id),
-    b_rating: getRating(b.illustration_id),
+    a: toIllustration(data[0]),
+    b: toIllustration(data[1]),
+    a_rating: toRating(data[0]),
+    b_rating: toRating(data[1]),
   };
 }
 
 /** Get a card by oracle_id */
-export function getCardByOracleId(oracleId: string): OracleCard | null {
-  const db = getDb();
-  const row = db
-    .prepare(
-      "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE oracle_id = ?"
-    )
-    .get(oracleId) as RawOracleCard | undefined;
-  return row ? addSlug(row) : null;
+export async function getCardByOracleId(oracleId: string): Promise<OracleCard | null> {
+  const { data } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .eq("oracle_id", oracleId)
+    .single();
+  if (!data) return null;
+  return { ...data, colors: data.colors ? JSON.stringify(data.colors) : null };
 }
 
 /** Get a card by URL slug, with UUID fallback */
-export function getCardBySlug(slug: string): OracleCard | null {
-  // UUID fallback: if it looks like a UUID, query by oracle_id
+export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
+  // UUID fallback
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(slug)) {
     return getCardByOracleId(slug);
   }
 
-  const db = getDb();
+  // Direct slug lookup (slug is pre-computed in DB)
+  const { data } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .eq("slug", slug)
+    .maybeSingle();
 
-  // Parse possible oracle_id suffix (8 hex chars at end)
-  let oraclePrefix: string | null = null;
+  if (data) return { ...data, colors: data.colors ? JSON.stringify(data.colors) : null };
+
+  // Fallback: try with -token suffix or oracle_id prefix disambiguation
   let searchSlug = slug;
+  let oraclePrefix: string | null = null;
   const prefixMatch = slug.match(/^(.+)-([0-9a-f]{8})$/);
   if (prefixMatch) {
     oraclePrefix = prefixMatch[2];
     searchSlug = prefixMatch[1];
   }
 
-  // Check for -token suffix
   let wantToken = false;
   if (searchSlug.endsWith("-token")) {
     wantToken = true;
     searchSlug = searchSlug.slice(0, -6);
   }
 
-  // Convert slug to LIKE pattern (hyphens → %)
-  // Strip apostrophes in SQL to match slugify behavior
-  const likePattern = searchSlug.replace(/-/g, "%");
+  // Search by LIKE pattern on name
+  const likePattern = `%${searchSlug.replace(/-/g, "%")}%`;
+  const { data: candidates } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .ilike("name", likePattern);
 
-  const candidates = db
-    .prepare(
-      "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE REPLACE(LOWER(name), '''', '') LIKE ?"
-    )
-    .all(likePattern) as RawOracleCard[];
+  if (!candidates || candidates.length === 0) return null;
 
-  // Filter to exact slug match on the base name
   let matches = candidates.filter((c) => slugify(c.name) === searchSlug);
-
   if (matches.length === 0) return null;
-  if (matches.length === 1) return addSlug(matches[0]);
+  if (matches.length === 1) {
+    const m = matches[0];
+    return { ...m, colors: m.colors ? JSON.stringify(m.colors) : null };
+  }
 
-  // Multiple matches — disambiguate
   if (wantToken) {
     matches = matches.filter((c) => c.type_line?.startsWith("Token"));
   } else {
-    // Prefer non-token
-    const nonTokens = matches.filter(
-      (c) => !c.type_line?.startsWith("Token")
-    );
+    const nonTokens = matches.filter((c) => !c.type_line?.startsWith("Token"));
     if (nonTokens.length > 0) matches = nonTokens;
   }
 
-  // Apply oracle_id prefix filter
   if (oraclePrefix && matches.length > 1) {
-    const prefixed = matches.filter((c) =>
-      c.oracle_id.startsWith(oraclePrefix!)
-    );
+    const prefixed = matches.filter((c) => c.oracle_id.startsWith(oraclePrefix!));
     if (prefixed.length > 0) matches = prefixed;
   }
 
-  return matches.length > 0 ? addSlug(matches[0]) : null;
+  if (matches.length === 0) return null;
+  const m = matches[0];
+  return { ...m, colors: m.colors ? JSON.stringify(m.colors) : null };
 }
 
 /** Get all printings for a card, grouped by illustration_id */
-export function getPrintingsForCard(
-  oracleId: string
-): Map<string, Printing[]> {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `
-    SELECT
-      p.scryfall_id,
-      p.illustration_id,
-      p.set_code,
-      s.name as set_name,
-      p.collector_number,
-      p.released_at,
-      p.rarity,
-      p.tcgplayer_id
-    FROM printings p
-    JOIN sets s ON p.set_code = s.set_code
-    WHERE p.oracle_id = ?
-      AND p.illustration_id IS NOT NULL
-    ORDER BY p.released_at ASC
-  `
-    )
-    .all(oracleId) as (Printing & { illustration_id: string })[];
+export async function getPrintingsForCard(oracleId: string): Promise<Map<string, Printing[]>> {
+  const { data, error } = await getAdminClient()
+    .from("printings")
+    .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, sets!inner(name)")
+    .eq("oracle_id", oracleId)
+    .not("illustration_id", "is", null)
+    .order("released_at", { ascending: true });
+
+  if (error) throw new Error(`Failed to get printings: ${error.message}`);
 
   const grouped = new Map<string, Printing[]>();
-  for (const row of rows) {
-    const illId = row.illustration_id;
+  for (const row of data ?? []) {
+    const illId = row.illustration_id as string;
     if (!grouped.has(illId)) grouped.set(illId, []);
     grouped.get(illId)!.push({
       scryfall_id: row.scryfall_id,
       set_code: row.set_code,
-      set_name: row.set_name,
+      set_name: (row.sets as unknown as { name: string }).name,
       collector_number: row.collector_number,
       released_at: row.released_at,
       rarity: row.rarity,
@@ -308,142 +345,121 @@ export function getPrintingsForCard(
 }
 
 /** Record a vote and update ELO ratings */
-export function recordVote(payload: VotePayload): {
+export async function recordVote(payload: VotePayload): Promise<{
   winnerRating: ArtRating;
   loserRating: ArtRating;
-} {
-  const votesDb = getVotesDb();
-
-  const winner = ensureRating(payload.winner_illustration_id, payload.oracle_id);
-  const loser = ensureRating(payload.loser_illustration_id, payload.oracle_id);
-
-  const k = payload.user_id ? K_AUTHENTICATED : K_ANONYMOUS;
-  const { newWinnerRating, newLoserRating } = calculateElo(
-    winner.elo_rating,
-    loser.elo_rating,
-    k
-  );
-
-  const updateStmt = votesDb.prepare(`
-    UPDATE art_ratings
-    SET elo_rating = ?, vote_count = vote_count + 1, win_count = win_count + ?, loss_count = loss_count + ?, updated_at = datetime('now')
-    WHERE illustration_id = ?
-  `);
-
-  const insertVote = votesDb.prepare(`
-    INSERT INTO votes (oracle_id, winner_illustration_id, loser_illustration_id, session_id, user_id, vote_source, voted_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-  `);
-
-  const runTransaction = votesDb.transaction(() => {
-    updateStmt.run(newWinnerRating, 1, 0, payload.winner_illustration_id);
-    updateStmt.run(newLoserRating, 0, 1, payload.loser_illustration_id);
-    insertVote.run(
-      payload.oracle_id,
-      payload.winner_illustration_id,
-      payload.loser_illustration_id,
-      payload.session_id,
-      payload.user_id ?? null,
-      payload.vote_source ?? null
-    );
+}> {
+  const { data, error } = await getAdminClient().rpc("record_vote", {
+    p_oracle_id: payload.oracle_id,
+    p_winner_illustration_id: payload.winner_illustration_id,
+    p_loser_illustration_id: payload.loser_illustration_id,
+    p_session_id: payload.session_id,
+    p_user_id: payload.user_id ?? null,
+    p_vote_source: payload.vote_source ?? null,
   });
 
-  runTransaction();
+  if (error) throw new Error(`Failed to record vote: ${error.message}`);
 
+  const row = (data as Record<string, unknown>[])[0];
   return {
-    winnerRating: getRating(payload.winner_illustration_id)!,
-    loserRating: getRating(payload.loser_illustration_id)!,
+    winnerRating: {
+      illustration_id: row.winner_illustration_id as string,
+      oracle_id: payload.oracle_id,
+      elo_rating: row.winner_elo as number,
+      vote_count: row.winner_vote_count as number,
+      win_count: row.winner_win_count as number,
+      loss_count: row.winner_loss_count as number,
+      updated_at: new Date().toISOString(),
+    },
+    loserRating: {
+      illustration_id: row.loser_illustration_id as string,
+      oracle_id: payload.oracle_id,
+      elo_rating: row.loser_elo as number,
+      vote_count: row.loser_vote_count as number,
+      win_count: row.loser_win_count as number,
+      loss_count: row.loser_loss_count as number,
+      updated_at: new Date().toISOString(),
+    },
   };
 }
 
 /** Get all ratings for a card's illustrations, sorted by ELO desc */
-export function getRatingsForCard(oracleId: string): ArtRating[] {
-  const votesDb = getVotesDb();
-  return votesDb
-    .prepare(
-      "SELECT * FROM art_ratings WHERE oracle_id = ? ORDER BY elo_rating DESC"
-    )
-    .all(oracleId) as ArtRating[];
+export async function getRatingsForCard(oracleId: string): Promise<ArtRating[]> {
+  const { data } = await getAdminClient()
+    .from("art_ratings")
+    .select("*")
+    .eq("oracle_id", oracleId)
+    .order("elo_rating", { ascending: false });
+  return (data ?? []) as ArtRating[];
 }
 
 /** Search cards by name, limited to those with 2+ illustrations */
-export function searchCards(query: string, limit = 20): OracleCard[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `
-    SELECT o.oracle_id, o.name, o.layout, o.type_line
-    FROM oracle_cards o
-    WHERE o.name LIKE ?
-      AND (
-        SELECT COUNT(DISTINCT p.illustration_id)
-        FROM printings p
-        WHERE p.oracle_id = o.oracle_id AND p.illustration_id IS NOT NULL
-      ) >= 2
-    ORDER BY o.name
-    LIMIT ?
-  `
-    )
-    .all(`%${query}%`, limit) as RawOracleCard[];
-  return rows.map(addSlug);
+export async function searchCards(query: string, limit = 20): Promise<OracleCard[]> {
+  // Use the card cache for filtering by illustration count
+  const cache = await getCardCache();
+  const q = query.toLowerCase();
+  const matches = cache
+    .filter((c) => c.illustration_count >= 2 && c.name.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, limit);
+
+  return matches.map(cachedToOracleCard);
 }
 
-/** Get vote history for a user, joining across both databases */
-export function getUserVoteHistory(
+/** Get vote history for a user */
+export async function getUserVoteHistory(
   userId: string,
   limit = 50,
   offset = 0
-): { votes: VoteHistoryEntry[]; total: number } {
-  const votesDb = getVotesDb();
-  const db = getDb();
+): Promise<{ votes: VoteHistoryEntry[]; total: number }> {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase not configured");
 
   // Get total count
-  const { total } = votesDb
-    .prepare("SELECT COUNT(*) as total FROM votes WHERE user_id = ?")
-    .get(userId) as { total: number };
+  const { count } = await supabase
+    .from("votes")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
 
-  // Get paginated votes
-  const rawVotes = votesDb
-    .prepare(
-      `SELECT rowid as vote_id, oracle_id, winner_illustration_id, loser_illustration_id, voted_at
-       FROM votes
-       WHERE user_id = ?
-       ORDER BY voted_at DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(userId, limit, offset) as {
-    vote_id: number;
-    oracle_id: string;
-    winner_illustration_id: string;
-    loser_illustration_id: string;
-    voted_at: string;
-  }[];
+  // Get paginated votes with card info
+  const { data: rawVotes } = await supabase
+    .from("votes")
+    .select("id, oracle_id, winner_illustration_id, loser_illustration_id, voted_at")
+    .eq("user_id", userId)
+    .order("voted_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  // For each vote, look up card name and representative printings from the card DB
-  const getPrinting = db.prepare(
-    `SELECT p.set_code, p.collector_number
-     FROM printings p
-     WHERE p.illustration_id = ?
-     LIMIT 1`
-  );
+  if (!rawVotes || rawVotes.length === 0) return { votes: [], total: count ?? 0 };
 
-  const getCard = db.prepare(
-    "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE oracle_id = ?"
-  );
+  // Batch lookup card names and printings
+  const oracleIds = [...new Set(rawVotes.map((v) => v.oracle_id))];
+  const illustrationIds = [
+    ...new Set(rawVotes.flatMap((v) => [v.winner_illustration_id, v.loser_illustration_id])),
+  ];
+
+  const [{ data: cards }, { data: printingRows }] = await Promise.all([
+    getAdminClient()
+      .from("oracle_cards")
+      .select("oracle_id, name, slug, type_line")
+      .in("oracle_id", oracleIds),
+    getAdminClient()
+      .from("printings")
+      .select("illustration_id, set_code, collector_number")
+      .in("illustration_id", illustrationIds),
+  ]);
+
+  const cardMap = new Map((cards ?? []).map((c) => [c.oracle_id, c]));
+  const printingMap = new Map((printingRows ?? []).map((p) => [p.illustration_id, p]));
 
   const votes: VoteHistoryEntry[] = rawVotes.map((v) => {
-    const card = getCard.get(v.oracle_id) as RawOracleCard | undefined;
-    const winner = getPrinting.get(v.winner_illustration_id) as
-      | { set_code: string; collector_number: string }
-      | undefined;
-    const loser = getPrinting.get(v.loser_illustration_id) as
-      | { set_code: string; collector_number: string }
-      | undefined;
+    const card = cardMap.get(v.oracle_id);
+    const winner = printingMap.get(v.winner_illustration_id);
+    const loser = printingMap.get(v.loser_illustration_id);
 
     return {
-      vote_id: v.vote_id,
+      vote_id: v.id,
       card_name: card?.name ?? "Unknown",
-      card_slug: card ? computeSlug(card) : "unknown",
+      card_slug: card?.slug ?? "unknown",
       oracle_id: v.oracle_id,
       winner_illustration_id: v.winner_illustration_id,
       loser_illustration_id: v.loser_illustration_id,
@@ -455,98 +471,104 @@ export function getUserVoteHistory(
     };
   });
 
-  return { votes, total };
+  return { votes, total: count ?? 0 };
 }
 
 /** Add an illustration to a user's favorites */
-export function addFavorite(
+export async function addFavorite(
   userId: string,
   illustrationId: string,
   oracleId: string
-): void {
-  const votesDb = getVotesDb();
-  votesDb
-    .prepare(
-      "INSERT OR IGNORE INTO favorites (user_id, illustration_id, oracle_id) VALUES (?, ?, ?)"
-    )
-    .run(userId, illustrationId, oracleId);
+): Promise<void> {
+  const supabase = await createClient();
+  if (!supabase) return;
+  await supabase
+    .from("favorites")
+    .upsert({ user_id: userId, illustration_id: illustrationId, oracle_id: oracleId });
 }
 
 /** Remove an illustration from a user's favorites */
-export function removeFavorite(
+export async function removeFavorite(
   userId: string,
   illustrationId: string
-): void {
-  const votesDb = getVotesDb();
-  votesDb
-    .prepare("DELETE FROM favorites WHERE user_id = ? AND illustration_id = ?")
-    .run(userId, illustrationId);
+): Promise<void> {
+  const supabase = await createClient();
+  if (!supabase) return;
+  await supabase
+    .from("favorites")
+    .delete()
+    .eq("user_id", userId)
+    .eq("illustration_id", illustrationId);
 }
 
 /** Batch check which illustration IDs are favorited by a user */
-export function getFavoritedIllustrations(
+export async function getFavoritedIllustrations(
   userId: string,
   illustrationIds: string[]
-): Set<string> {
+): Promise<Set<string>> {
   if (illustrationIds.length === 0) return new Set();
-  const votesDb = getVotesDb();
-  const placeholders = illustrationIds.map(() => "?").join(",");
-  const rows = votesDb
-    .prepare(
-      `SELECT illustration_id FROM favorites WHERE user_id = ? AND illustration_id IN (${placeholders})`
-    )
-    .all(userId, ...illustrationIds) as { illustration_id: string }[];
-  return new Set(rows.map((r) => r.illustration_id));
+  const supabase = await createClient();
+  if (!supabase) return new Set();
+
+  const { data } = await supabase
+    .from("favorites")
+    .select("illustration_id")
+    .eq("user_id", userId)
+    .in("illustration_id", illustrationIds);
+
+  return new Set((data ?? []).map((r) => r.illustration_id));
 }
 
 /** Get a user's favorited illustrations with card info, paginated */
-export function getUserFavorites(
+export async function getUserFavorites(
   userId: string,
   limit = 50,
   offset = 0
-): { favorites: FavoriteEntry[]; total: number } {
-  const votesDb = getVotesDb();
-  const db = getDb();
+): Promise<{ favorites: FavoriteEntry[]; total: number }> {
+  const supabase = await createClient();
+  if (!supabase) return { favorites: [], total: 0 };
 
-  const { total } = votesDb
-    .prepare("SELECT COUNT(*) as total FROM favorites WHERE user_id = ?")
-    .get(userId) as { total: number };
+  const { count } = await supabase
+    .from("favorites")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
 
-  const rawFavorites = votesDb
-    .prepare(
-      `SELECT illustration_id, oracle_id, created_at
-       FROM favorites
-       WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(userId, limit, offset) as {
-    illustration_id: string;
-    oracle_id: string;
-    created_at: string;
-  }[];
+  const { data: rawFavorites } = await supabase
+    .from("favorites")
+    .select("illustration_id, oracle_id, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  const getCard = db.prepare(
-    "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE oracle_id = ?"
-  );
-  const getPrinting = db.prepare(
-    `SELECT p.artist, p.set_code, p.collector_number
-     FROM printings p
-     WHERE p.illustration_id = ? AND p.oracle_id = ?
-     LIMIT 1`
-  );
+  if (!rawFavorites || rawFavorites.length === 0) return { favorites: [], total: count ?? 0 };
+
+  // Batch lookups
+  const oracleIds = [...new Set(rawFavorites.map((f) => f.oracle_id))];
+  const illustrationIds = rawFavorites.map((f) => f.illustration_id);
+
+  const [{ data: cards }, { data: printingRows }] = await Promise.all([
+    getAdminClient()
+      .from("oracle_cards")
+      .select("oracle_id, name, slug, type_line")
+      .in("oracle_id", oracleIds),
+    getAdminClient()
+      .from("printings")
+      .select("illustration_id, oracle_id, artist, set_code, collector_number")
+      .in("illustration_id", illustrationIds),
+  ]);
+
+  const cardMap = new Map((cards ?? []).map((c) => [c.oracle_id, c]));
+  const printingMap = new Map((printingRows ?? []).map((p) => [p.illustration_id, p]));
 
   const favorites: FavoriteEntry[] = rawFavorites.map((f) => {
-    const card = getCard.get(f.oracle_id) as RawOracleCard | undefined;
-    const printing = getPrinting.get(f.illustration_id, f.oracle_id) as
-      | { artist: string; set_code: string; collector_number: string }
-      | undefined;
+    const card = cardMap.get(f.oracle_id);
+    const printing = printingMap.get(f.illustration_id);
 
     return {
       illustration_id: f.illustration_id,
       oracle_id: f.oracle_id,
       card_name: card?.name ?? "Unknown",
-      card_slug: card ? computeSlug(card) : "unknown",
+      card_slug: card?.slug ?? "unknown",
       artist: printing?.artist ?? "Unknown",
       set_code: printing?.set_code ?? "",
       collector_number: printing?.collector_number ?? "",
@@ -554,130 +576,115 @@ export function getUserFavorites(
     };
   });
 
-  return { favorites, total };
+  return { favorites, total: count ?? 0 };
 }
 
-const PLAYABLE_SET_TYPES = [
-  "expansion",
-  "core",
-  "masters",
-  "draft_innovation",
-  "commander",
-];
+const PLAYABLE_SET_TYPES = ["expansion", "core", "masters", "draft_innovation", "commander"];
 
 /** Get playable sets (expansion, core, masters, etc.), non-digital only */
-export function getPlayableSets(): MtgSet[] {
-  const db = getDb();
-  const placeholders = PLAYABLE_SET_TYPES.map(() => "?").join(",");
-  return db
-    .prepare(
-      `SELECT set_code, name, set_type, released_at, card_count, printed_size,
-              icon_svg_uri, parent_set_code, block_code, block, digital
-       FROM sets
-       WHERE set_type IN (${placeholders}) AND digital = 0
-       ORDER BY released_at DESC`
-    )
-    .all(...PLAYABLE_SET_TYPES) as MtgSet[];
+export async function getPlayableSets(): Promise<MtgSet[]> {
+  const { data } = await getAdminClient()
+    .from("sets")
+    .select("*")
+    .in("set_type", PLAYABLE_SET_TYPES)
+    .eq("digital", false)
+    .order("released_at", { ascending: false });
+  return (data ?? []) as MtgSet[];
 }
 
 /** Get all sets, ordered by release date desc */
-export function getAllSets(): MtgSet[] {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT set_code, name, set_type, released_at, card_count, printed_size,
-              icon_svg_uri, parent_set_code, block_code, block, digital
-       FROM sets
-       ORDER BY released_at DESC`
-    )
-    .all() as MtgSet[];
+export async function getAllSets(): Promise<MtgSet[]> {
+  const { data } = await getAdminClient()
+    .from("sets")
+    .select("*")
+    .order("released_at", { ascending: false });
+  return (data ?? []) as MtgSet[];
 }
 
 /** Get a single set by code */
-export function getSetByCode(setCode: string): MtgSet | null {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT set_code, name, set_type, released_at, card_count, printed_size,
-              icon_svg_uri, parent_set_code, block_code, block, digital
-       FROM sets
-       WHERE set_code = ?`
-    )
-    .get(setCode) as MtgSet | undefined;
-  return row ?? null;
+export async function getSetByCode(setCode: string): Promise<MtgSet | null> {
+  const { data } = await getAdminClient()
+    .from("sets")
+    .select("*")
+    .eq("set_code", setCode)
+    .single();
+  return data as MtgSet | null;
 }
 
-/** Get all cards for a set, joined with oracle data, ordered by collector number */
-export function getCardsForSet(setCode: string): SetCard[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT p.scryfall_id, p.oracle_id, o.name, p.collector_number,
-              p.rarity, o.type_line, o.mana_cost
-       FROM printings p
-       JOIN oracle_cards o ON p.oracle_id = o.oracle_id
-       WHERE p.set_code = ?
-       ORDER BY
-         CAST(p.collector_number AS INTEGER),
-         p.collector_number`
-    )
-    .all(setCode) as (Omit<SetCard, "slug"> & { oracle_id: string; name: string })[];
-  return rows.map((row) => ({
-    ...row,
-    slug: computeSlug({ oracle_id: row.oracle_id, name: row.name, layout: null, type_line: row.type_line }),
-  }));
-}
+/** Get all cards for a set */
+export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
+  const { data } = await getAdminClient()
+    .from("printings")
+    .select("scryfall_id, oracle_id, collector_number, rarity, oracle_cards!inner(name, slug, type_line, mana_cost)")
+    .eq("set_code", setCode)
+    .order("collector_number", { ascending: true });
 
-type RawOracleCardFull = Omit<OracleCardFull, "slug">;
+  return (data ?? []).map((row) => {
+    const card = row.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null };
+    return {
+      scryfall_id: row.scryfall_id,
+      oracle_id: row.oracle_id,
+      name: card.name,
+      slug: card.slug,
+      collector_number: row.collector_number,
+      rarity: row.rarity,
+      type_line: card.type_line,
+      mana_cost: card.mana_cost,
+    };
+  });
+}
 
 /** Look up a card by exact name (case-insensitive), with split-card fallback */
-export function lookupCardByName(name: string): OracleCard | null {
-  const db = getDb();
+export async function lookupCardByName(name: string): Promise<OracleCard | null> {
+  // Exact match
+  const { data: exact } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .ilike("name", name)
+    .limit(1)
+    .maybeSingle();
 
-  // Exact match (case-insensitive)
-  const exact = db
-    .prepare(
-      "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE LOWER(name) = LOWER(?) LIMIT 1"
-    )
-    .get(name) as RawOracleCard | undefined;
-  if (exact) return addSlug(exact);
+  if (exact) return { ...exact, colors: exact.colors ? JSON.stringify(exact.colors) : null };
 
   // Split card fallback: "Fire" → match "Fire // Ice"
-  const split = db
-    .prepare(
-      "SELECT oracle_id, name, layout, type_line FROM oracle_cards WHERE LOWER(name) LIKE LOWER(?) || ' // %' LIMIT 1"
-    )
-    .get(name) as RawOracleCard | undefined;
-  if (split) return addSlug(split);
+  const { data: split } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .ilike("name", `${name} // %`)
+    .limit(1)
+    .maybeSingle();
+
+  if (split) return { ...split, colors: split.colors ? JSON.stringify(split.colors) : null };
 
   return null;
 }
 
 /** Look up all cards from a decklist, returning matched cards with art and unmatched entries */
-export function lookupDeckCards(entries: DecklistEntry[]): {
+export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
   matched: DeckCardWithArt[];
   unmatched: DecklistEntry[];
-} {
+}> {
   const matched: DeckCardWithArt[] = [];
   const unmatched: DecklistEntry[] = [];
-  const seen = new Map<string, number>(); // oracle_id → index in matched
+  const seen = new Map<string, number>();
 
   for (const entry of entries) {
-    const card = lookupCardByName(entry.name);
+    const card = await lookupCardByName(entry.name);
     if (!card) {
       unmatched.push(entry);
       continue;
     }
 
-    // Deduplicate: if same card in different sections, merge quantity
     const existingIdx = seen.get(card.oracle_id);
     if (existingIdx !== undefined) {
       matched[existingIdx].quantity += entry.quantity;
       continue;
     }
 
-    const illustrations = getIllustrationsForCard(card.oracle_id);
-    const ratings = getRatingsForCard(card.oracle_id);
+    const [illustrations, ratings] = await Promise.all([
+      getIllustrationsForCard(card.oracle_id),
+      getRatingsForCard(card.oracle_id),
+    ]);
     const ratingMap = new Map(ratings.map((r) => [r.illustration_id, r]));
 
     const illustrationsWithRatings = illustrations
@@ -704,19 +711,130 @@ export function lookupDeckCards(entries: DecklistEntry[]): {
 }
 
 /** Search all oracle cards by name (no illustration count filter) */
-export function searchAllCards(query: string, limit = 50): OracleCardFull[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT oracle_id, name, layout, type_line, mana_cost, colors, cmc
-       FROM oracle_cards
-       WHERE name LIKE ?
-       ORDER BY name
-       LIMIT ?`
-    )
-    .all(`%${query}%`, limit) as RawOracleCardFull[];
-  return rows.map((row) => ({
+export async function searchAllCards(query: string, limit = 50): Promise<OracleCard[]> {
+  const { data } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .ilike("name", `%${query}%`)
+    .order("name")
+    .limit(limit);
+
+  return (data ?? []).map((row) => ({
     ...row,
-    slug: computeSlug(row),
+    colors: row.colors ? JSON.stringify(row.colors) : null,
   }));
+}
+
+// =============================================================================
+// Clash — card-level voting (comparing cards, not illustrations)
+// =============================================================================
+
+/** Get a clash pair: two random cards with representative printings and card-level ratings */
+export async function getClashPair(filters?: CompareFilters): Promise<ClashPair> {
+  const candidates = filterCards(await getCardCache(), filters, 1);
+  if (candidates.length < 2) throw new Error("Not enough cards match the selected filters");
+
+  const idxA = Math.floor(Math.random() * candidates.length);
+  let idxB = Math.floor(Math.random() * (candidates.length - 1));
+  if (idxB >= idxA) idxB++;
+
+  const cardA = candidates[idxA];
+  const cardB = candidates[idxB];
+
+  const { data, error } = await getAdminClient().rpc("get_clash_pair", {
+    p_oracle_id_a: cardA.oracle_id,
+    p_oracle_id_b: cardB.oracle_id,
+  });
+
+  if (error || !data || data.length < 2) {
+    throw new Error(`Failed to get clash pair: ${error?.message ?? "insufficient data"}`);
+  }
+
+  const rowA = data.find((r: ClashPairRow) => r.oracle_id === cardA.oracle_id) ?? data[0];
+  const rowB = data.find((r: ClashPairRow) => r.oracle_id === cardB.oracle_id) ?? data[1];
+
+  return {
+    a: toClashCard(rowA),
+    b: toClashCard(rowB),
+    a_rating: toCardRating(rowA),
+    b_rating: toCardRating(rowB),
+  };
+}
+
+interface ClashPairRow {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  type_line: string | null;
+  mana_cost: string | null;
+  colors: unknown;
+  cmc: number | null;
+  artist: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  illustration_id: string;
+  elo_rating: number | null;
+  vote_count: number | null;
+  win_count: number | null;
+  loss_count: number | null;
+}
+
+function toClashCard(row: ClashPairRow): ClashCard {
+  return {
+    oracle_id: row.oracle_id,
+    name: row.name,
+    slug: row.slug,
+    type_line: row.type_line,
+    mana_cost: row.mana_cost,
+    colors: row.colors ? JSON.stringify(row.colors) : null,
+    cmc: row.cmc,
+    artist: row.artist,
+    set_code: row.set_code,
+    set_name: row.set_name,
+    collector_number: row.collector_number,
+    illustration_id: row.illustration_id,
+  };
+}
+
+function toCardRating(row: ClashPairRow): CardRating | null {
+  if (row.elo_rating == null) return null;
+  return {
+    oracle_id: row.oracle_id,
+    elo_rating: row.elo_rating,
+    vote_count: row.vote_count ?? 0,
+    win_count: row.win_count ?? 0,
+    loss_count: row.loss_count ?? 0,
+  };
+}
+
+/** Record a card-level vote and return updated ratings */
+export async function recordCardVote(payload: CardVotePayload) {
+  const { data, error } = await getAdminClient().rpc("record_card_vote", {
+    p_winner_oracle_id: payload.winner_oracle_id,
+    p_loser_oracle_id: payload.loser_oracle_id,
+    p_session_id: payload.session_id,
+    p_user_id: payload.user_id ?? null,
+    p_vote_source: payload.vote_source ?? null,
+  });
+
+  if (error) throw new Error(`Vote failed: ${error.message}`);
+  const row = data[0];
+
+  return {
+    winner_rating: {
+      oracle_id: row.winner_oracle_id as string,
+      elo_rating: row.winner_elo as number,
+      vote_count: row.winner_vote_count as number,
+      win_count: row.winner_win_count as number,
+      loss_count: row.winner_loss_count as number,
+    },
+    loser_rating: {
+      oracle_id: row.loser_oracle_id as string,
+      elo_rating: row.loser_elo as number,
+      vote_count: row.loser_vote_count as number,
+      win_count: row.loser_win_count as number,
+      loss_count: row.loser_loss_count as number,
+    },
+  };
 }

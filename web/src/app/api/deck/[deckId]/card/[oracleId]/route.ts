@@ -17,7 +17,7 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const deck = getDeckById(deckId);
+  const deck = await getDeckById(deckId);
   if (!deck || deck.user_id !== user.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -28,6 +28,6 @@ export async function PUT(
     to_buy?: boolean;
   };
 
-  updateDeckCard(deckId, oracleId, { selected_illustration_id, to_buy });
+  await updateDeckCard(deckId, oracleId, { selected_illustration_id, to_buy });
   return NextResponse.json({ ok: true });
 }

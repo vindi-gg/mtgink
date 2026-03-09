@@ -13,6 +13,6 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const items = getUserPurchaseList(user.id);
+  const items = await getUserPurchaseList(user.id);
   return NextResponse.json({ items });
 }

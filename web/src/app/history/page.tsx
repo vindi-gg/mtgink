@@ -119,7 +119,7 @@ export default function HistoryPage() {
         ) : votes.length === 0 ? (
           <div className="text-gray-500">
             No votes yet.{" "}
-            <Link href="/compare" className="text-amber-400 hover:underline">
+            <Link href="/ink" className="text-amber-400 hover:underline">
               Start comparing
             </Link>{" "}
             to build your history.

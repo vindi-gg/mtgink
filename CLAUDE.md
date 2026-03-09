@@ -9,9 +9,9 @@ MTG Ink is a web application for Magic: The Gathering focused on discovering and
 **Stack:**
 - **Frontend/Backend**: Next.js 16 (App Router) + React 19 + TypeScript
 - **Styling**: Tailwind CSS 4
-- **Card Data**: SQLite via better-sqlite3 (read-only, `data/mtgink.db`)
-- **Votes/Ratings**: SQLite (read-write, `data/mtgink_votes.db`)
-- **Images**: Local filesystem (~206K images served via API route)
+- **Database**: Supabase Postgres (all card data, votes, ratings, prices)
+- **Auth**: Supabase Auth (Google, Discord, email/password)
+- **Images**: Cloudflare R2 (`cdn.mtg.ink`) + local filesystem for dev
 
 ## Development Commands
 
@@ -25,26 +25,39 @@ npm run lint     # ESLint
 
 ### Data Pipeline (Python scripts, run from project root)
 ```bash
-python3 scripts/download_bulk.py    # Download bulk JSON from Scryfall (~700MB)
-python3 scripts/import_data.py      # Import into SQLite database
-python3 scripts/download_images.py  # Download card images (~19GB)
-python3 scripts/import_tags.py      # Download + import Scryfall Tagger tags
+python3 scripts/download_bulk.py          # Download bulk JSON from Scryfall (~700MB)
+python3 scripts/import_data.py            # Import into local SQLite (dev only)
+python3 scripts/import_data_postgres.py   # Import into Supabase Postgres (production)
+python3 scripts/import_prices.py          # Seed prices from Scryfall data
+python3 scripts/download_images.py        # Download card images (~19GB)
+python3 scripts/import_tags.py            # Download + import Scryfall Tagger tags
+python3 scripts/migrate_votes.py          # One-time: SQLite votes → Postgres
 ```
 
 ## Web App Architecture
 
 ### Pages (App Router)
 - `/` — Landing page with links to Compare and Browse
+- `/ink` — Same-card art comparison (mirror mode)
+- `/clash` — Cross-card art comparison (VS mode)
 - `/compare` — Head-to-head art voting (optional `?oracle_id=` filter)
+- `/bracket` — 32-card single-elimination art tournament
 - `/browse` — Search for cards with multiple art versions
 - `/card/[slug]` — Card detail: all illustrations ranked by ELO, all printings
+- `/db/expansions` — Browse sets, `/db/expansions/[set_code]` — Set detail
+- `/deck/*` — Deck management (import, art selection, purchase list)
 
 ### API Routes
 - `GET /api/search?q=` — Search cards by name (returns cards with 2+ illustrations)
 - `GET /api/compare?oracle_id=` — Get random comparison pair
 - `POST /api/vote` — Record vote, return updated ratings + next pair
 - `GET /api/card/[slug]` — Card detail with illustrations, ratings, printings
-- `GET /api/images/[...path]` — Serve card images from `data/images/` with 1yr cache
+- `GET /api/bracket` — Random bracket cards
+- `GET/POST /api/deck` — Deck CRUD
+- `POST /api/deck/import` — Import decklist (paste or Moxfield URL)
+- `GET /api/deck/purchases` — User purchase list
+- `GET /api/favorites` — User favorites
+- `GET /api/images/[...path]` — Serve card images (local dev only)
 
 ### Key Source Files
 ```
@@ -54,54 +67,97 @@ web/src/
 │   ├── Navbar.tsx          # Sticky nav with active link highlighting
 │   ├── CardSearch.tsx      # Debounced search with live results
 │   ├── ComparisonView.tsx  # Voting UI (click or arrow keys, S to skip)
+│   ├── BracketView.tsx     # Tournament bracket UI
+│   ├── DeckView.tsx        # Deck card list with art selection
 │   ├── CardImage.tsx       # Image with loading skeleton
 │   ├── ArtGallery.tsx      # Grid of ranked art cards
 │   └── ArtCard.tsx         # Single art card with ELO badge
 └── lib/
-    ├── db.ts               # Card data DB connection (read-only singleton)
-    ├── votes-db.ts         # Votes DB connection + schema init
-    ├── queries.ts          # All database queries (search, compare, vote, etc.)
-    ├── elo.ts              # ELO calculation (K=32, default 1500)
+    ├── supabase/
+    │   ├── client.ts       # Browser Supabase client (auth)
+    │   ├── server.ts       # Server Supabase client (auth + RLS)
+    │   └── admin.ts        # Service role client (bypasses RLS)
+    ├── queries.ts          # All card/vote queries (async, Supabase)
+    ├── deck-queries.ts     # Deck CRUD queries (async, Supabase)
+    ├── bracket.ts          # Bracket card queries (async, Supabase)
+    ├── price-queries.ts    # Multi-marketplace price queries
+    ├── elo.ts              # ELO calculation (K=32 auth, K=16 anon)
     ├── types.ts            # TypeScript interfaces
     └── image-utils.ts      # URL helpers for card images
 ```
 
 ### Data Flow
-- **Card data**: Pages/API → `queries.ts` → `db.ts` → `data/mtgink.db` (read-only)
-- **Votes**: `POST /api/vote` → `recordVote()` → `calculateElo()` → `data/mtgink_votes.db`
-- **Images**: `GET /api/images/...` → `fs.readFileSync()` from `data/images/`
-- **Sessions**: localStorage `mtgink_session_id` (random hex, no auth yet)
+- **Card data**: Pages/API → `queries.ts` → Supabase Postgres (via `getAdminClient()`)
+- **Votes**: `POST /api/vote` → `recordVote()` → Postgres stored procedure (atomic ELO update)
+- **Auth-scoped data**: Uses server client with RLS (favorites, decks, vote history)
+- **Images**: Cloudflare R2 (`cdn.mtg.ink`) in production, `/api/images/` for local dev
+- **Sessions**: localStorage `mtgink_session_id` (anonymous), Supabase Auth (logged in)
 
-## Data Pipeline
+## Database (Supabase Postgres)
 
-### Card Database: `data/mtgink.db` (SQLite, ~656 MB)
+### Card Data Tables
 - **sets** (1,029 rows) — All MTG sets/products
-- **oracle_cards** (36,923 rows) — One row per unique logical card
+- **oracle_cards** (36,923 rows) — One row per unique logical card (includes pre-computed `slug`)
 - **printings** (112,608 rows) — One row per English printing/version
 - **card_faces** (9,623 rows) — For multi-face cards (transform, split, modal DFC)
-- **tags** (16,579 rows) — Scryfall Tagger tag definitions (illustration + oracle)
-- **illustration_tags** (1,173,911 rows) — Maps illustration_id → tag_id (art tags)
-- **oracle_tags** (498,329 rows) — Maps oracle_id → tag_id (function tags)
+- **tags** (16,579 rows) — Scryfall Tagger tag definitions
+- **illustration_tags** (1,173,911 rows) — Maps illustration_id → tag_id
+- **oracle_tags** (498,329 rows) — Maps oracle_id → tag_id
 
-### Votes Database: `data/mtgink_votes.db` (SQLite)
-- **art_ratings** — ELO ratings per illustration (default 1500, K=32)
-- **votes** — Raw vote log with session tracking
-- **popularity_signals** — Future extensibility for other ranking signals
+### User Data Tables
+- **art_ratings** — ELO ratings per illustration (default 1500)
+- **votes** — Raw vote log with session tracking and `vote_source`
+- **favorites** — User-scoped illustration favorites
+- **decks** / **deck_cards** — Saved decks with art selection
+
+### Pricing Tables
+- **marketplaces** — TCGPlayer, Cardmarket, Manapool
+- **prices** — Per-printing prices across marketplaces
+- **best_prices** (VIEW) — Cheapest NM non-foil per printing
+- **price_update_log** — Tracks update runs
+
+### Stored Procedures
+- `get_illustrations_for_card(oracle_id)` — Illustrations with best representative printing
+- `record_vote(...)` — Atomic vote + ELO update transaction
+- `get_random_bracket_cards(count)` — Random selection for brackets
+- `get_card_cache()` — Bulk load for in-memory JS cache
 
 ### Key ID Systems
-- **scryfall_id** (UUID): Primary key per printing — unique to each specific version
+- **scryfall_id** (UUID): Primary key per printing
 - **oracle_id** (UUID): Groups all printings of the same logical card
 - **illustration_id** (UUID): Groups printings sharing same artwork (47,997 unique)
-- **tcgplayer_id** (integer): TCGPlayer product ID (96,743 cards have one)
+- **slug** (TEXT): Pre-computed URL slug on oracle_cards (eliminates N+1 queries)
 
-### Images: `data/images/{set_code}/`
-- `{collector_number}_normal.jpg` (488×680) — Standard card image
-- `{collector_number}_art_crop.jpg` — Just the artwork
-- ~206K images, ~19GB total
+### RLS Policies
+- Card data + prices: public read
+- art_ratings: public read, service_role write
+- votes: anyone can insert, users read own
+- favorites, decks, deck_cards: user-scoped via `auth.uid()`
 
-### TCGPlayer Integration
-- No API key needed — Scryfall includes `tcgplayer_id` and USD pricing
-- Affiliate links: `https://www.tcgplayer.com/product/{tcgplayer_id}`
+### Supabase Migrations
+```
+supabase/migrations/
+├── 001_card_data_tables.sql
+├── 002_votes_user_tables.sql
+├── 003_pricing_system.sql
+├── 004_rls_policies.sql
+└── 005_stored_procedures.sql
+```
+
+## Infrastructure
+- **Hosting**: Vercel (Next.js)
+- **Database**: Supabase Postgres (Pro tier)
+- **CDN/WAF/DDoS**: Cloudflare (orange cloud proxy)
+- **Images**: Cloudflare R2 at `cdn.mtg.ink`
+- **Cache rules**: Images cached 30d on CF edge, API bypasses CF cache, pages respect origin headers
+
+## Env Vars
+```
+NEXT_PUBLIC_SUPABASE_URL=...       # Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...  # Public anon key (RLS-protected)
+SUPABASE_SERVICE_ROLE_KEY=...      # Server writes bypassing RLS
+SUPABASE_DB_URL=...                # Direct Postgres for Python scripts
+```
 
 ## Workflow Orchestration
 
@@ -157,6 +213,9 @@ web/src/
 
 - Business logic belongs in `lib/` — not in API routes or page components
 - API routes are thin: validate input, call query functions, return JSON
+- All query functions are **async** — return Promises, use `await`
+- Use `getAdminClient()` for public data reads and server writes (bypasses RLS)
+- Use `createClient()` from `supabase/server.ts` for user-scoped operations (respects RLS)
 - TypeScript for all code, strict mode enabled
 - Path alias `@/*` maps to `web/src/*`
 - Tailwind CSS 4 with custom theme in `globals.css` (dark theme, amber accent)

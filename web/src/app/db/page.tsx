@@ -1,5 +1,10 @@
 import Link from "next/link";
 
+export const metadata = {
+  title: "Card Database — MTG Ink",
+  description: "Browse the Magic: The Gathering card database. Explore expansions, search cards, and view printings.",
+};
+
 export default function DbIndexPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">

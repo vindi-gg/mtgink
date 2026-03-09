@@ -1,5 +1,10 @@
 import CardSearch from "@/components/CardSearch";
 
+export const metadata = {
+  title: "Browse Cards — MTG Ink",
+  description: "Find Magic: The Gathering cards with multiple art versions to compare and rank.",
+};
+
 export default function BrowsePage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">

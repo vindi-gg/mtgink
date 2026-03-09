@@ -4,6 +4,9 @@ export interface OracleCard {
   slug: string;
   layout: string | null;
   type_line: string | null;
+  mana_cost: string | null;
+  colors: string | null;
+  cmc: number | null;
 }
 
 export interface Printing {
@@ -38,10 +41,18 @@ export interface ArtRating {
 
 export interface ComparisonPair {
   card: OracleCard;
+  card_b?: OracleCard;
   a: Illustration;
   b: Illustration;
   a_rating: ArtRating | null;
   b_rating: ArtRating | null;
+}
+
+export interface CompareFilters {
+  colors?: string[];
+  type?: string;
+  subtype?: string;
+  mode?: "same" | "cross";
 }
 
 export interface VotePayload {
@@ -84,7 +95,7 @@ export interface MtgSet {
   parent_set_code: string | null;
   block_code: string | null;
   block: string | null;
-  digital: number;
+  digital: boolean;
 }
 
 export interface SetCard {
@@ -96,12 +107,6 @@ export interface SetCard {
   rarity: string | null;
   type_line: string | null;
   mana_cost: string | null;
-}
-
-export interface OracleCardFull extends OracleCard {
-  mana_cost: string | null;
-  colors: string | null;
-  cmc: number | null;
 }
 
 export interface BracketCard {
@@ -157,7 +162,7 @@ export interface Deck {
   name: string;
   format: string | null;
   source_url: string | null;
-  is_public: number;
+  is_public: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -173,7 +178,7 @@ export interface DeckCard {
   quantity: number;
   section: string;
   selected_illustration_id: string | null;
-  to_buy: number;
+  to_buy: boolean;
 }
 
 export interface DeckCardDetail extends DeckCard {
@@ -223,4 +228,88 @@ export interface FavoriteEntry {
   set_code: string;
   collector_number: string;
   created_at: string;
+}
+
+// --- Clash (card-level voting) types ---
+
+export interface CardRating {
+  oracle_id: string;
+  elo_rating: number;
+  vote_count: number;
+  win_count: number;
+  loss_count: number;
+}
+
+export interface ClashCard {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  type_line: string | null;
+  mana_cost: string | null;
+  colors: string | null;
+  cmc: number | null;
+  artist: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  illustration_id: string;
+}
+
+export interface ClashPair {
+  a: ClashCard;
+  b: ClashCard;
+  a_rating: CardRating | null;
+  b_rating: CardRating | null;
+}
+
+export interface CardVotePayload {
+  winner_oracle_id: string;
+  loser_oracle_id: string;
+  session_id: string;
+  user_id?: string;
+  vote_source?: string;
+}
+
+export interface CardVoteResponse {
+  winner_rating: CardRating;
+  loser_rating: CardRating;
+  next: ClashPair;
+}
+
+// --- Pricing types ---
+
+export interface Marketplace {
+  id: number;
+  name: string;
+  display_name: string;
+  base_url: string;
+  affiliate_param: string | null;
+  currency: string;
+  is_active: boolean;
+}
+
+export interface Price {
+  id: number;
+  scryfall_id: string;
+  marketplace_id: number;
+  product_id: string | null;
+  product_url: string | null;
+  condition: string;
+  is_foil: boolean;
+  market_price: number | null;
+  low_price: number | null;
+  mid_price: number | null;
+  currency: string;
+  in_stock: boolean;
+  last_updated: string;
+  source: string;
+}
+
+export interface PurchaseOption {
+  marketplace_name: string;
+  marketplace_display_name: string;
+  product_url: string;
+  market_price: number | null;
+  low_price: number | null;
+  currency: string;
 }

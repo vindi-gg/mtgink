@@ -11,15 +11,17 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const card = getCardBySlug(slug);
+  const card = await getCardBySlug(slug);
 
   if (!card) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
 
-  const illustrations = getIllustrationsForCard(card.oracle_id);
-  const ratings = getRatingsForCard(card.oracle_id);
-  const printingsMap = getPrintingsForCard(card.oracle_id);
+  const [illustrations, ratings, printingsMap] = await Promise.all([
+    getIllustrationsForCard(card.oracle_id),
+    getRatingsForCard(card.oracle_id),
+    getPrintingsForCard(card.oracle_id),
+  ]);
 
   // Merge ratings and printings into illustrations
   const ratingsMap = new Map(ratings.map((r) => [r.illustration_id, r]));

@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import type { OracleCardFull } from "@/lib/types";
+import type { OracleCard } from "@/lib/types";
 
 export default function DbCardSearch() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<OracleCardFull[]>([]);
+  const [results, setResults] = useState<OracleCard[]>([]);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 

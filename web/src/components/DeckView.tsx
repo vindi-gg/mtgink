@@ -8,7 +8,7 @@ import type { DeckImportResponse, DeckCardWithArt, DeckCardDetail, Illustration,
 
 type CardEntry = (DeckCardWithArt | DeckCardDetail) & {
   selected_illustration_id?: string | null;
-  to_buy?: number;
+  to_buy?: boolean;
 };
 
 interface DeckViewProps {
@@ -48,7 +48,7 @@ function DeckCardRow({
     (entry as DeckCardDetail).selected_illustration_id ?? null
   );
   const [toBuy, setToBuy] = useState(
-    (entry as DeckCardDetail).to_buy === 1
+    !!(entry as DeckCardDetail).to_buy
   );
 
   const oracleId = entry.card.oracle_id;

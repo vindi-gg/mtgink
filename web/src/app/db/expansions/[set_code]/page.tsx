@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSetByCode, getCardsForSet } from "@/lib/queries";
@@ -5,16 +6,30 @@ import { normalCardUrl } from "@/lib/image-utils";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ set_code: string }>;
+}): Promise<Metadata> {
+  const { set_code } = await params;
+  const set = await getSetByCode(set_code);
+  if (!set) return { title: "Set Not Found — MTG Ink" };
+  return {
+    title: `${set.name} — MTG Ink`,
+    description: `Browse all ${set.card_count ?? ""} cards in ${set.name} (${set.set_code.toUpperCase()}).${set.released_at ? ` Released ${set.released_at}.` : ""}`,
+  };
+}
+
 export default async function SetDetailPage({
   params,
 }: {
   params: Promise<{ set_code: string }>;
 }) {
   const { set_code } = await params;
-  const set = getSetByCode(set_code);
+  const set = await getSetByCode(set_code);
   if (!set) notFound();
 
-  const cards = getCardsForSet(set_code);
+  const cards = await getCardsForSet(set_code);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
