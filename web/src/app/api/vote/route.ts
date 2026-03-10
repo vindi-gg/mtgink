@@ -50,19 +50,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: protection.reason }, { status: 429 });
     }
 
-    const { winnerRating, loserRating } = await recordVote(body, protection.kFactor);
-
-    let next;
-    try {
-      next = await getComparisonPair(undefined, filters);
-    } catch {
-      // Filters too narrow — fall back to unfiltered
-      next = await getComparisonPair();
-    }
+    // Run vote recording and next pair fetch in parallel — next pair doesn't depend on vote result
+    const [voteResult, next] = await Promise.all([
+      recordVote(body, protection.kFactor),
+      getComparisonPair(undefined, filters).catch(() => getComparisonPair()),
+    ]);
 
     return NextResponse.json({
-      winner_rating: winnerRating,
-      loser_rating: loserRating,
+      winner_rating: voteResult.winnerRating,
+      loser_rating: voteResult.loserRating,
       next,
     });
   } catch (error) {

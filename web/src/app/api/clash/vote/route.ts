@@ -33,16 +33,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: protection.reason }, { status: 429 });
     }
 
-    const result = await recordCardVote({
-      winner_oracle_id,
-      loser_oracle_id,
-      session_id,
-      user_id: userId,
-      vote_source: "clash_vs",
-    }, protection.kFactor);
-
     const parsedFilters: CompareFilters | undefined = filters || undefined;
-    const next = await getClashPair(parsedFilters);
+
+    // Run vote recording and next pair fetch in parallel
+    const [result, next] = await Promise.all([
+      recordCardVote({
+        winner_oracle_id,
+        loser_oracle_id,
+        session_id,
+        user_id: userId,
+        vote_source: "clash_vs",
+      }, protection.kFactor),
+      getClashPair(parsedFilters),
+    ]);
 
     return NextResponse.json({
       winner_rating: result.winner_rating,

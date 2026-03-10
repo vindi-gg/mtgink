@@ -10,6 +10,14 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Skip session refresh for API routes (they handle auth themselves)
+  // and for anonymous users (no Supabase session cookie)
+  const { pathname } = request.nextUrl;
+  const hasSession = request.cookies.getAll().some((c) => c.name.startsWith("sb-"));
+  if (pathname.startsWith("/api/") || !hasSession) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -31,7 +39,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh session — don't remove this line
+  // Refresh session for authenticated page requests
   await supabase.auth.getUser();
 
   return supabaseResponse;

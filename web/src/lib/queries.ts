@@ -77,139 +77,57 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-const VALID_COLORS = new Set(["W", "U", "B", "R", "G"]);
-
-// --- In-memory card cache for fast random selection ---
-interface CachedCard {
-  oracle_id: string;
-  name: string;
-  slug: string;
-  layout: string | null;
-  type_line: string | null;
-  mana_cost: string | null;
-  colors: string[];
-  cmc: number | null;
-  illustration_count: number;
-}
-
-let cardCache: CachedCard[] | null = null;
-
-type CardCacheRow = { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: string[] | null; cmc: number | null; illustration_count: number };
-
-async function getCardCache(): Promise<CachedCard[]> {
-  if (cardCache) return cardCache;
-
-  // Supabase PostgREST limits responses to 1000 rows — paginate to get all ~37K cards
-  const PAGE_SIZE = 1000;
-  const allRows: CardCacheRow[] = [];
-  let offset = 0;
-
-  while (true) {
-    const { data, error } = await getAdminClient()
-      .rpc("get_card_cache")
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(`Failed to load card cache: ${error.message}`);
-    const rows = data as CardCacheRow[];
-    allRows.push(...rows);
-    if (rows.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-
-  cardCache = allRows.map((r) => ({
-    ...r,
-    colors: r.colors ?? [],
-  }));
-  return cardCache;
-}
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function filterCards(cards: CachedCard[], filters?: CompareFilters, minIllustrations = 2): CachedCard[] {
-  let result = cards.filter((c) => c.illustration_count >= minIllustrations);
-
-  if (!filters) return result;
-
-  if (filters.colors && filters.colors.length > 0) {
-    const hasColorless = filters.colors.includes("C");
-    const realColors = filters.colors.filter((c) => VALID_COLORS.has(c));
-
-    if (hasColorless && realColors.length === 0) {
-      result = result.filter((c) => c.colors.length === 0);
-    } else {
-      for (const color of realColors) {
-        result = result.filter((c) => c.colors.includes(color));
-      }
-    }
-  }
-
-  if (filters.type) {
-    const t = filters.type;
-    result = result.filter((c) => c.type_line?.includes(t));
-  }
-
-  if (filters.subtype) {
-    const st = filters.subtype;
-    result = result.filter((c) => {
-      if (!c.type_line) return false;
-      const afterDash = c.type_line.split("\u2014")[1];
-      return afterDash?.includes(st);
-    });
-  }
-
-  return result;
-}
-
-function cachedToOracleCard(c: CachedCard): OracleCard {
+function filterParams(filters?: CompareFilters) {
   return {
-    oracle_id: c.oracle_id,
-    name: c.name,
-    slug: c.slug,
-    layout: c.layout,
-    type_line: c.type_line,
-    mana_cost: c.mana_cost,
-    colors: c.colors.length > 0 ? JSON.stringify(c.colors) : null,
-    cmc: c.cmc,
+    p_colors: filters?.colors?.length ? filters.colors : null,
+    p_type: filters?.type || null,
+    p_subtype: filters?.subtype || null,
   };
 }
 
-/** Get a random card that has 2+ distinct illustrations (uses in-memory cache) */
-export async function getRandomComparableCard(filters?: CompareFilters): Promise<OracleCard> {
-  const candidates = filterCards(await getCardCache(), filters, 2);
-  if (candidates.length === 0) throw new Error("No cards match the selected filters");
-  return cachedToOracleCard(pickRandom(candidates));
+/** Pick random cards directly in Postgres */
+async function getRandomCards(count: number, minIllustrations: number, filters?: CompareFilters): Promise<OracleCard[]> {
+  const { data, error } = await getAdminClient().rpc("get_random_cards", {
+    p_count: count,
+    p_min_illustrations: minIllustrations,
+    ...filterParams(filters),
+  });
+
+  if (error) throw new Error(`Failed to get random cards: ${error.message}`);
+  if (!data || data.length === 0) throw new Error("No cards match the selected filters");
+
+  return (data as { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: unknown; cmc: number | null }[]).map((r) => ({
+    oracle_id: r.oracle_id,
+    name: r.name,
+    slug: r.slug,
+    layout: r.layout,
+    type_line: r.type_line,
+    mana_cost: r.mana_cost,
+    colors: r.colors ? JSON.stringify(r.colors) : null,
+    cmc: r.cmc,
+  }));
 }
 
-/** Get a cross-card comparison pair: two different cards matching filters, one illustration each */
+/** Get a cross-card comparison pair: two different cards, one illustration each */
 export async function getCrossCardPair(filters?: CompareFilters): Promise<ComparisonPair> {
-  const candidates = filterCards(await getCardCache(), filters, 1);
-  if (candidates.length < 2) throw new Error("Not enough cards match the selected filters");
+  const cards = await getRandomCards(2, 1, filters);
+  if (cards.length < 2) throw new Error("Not enough cards match the selected filters");
 
-  const idxA = Math.floor(Math.random() * candidates.length);
-  let idxB = Math.floor(Math.random() * (candidates.length - 1));
-  if (idxB >= idxA) idxB++;
-
-  const cardA = cachedToOracleCard(candidates[idxA]);
-  const cardB = cachedToOracleCard(candidates[idxB]);
-
-  // Single RPC: get one random illustration from each card with ratings
   const { data, error } = await getAdminClient().rpc("get_cross_comparison_pair", {
-    p_oracle_id_a: cardA.oracle_id,
-    p_oracle_id_b: cardB.oracle_id,
+    p_oracle_id_a: cards[0].oracle_id,
+    p_oracle_id_b: cards[1].oracle_id,
   });
 
   if (error || !data || data.length < 2) {
     throw new Error(`Failed to get cross comparison pair: ${error?.message ?? "insufficient data"}`);
   }
 
-  // Match rows back to cards (row oracle_id tells us which card it belongs to)
-  const rowA = data.find((r: IllustrationWithRating) => r.oracle_id === cardA.oracle_id) ?? data[0];
-  const rowB = data.find((r: IllustrationWithRating) => r.oracle_id === cardB.oracle_id) ?? data[1];
+  const rowA = data.find((r: IllustrationWithRating) => r.oracle_id === cards[0].oracle_id) ?? data[0];
+  const rowB = data.find((r: IllustrationWithRating) => r.oracle_id === cards[1].oracle_id) ?? data[1];
 
   return {
-    card: cardA,
-    card_b: cardB,
+    card: cards[0],
+    card_b: cards[1],
     a: toIllustration(rowA),
     b: toIllustration(rowB),
     a_rating: toRating(rowA),
@@ -242,12 +160,12 @@ export async function getComparisonPair(oracleId?: string, filters?: CompareFilt
     return getCrossCardPair(filters);
   }
 
+  // Pick a random card with 2+ illustrations, or use the specified one
   const card = oracleId
     ? await getCardByOracleId(oracleId)
-    : await getRandomComparableCard(filters);
+    : (await getRandomCards(1, 2, filters))[0];
   if (!card) throw new Error("No comparable card found");
 
-  // Single RPC: get 2 random illustrations with their ratings
   const { data, error } = await getAdminClient().rpc("get_comparison_pair", {
     p_oracle_id: card.oracle_id,
   });
@@ -762,27 +680,27 @@ export async function searchAllCards(query: string, limit = 50): Promise<OracleC
 
 /** Get a clash pair: two random cards with representative printings and card-level ratings */
 export async function getClashPair(filters?: CompareFilters): Promise<ClashPair> {
-  const candidates = filterCards(await getCardCache(), filters, 1);
-  if (candidates.length < 2) throw new Error("Not enough cards match the selected filters");
-
-  const idxA = Math.floor(Math.random() * candidates.length);
-  let idxB = Math.floor(Math.random() * (candidates.length - 1));
-  if (idxB >= idxA) idxB++;
-
-  const cardA = candidates[idxA];
-  const cardB = candidates[idxB];
+  // Pick 2 random cards via get_random_cards RPC
+  const { data: cardData, error: cardError } = await getAdminClient().rpc("get_random_cards", {
+    p_count: 2,
+    p_min_illustrations: 1,
+    ...filterParams(filters),
+  });
+  if (cardError) throw new Error(`Failed to get random cards: ${cardError.message}`);
+  const cards = (cardData ?? []) as { oracle_id: string }[];
+  if (cards.length < 2) throw new Error("Not enough cards match the selected filters");
 
   const { data, error } = await getAdminClient().rpc("get_clash_pair", {
-    p_oracle_id_a: cardA.oracle_id,
-    p_oracle_id_b: cardB.oracle_id,
+    p_oracle_id_a: cards[0].oracle_id,
+    p_oracle_id_b: cards[1].oracle_id,
   });
 
   if (error || !data || data.length < 2) {
     throw new Error(`Failed to get clash pair: ${error?.message ?? "insufficient data"}`);
   }
 
-  const rowA = data.find((r: ClashPairRow) => r.oracle_id === cardA.oracle_id) ?? data[0];
-  const rowB = data.find((r: ClashPairRow) => r.oracle_id === cardB.oracle_id) ?? data[1];
+  const rowA = data.find((r: ClashPairRow) => r.oracle_id === cards[0].oracle_id) ?? data[0];
+  const rowB = data.find((r: ClashPairRow) => r.oracle_id === cards[1].oracle_id) ?? data[1];
 
   return {
     a: toClashCard(rowA),
