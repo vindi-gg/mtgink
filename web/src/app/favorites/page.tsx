@@ -119,7 +119,7 @@ export default function FavoritesPage() {
                   <div className="relative">
                     <Link href={`/card/${fav.card_slug}`}>
                       <img
-                        src={artCropUrl(fav.set_code, fav.collector_number)}
+                        src={artCropUrl(fav.set_code, fav.collector_number, fav.image_version)}
                         alt={`${fav.card_name} by ${fav.artist}`}
                         className="w-full aspect-[4/3] object-cover"
                         loading="lazy"

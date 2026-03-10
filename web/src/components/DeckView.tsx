@@ -94,7 +94,8 @@ function DeckCardRow({
           <img
             src={artCropUrl(
               (selectedIll ?? entry.illustrations[0]).set_code,
-              (selectedIll ?? entry.illustrations[0]).collector_number
+              (selectedIll ?? entry.illustrations[0]).collector_number,
+              (selectedIll ?? entry.illustrations[0]).image_version
             )}
             alt=""
             className="w-12 h-9 object-cover rounded flex-shrink-0"
@@ -190,7 +191,7 @@ function DeckCardRow({
                 >
                   <div className="relative">
                     <img
-                      src={artCropUrl(ill.set_code, ill.collector_number)}
+                      src={artCropUrl(ill.set_code, ill.collector_number, ill.image_version)}
                       alt={`Art by ${ill.artist}`}
                       className="w-full aspect-[4/3] object-cover"
                       loading="lazy"

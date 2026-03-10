@@ -138,7 +138,8 @@ export default function HistoryPage() {
                       <img
                         src={artCropUrl(
                           vote.winner_set_code,
-                          vote.winner_collector_number
+                          vote.winner_collector_number,
+                          vote.winner_image_version
                         )}
                         alt="Winner"
                         className="w-16 h-12 object-cover rounded ring-2 ring-amber-400"
@@ -160,7 +161,8 @@ export default function HistoryPage() {
                       <img
                         src={artCropUrl(
                           vote.loser_set_code,
-                          vote.loser_collector_number
+                          vote.loser_collector_number,
+                          vote.loser_image_version
                         )}
                         alt="Loser"
                         className="w-16 h-12 object-cover rounded opacity-60"

@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   getCardBySlug,
   getIllustrationsForCard,
   getRatingsForCard,
   getPrintingsForCard,
+  slugify,
 } from "@/lib/queries";
 import ArtGallery from "@/components/ArtGallery";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function generateMetadata({
   const description = `${illustrations.length} unique illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art versions and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
 
   const ogImage = topIll
-    ? artCropUrl(topIll.set_code, topIll.collector_number)
+    ? artCropUrl(topIll.set_code, topIll.collector_number, topIll.image_version)
     : undefined;
 
   return {
@@ -125,7 +126,7 @@ export default async function CardPage({
               return (
                 <div key={ill.illustration_id}>
                   <h3 className="text-sm font-medium text-gray-300 mb-3">
-                    {ill.artist}
+                    <Link href={`/artists/${slugify(ill.artist)}`} className="hover:text-amber-400 transition-colors">{ill.artist}</Link>
                     <span className="text-gray-600 ml-2">
                       {printings.length} printing
                       {printings.length !== 1 ? "s" : ""}
@@ -135,7 +136,7 @@ export default async function CardPage({
                     {printings.map((p) => (
                       <div key={p.scryfall_id} className="group">
                         <img
-                          src={normalCardUrl(p.set_code, p.collector_number)}
+                          src={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
                           alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
                           className="w-full rounded-lg"
                           loading="lazy"

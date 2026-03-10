@@ -156,7 +156,7 @@ export default function BracketView({ initialCards }: BracketViewProps) {
 
   // Completed state
   if (bracket.completed && champion) {
-    const champArt = artCropUrl(champion.set_code, champion.collector_number);
+    const champArt = artCropUrl(champion.set_code, champion.collector_number, champion.image_version);
 
     return (
       <div>
@@ -193,10 +193,10 @@ export default function BracketView({ initialCards }: BracketViewProps) {
 
   const { cardA, cardB } = matchupCards;
   const matchup = bracket.rounds[bracket.currentRound][bracket.currentMatchup];
-  const aArt = artCropUrl(cardA.set_code, cardA.collector_number);
-  const bArt = artCropUrl(cardB.set_code, cardB.collector_number);
-  const aCard = normalCardUrl(cardA.set_code, cardA.collector_number);
-  const bCard = normalCardUrl(cardB.set_code, cardB.collector_number);
+  const aArt = artCropUrl(cardA.set_code, cardA.collector_number, cardA.image_version);
+  const bArt = artCropUrl(cardB.set_code, cardB.collector_number, cardB.image_version);
+  const aCard = normalCardUrl(cardA.set_code, cardA.collector_number, cardA.image_version);
+  const bCard = normalCardUrl(cardB.set_code, cardB.collector_number, cardB.image_version);
   const progressPct = (progress.completedMatchups / progress.totalMatchups) * 100;
 
   function renderSide(

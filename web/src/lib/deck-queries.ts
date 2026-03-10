@@ -242,9 +242,9 @@ export async function getUserPurchaseList(userId: string): Promise<PurchaseListI
     illustrationIds.length > 0
       ? getAdminClient()
           .from("printings")
-          .select("illustration_id, oracle_id, artist, set_code, collector_number, tcgplayer_id")
+          .select("illustration_id, oracle_id, artist, set_code, collector_number, tcgplayer_id, image_version")
           .in("illustration_id", illustrationIds)
-      : Promise.resolve({ data: [] as { illustration_id: string; oracle_id: string; artist: string; set_code: string; collector_number: string; tcgplayer_id: number | null }[] }),
+      : Promise.resolve({ data: [] as { illustration_id: string; oracle_id: string; artist: string; set_code: string; collector_number: string; tcgplayer_id: number | null; image_version: string | null }[] }),
   ]);
 
   const cardMap = new Map((cards ?? []).map((c) => [c.oracle_id, c]));
@@ -264,7 +264,7 @@ export async function getUserPurchaseList(userId: string): Promise<PurchaseListI
     if (!printing) {
       const { data: defaultPrinting } = await getAdminClient()
         .from("printings")
-        .select("illustration_id, oracle_id, artist, set_code, collector_number, tcgplayer_id")
+        .select("illustration_id, oracle_id, artist, set_code, collector_number, tcgplayer_id, image_version")
         .eq("oracle_id", row.oracle_id)
         .order("released_at", { ascending: false })
         .limit(1)
@@ -282,6 +282,7 @@ export async function getUserPurchaseList(userId: string): Promise<PurchaseListI
       artist: printing?.artist ?? "Unknown",
       set_code: printing?.set_code ?? "",
       collector_number: printing?.collector_number ?? "",
+      image_version: printing?.image_version ?? null,
       tcgplayer_id: printing?.tcgplayer_id ?? null,
     });
   }

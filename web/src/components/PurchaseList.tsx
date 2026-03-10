@@ -74,7 +74,7 @@ export default function PurchaseList() {
               >
                 {item.set_code && item.collector_number && (
                   <img
-                    src={artCropUrl(item.set_code, item.collector_number)}
+                    src={artCropUrl(item.set_code, item.collector_number, item.image_version)}
                     alt=""
                     className="w-12 h-9 object-cover rounded flex-shrink-0"
                   />

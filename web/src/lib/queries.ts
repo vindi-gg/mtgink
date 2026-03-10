@@ -18,6 +18,12 @@ import type {
   ClashPair,
   CardRating,
   CardVotePayload,
+  Artist,
+  ArtistStats,
+  ArtistIllustration,
+  Tribe,
+  Tag,
+  BrowseCard,
 } from "./types";
 
 /** Row shape returned by get_comparison_pair / get_cross_comparison_pair RPCs */
@@ -33,6 +39,7 @@ interface IllustrationWithRating {
   vote_count: number | null;
   win_count: number | null;
   loss_count: number | null;
+  image_version: string | null;
 }
 
 function toIllustration(row: IllustrationWithRating): Illustration {
@@ -44,6 +51,7 @@ function toIllustration(row: IllustrationWithRating): Illustration {
     set_name: row.set_name,
     collector_number: row.collector_number,
     released_at: row.released_at,
+    image_version: row.image_version ?? null,
   };
 }
 
@@ -86,13 +94,28 @@ interface CachedCard {
 
 let cardCache: CachedCard[] | null = null;
 
+type CardCacheRow = { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: string[] | null; cmc: number | null; illustration_count: number };
+
 async function getCardCache(): Promise<CachedCard[]> {
   if (cardCache) return cardCache;
 
-  const { data, error } = await getAdminClient().rpc("get_card_cache");
-  if (error) throw new Error(`Failed to load card cache: ${error.message}`);
+  // Supabase PostgREST limits responses to 1000 rows — paginate to get all ~37K cards
+  const PAGE_SIZE = 1000;
+  const allRows: CardCacheRow[] = [];
+  let offset = 0;
 
-  cardCache = (data as { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: string[] | null; cmc: number | null; illustration_count: number }[]).map((r) => ({
+  while (true) {
+    const { data, error } = await getAdminClient()
+      .rpc("get_card_cache")
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(`Failed to load card cache: ${error.message}`);
+    const rows = data as CardCacheRow[];
+    allRows.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  cardCache = allRows.map((r) => ({
     ...r,
     colors: r.colors ?? [],
   }));
@@ -320,7 +343,7 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
 export async function getPrintingsForCard(oracleId: string): Promise<Map<string, Printing[]>> {
   const { data, error } = await getAdminClient()
     .from("printings")
-    .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, sets!inner(name)")
+    .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, image_version, sets!inner(name)")
     .eq("oracle_id", oracleId)
     .not("illustration_id", "is", null)
     .order("released_at", { ascending: true });
@@ -339,13 +362,14 @@ export async function getPrintingsForCard(oracleId: string): Promise<Map<string,
       released_at: row.released_at,
       rarity: row.rarity,
       tcgplayer_id: row.tcgplayer_id,
+      image_version: row.image_version,
     });
   }
   return grouped;
 }
 
 /** Record a vote and update ELO ratings */
-export async function recordVote(payload: VotePayload): Promise<{
+export async function recordVote(payload: VotePayload, kFactor?: number): Promise<{
   winnerRating: ArtRating;
   loserRating: ArtRating;
 }> {
@@ -356,6 +380,7 @@ export async function recordVote(payload: VotePayload): Promise<{
     p_session_id: payload.session_id,
     p_user_id: payload.user_id ?? null,
     p_vote_source: payload.vote_source ?? null,
+    p_k_factor: kFactor ?? null,
   });
 
   if (error) throw new Error(`Failed to record vote: ${error.message}`);
@@ -393,17 +418,19 @@ export async function getRatingsForCard(oracleId: string): Promise<ArtRating[]> 
   return (data ?? []) as ArtRating[];
 }
 
-/** Search cards by name, limited to those with 2+ illustrations */
-export async function searchCards(query: string, limit = 20): Promise<OracleCard[]> {
-  // Use the card cache for filtering by illustration count
-  const cache = await getCardCache();
-  const q = query.toLowerCase();
-  const matches = cache
-    .filter((c) => c.illustration_count >= 2 && c.name.toLowerCase().includes(q))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, limit);
+/** Search cards by name, limited to those with 2+ illustrations, sorted by popularity */
+export async function searchCards(query: string, limit = 20): Promise<(OracleCard & { illustration_count?: number })[]> {
+  const { data, error } = await getAdminClient().rpc("search_cards_with_art", {
+    p_query: query,
+    p_limit: limit,
+  });
 
-  return matches.map(cachedToOracleCard);
+  if (error) throw new Error(`Search failed: ${error.message}`);
+
+  return (data ?? []).map((row: { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: unknown; cmc: number | null; illustration_count?: number }) => ({
+    ...row,
+    colors: row.colors ? JSON.stringify(row.colors) : null,
+  }));
 }
 
 /** Get vote history for a user */
@@ -444,7 +471,7 @@ export async function getUserVoteHistory(
       .in("oracle_id", oracleIds),
     getAdminClient()
       .from("printings")
-      .select("illustration_id, set_code, collector_number")
+      .select("illustration_id, set_code, collector_number, image_version")
       .in("illustration_id", illustrationIds),
   ]);
 
@@ -465,8 +492,10 @@ export async function getUserVoteHistory(
       loser_illustration_id: v.loser_illustration_id,
       winner_set_code: winner?.set_code ?? "",
       winner_collector_number: winner?.collector_number ?? "",
+      winner_image_version: winner?.image_version ?? null,
       loser_set_code: loser?.set_code ?? "",
       loser_collector_number: loser?.collector_number ?? "",
+      loser_image_version: loser?.image_version ?? null,
       voted_at: v.voted_at,
     };
   });
@@ -553,7 +582,7 @@ export async function getUserFavorites(
       .in("oracle_id", oracleIds),
     getAdminClient()
       .from("printings")
-      .select("illustration_id, oracle_id, artist, set_code, collector_number")
+      .select("illustration_id, oracle_id, artist, set_code, collector_number, image_version")
       .in("illustration_id", illustrationIds),
   ]);
 
@@ -572,6 +601,7 @@ export async function getUserFavorites(
       artist: printing?.artist ?? "Unknown",
       set_code: printing?.set_code ?? "",
       collector_number: printing?.collector_number ?? "",
+      image_version: printing?.image_version ?? null,
       created_at: f.created_at,
     };
   });
@@ -615,7 +645,7 @@ export async function getSetByCode(setCode: string): Promise<MtgSet | null> {
 export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
   const { data } = await getAdminClient()
     .from("printings")
-    .select("scryfall_id, oracle_id, collector_number, rarity, oracle_cards!inner(name, slug, type_line, mana_cost)")
+    .select("scryfall_id, oracle_id, collector_number, rarity, image_version, oracle_cards!inner(name, slug, type_line, mana_cost)")
     .eq("set_code", setCode)
     .order("collector_number", { ascending: true });
 
@@ -630,6 +660,7 @@ export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
       rarity: row.rarity,
       type_line: card.type_line,
       mana_cost: card.mana_cost,
+      image_version: row.image_version,
     };
   });
 }
@@ -778,6 +809,7 @@ interface ClashPairRow {
   vote_count: number | null;
   win_count: number | null;
   loss_count: number | null;
+  image_version: string | null;
 }
 
 function toClashCard(row: ClashPairRow): ClashCard {
@@ -794,6 +826,7 @@ function toClashCard(row: ClashPairRow): ClashCard {
     set_name: row.set_name,
     collector_number: row.collector_number,
     illustration_id: row.illustration_id,
+    image_version: row.image_version,
   };
 }
 
@@ -809,13 +842,14 @@ function toCardRating(row: ClashPairRow): CardRating | null {
 }
 
 /** Record a card-level vote and return updated ratings */
-export async function recordCardVote(payload: CardVotePayload) {
+export async function recordCardVote(payload: CardVotePayload, kFactor?: number) {
   const { data, error } = await getAdminClient().rpc("record_card_vote", {
     p_winner_oracle_id: payload.winner_oracle_id,
     p_loser_oracle_id: payload.loser_oracle_id,
     p_session_id: payload.session_id,
     p_user_id: payload.user_id ?? null,
     p_vote_source: payload.vote_source ?? null,
+    p_k_factor: kFactor ?? null,
   });
 
   if (error) throw new Error(`Vote failed: ${error.message}`);
@@ -837,4 +871,167 @@ export async function recordCardVote(payload: CardVotePayload) {
       loss_count: row.loser_loss_count as number,
     },
   };
+}
+
+// =============================================================================
+// Artists
+// =============================================================================
+
+/** Get all artists, sorted by illustration count or popularity */
+export async function getAllArtists(
+  sort: "illustrations" | "popular" = "illustrations",
+  period: "week" | "month" | "all" = "all",
+  limit = 100,
+  offset = 0
+): Promise<{ artists: (Artist & { total_votes?: number })[]; total: number }> {
+  if (sort === "popular") {
+    const { data, count, error } = await getAdminClient()
+      .from("artist_stats")
+      .select("artist_id, total_votes, artists!inner(id, name, slug, illustration_count, hero_set_code, hero_collector_number, hero_image_version)", { count: "exact" })
+      .eq("period", period)
+      .order("total_votes", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw new Error(`Failed to get artists: ${error.message}`);
+
+    const artists = (data ?? []).map((row: Record<string, unknown>) => {
+      const a = row.artists as Record<string, unknown>;
+      return {
+        id: a.id as number,
+        name: a.name as string,
+        slug: a.slug as string,
+        illustration_count: a.illustration_count as number,
+        hero_set_code: a.hero_set_code as string | null,
+        hero_collector_number: a.hero_collector_number as string | null,
+        hero_image_version: a.hero_image_version as string | null,
+        total_votes: row.total_votes as number,
+      };
+    });
+    return { artists, total: count ?? 0 };
+  }
+
+  const { data, count, error } = await getAdminClient()
+    .from("artists")
+    .select("*", { count: "exact" })
+    .order("illustration_count", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw new Error(`Failed to get artists: ${error.message}`);
+  return { artists: (data ?? []) as Artist[], total: count ?? 0 };
+}
+
+/** Get an artist by slug */
+export async function getArtistBySlug(slug: string): Promise<Artist | null> {
+  const { data } = await getAdminClient()
+    .from("artists")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  return data as Artist | null;
+}
+
+/** Get all illustrations by an artist with ratings */
+export async function getArtistIllustrations(artistName: string): Promise<ArtistIllustration[]> {
+  const { data, error } = await getAdminClient().rpc("get_artist_illustrations", {
+    p_artist_name: artistName,
+  });
+  if (error) throw new Error(`Failed to get artist illustrations: ${error.message}`);
+  return (data ?? []) as ArtistIllustration[];
+}
+
+/** Get pre-computed stats for an artist */
+export async function getArtistStats(artistId: number): Promise<ArtistStats[]> {
+  const { data } = await getAdminClient()
+    .from("artist_stats")
+    .select("*")
+    .eq("artist_id", artistId);
+  return (data ?? []) as ArtistStats[];
+}
+
+/** Search artists by name */
+export async function searchArtists(query: string, limit = 20): Promise<Artist[]> {
+  const { data, error } = await getAdminClient()
+    .from("artists")
+    .select("*")
+    .ilike("name", `%${query}%`)
+    .order("illustration_count", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`Artist search failed: ${error.message}`);
+  return (data ?? []) as Artist[];
+}
+
+// --- Tribes (creature subtypes) ---
+
+export async function getCreatureTribes(): Promise<Tribe[]> {
+  const { data, error } = await getAdminClient().rpc("get_creature_tribes");
+  if (error) throw new Error(`Failed to load tribes: ${error.message}`);
+  return (data ?? []) as Tribe[];
+}
+
+export async function getCardsByTribe(
+  tribe: string,
+  page = 1,
+  pageSize = 60
+): Promise<{ cards: BrowseCard[]; total: number }> {
+  const offset = (page - 1) * pageSize;
+  const [{ data, error }, { data: countData }] = await Promise.all([
+    getAdminClient().rpc("get_cards_by_tribe", {
+      p_slug: tribe, p_limit: pageSize, p_offset: offset,
+    }),
+    getAdminClient().rpc("count_cards_by_tribe", { p_slug: tribe }),
+  ]);
+  if (error) throw new Error(`Failed to load tribe cards: ${error.message}`);
+  return { cards: (data ?? []) as BrowseCard[], total: countData ?? 0 };
+}
+
+// --- Tags (Scryfall Tagger) ---
+
+export async function getTags(
+  search?: string,
+  type?: string,
+  page = 1,
+  pageSize = 50
+): Promise<{ tags: Tag[]; total: number }> {
+  const offset = (page - 1) * pageSize;
+  let query = getAdminClient()
+    .from("tags")
+    .select("tag_id, label, type, description, usage_count", { count: "exact" })
+    .order("usage_count", { ascending: false })
+    .range(offset, offset + pageSize - 1);
+
+  if (search) {
+    query = query.ilike("label", `%${search}%`);
+  }
+  if (type) {
+    query = query.eq("type", type);
+  }
+
+  const { data, count, error } = await query;
+  if (error) throw new Error(`Failed to load tags: ${error.message}`);
+  return { tags: (data ?? []) as Tag[], total: count ?? 0 };
+}
+
+export async function getTagById(tagId: string): Promise<Tag | null> {
+  const { data } = await getAdminClient()
+    .from("tags")
+    .select("tag_id, label, type, description, usage_count")
+    .eq("tag_id", tagId)
+    .single();
+  return data as Tag | null;
+}
+
+export async function getCardsByTag(
+  tagId: string,
+  page = 1,
+  pageSize = 60
+): Promise<{ cards: BrowseCard[]; total: number }> {
+  const offset = (page - 1) * pageSize;
+  const [{ data, error }, { data: countData }] = await Promise.all([
+    getAdminClient().rpc("get_cards_by_tag", {
+      p_tag_id: tagId, p_limit: pageSize, p_offset: offset,
+    }),
+    getAdminClient().rpc("count_cards_by_tag", { p_tag_id: tagId }),
+  ]);
+  if (error) throw new Error(`Failed to load tag cards: ${error.message}`);
+  return { cards: (data ?? []) as BrowseCard[], total: countData ?? 0 };
 }

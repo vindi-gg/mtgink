@@ -87,7 +87,7 @@ export default function MiniCompare({
               className="relative rounded-lg overflow-hidden border-2 border-transparent hover:border-amber-500 transition-colors disabled:opacity-60"
             >
               <img
-                src={artCropUrl(ill.set_code, ill.collector_number)}
+                src={artCropUrl(ill.set_code, ill.collector_number, ill.image_version)}
                 alt={`Art by ${ill.artist}`}
                 className="w-full aspect-[4/3] object-cover"
               />

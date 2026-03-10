@@ -85,7 +85,7 @@ function MatchupEntry({
 
   const isWinner = winner === seed;
   const isLoser = winner !== null && winner !== seed;
-  const artUrl = artCropUrl(card.set_code, card.collector_number);
+  const artUrl = artCropUrl(card.set_code, card.collector_number, card.image_version);
 
   return (
     <div

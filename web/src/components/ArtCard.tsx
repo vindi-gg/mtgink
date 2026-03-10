@@ -21,7 +21,7 @@ export default function ArtCard({
   isFavorited,
   onFavoriteToggle,
 }: ArtCardProps) {
-  const src = artCropUrl(illustration.set_code, illustration.collector_number);
+  const src = artCropUrl(illustration.set_code, illustration.collector_number, illustration.image_version);
 
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-800">

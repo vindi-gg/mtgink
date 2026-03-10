@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import SearchModal from "./SearchModal";
 
 function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/ink" && pathname.startsWith("/ink")) return true;
@@ -12,7 +13,10 @@ function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/db" && (pathname === "/db" || pathname.startsWith("/db/"))) return true;
   if (href === "/deck" && (pathname === "/deck" || pathname.startsWith("/deck/"))) return true;
   if (href === "/browse" && pathname.startsWith("/browse")) return true;
+  if (href === "/artists" && pathname.startsWith("/artists")) return true;
   if (href === "/brew" && pathname.startsWith("/brew")) return true;
+  if (href === "/favorites" && pathname.startsWith("/favorites")) return true;
+  if (href === "/history" && pathname.startsWith("/history")) return true;
   return false;
 }
 
@@ -21,6 +25,8 @@ export default function Navbar() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -39,10 +45,38 @@ export default function Navbar() {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  // Close menu on navigation
+  // Close menus on navigation
   useEffect(() => {
     setMenuOpen(false);
+    setUserMenuOpen(false);
+    setSearchOpen(false);
   }, [pathname]);
+
+  // Cmd+K / Ctrl+K / "/" to open search
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+        return;
+      }
+      // "/" to open search (like GitHub), unless typing in an input/textarea/contenteditable
+      if (
+        e.key === "/" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement) &&
+        !(e.target as HTMLElement)?.isContentEditable
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSearchOpen(true);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   async function handleSignOut() {
     if (!supabase) return;
@@ -59,12 +93,16 @@ export default function Navbar() {
 
   // Secondary links — visible on desktop, in hamburger on mobile
   const secondaryLinks = [
-    { href: "/browse", label: "Browse" },
+    { href: "/artists", label: "Artists" },
     { href: "/brew", label: "Brew" },
     { href: "/db", label: "DB" },
-    ...(user
-      ? [{ href: "/deck", label: "Library" }]
-      : []),
+  ];
+
+  // User menu links — shown in avatar dropdown and mobile menu when logged in
+  const userMenuLinks = [
+    { href: "/favorites", label: "Favorites" },
+    { href: "/history", label: "Vote History" },
+    { href: "/deck", label: "Library" },
   ];
 
   const allLinks = [...primaryLinks, ...secondaryLinks];
@@ -109,9 +147,24 @@ export default function Navbar() {
             </Link>
           ))}
 
+          {/* Search */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-1.5 px-2 py-1 border border-gray-700 rounded-md text-gray-400 hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
+            title="Search (Cmd+K)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <kbd className="text-[10px] text-gray-600">/</kbd>
+          </button>
+
           {user ? (
-            <div className="flex items-center gap-3">
-              <Link href="/deck" className="block">
+            <div className="relative">
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-1.5 cursor-pointer"
+              >
                 {avatarUrl ? (
                   <img
                     src={avatarUrl}
@@ -123,13 +176,41 @@ export default function Navbar() {
                     {initials}
                   </div>
                 )}
-              </Link>
-              <button
-                onClick={handleSignOut}
-                className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
-              >
-                Sign Out
+                <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
               </button>
+              {userMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 py-1">
+                    <div className="px-3 py-2 border-b border-gray-800">
+                      <p className="text-sm font-medium text-white truncate">{displayName}</p>
+                    </div>
+                    {userMenuLinks.map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className={`block px-3 py-2 text-sm transition-colors ${
+                          isActiveLink(pathname, link.href)
+                            ? "text-white bg-gray-800"
+                            : "text-gray-400 hover:text-white hover:bg-gray-800"
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                    <div className="border-t border-gray-800 mt-1 pt-1">
+                      <button
+                        onClick={handleSignOut}
+                        className="block w-full text-left px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           ) : supabase ? (
             <Link
@@ -161,6 +242,16 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+
+          {/* Search (mobile) */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
 
           {/* Avatar / Sign in (mobile) */}
           {user ? (
@@ -235,16 +326,33 @@ export default function Navbar() {
               </Link>
             ))}
             {user && (
-              <button
-                onClick={handleSignOut}
-                className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-900 transition-colors"
-              >
-                Sign Out
-              </button>
+              <>
+                <div className="border-t border-gray-800 my-2" />
+                {userMenuLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isActiveLink(pathname, link.href)
+                        ? "text-white bg-gray-800"
+                        : "text-gray-400 hover:text-white hover:bg-gray-900"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                <button
+                  onClick={handleSignOut}
+                  className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-900 transition-colors"
+                >
+                  Sign Out
+                </button>
+              </>
             )}
           </div>
         </div>
       )}
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </nav>
   );
 }

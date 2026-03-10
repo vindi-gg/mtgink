@@ -17,6 +17,7 @@ export interface Printing {
   released_at: string | null;
   rarity: string | null;
   tcgplayer_id: number | null;
+  image_version: string | null;
 }
 
 export interface Illustration {
@@ -27,6 +28,7 @@ export interface Illustration {
   set_name: string;
   collector_number: string;
   released_at: string | null;
+  image_version: string | null;
 }
 
 export interface ArtRating {
@@ -79,8 +81,10 @@ export interface VoteHistoryEntry {
   loser_illustration_id: string;
   winner_set_code: string;
   winner_collector_number: string;
+  winner_image_version: string | null;
   loser_set_code: string;
   loser_collector_number: string;
+  loser_image_version: string | null;
   voted_at: string;
 }
 
@@ -107,6 +111,7 @@ export interface SetCard {
   rarity: string | null;
   type_line: string | null;
   mana_cost: string | null;
+  image_version: string | null;
 }
 
 export interface BracketCard {
@@ -119,6 +124,7 @@ export interface BracketCard {
   set_name: string;
   collector_number: string;
   illustration_id: string;
+  image_version: string | null;
 }
 
 export interface BracketMatchup {
@@ -201,6 +207,7 @@ export interface PurchaseListItem {
   artist: string;
   set_code: string;
   collector_number: string;
+  image_version: string | null;
   tcgplayer_id: number | null;
 }
 
@@ -227,6 +234,7 @@ export interface FavoriteEntry {
   artist: string;
   set_code: string;
   collector_number: string;
+  image_version: string | null;
   created_at: string;
 }
 
@@ -253,6 +261,7 @@ export interface ClashCard {
   set_name: string;
   collector_number: string;
   illustration_id: string;
+  image_version: string | null;
 }
 
 export interface ClashPair {
@@ -274,6 +283,71 @@ export interface CardVoteResponse {
   winner_rating: CardRating;
   loser_rating: CardRating;
   next: ClashPair;
+}
+
+// --- Artist types ---
+
+export interface Artist {
+  id: number;
+  name: string;
+  slug: string;
+  illustration_count: number;
+  hero_set_code: string | null;
+  hero_collector_number: string | null;
+  hero_image_version: string | null;
+}
+
+export interface ArtistStats {
+  artist_id: number;
+  period: string;
+  total_votes: number;
+  total_wins: number;
+  avg_elo: number | null;
+  top_illustration_id: string | null;
+  computed_at: string;
+}
+
+export interface ArtistIllustration {
+  illustration_id: string;
+  oracle_id: string;
+  card_name: string;
+  card_slug: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  released_at: string | null;
+  elo_rating: number | null;
+  vote_count: number | null;
+  win_count: number | null;
+  loss_count: number | null;
+  image_version: string | null;
+}
+
+// --- Database browse types ---
+
+export interface Tribe {
+  tribe: string;
+  slug: string;
+  card_count: number;
+}
+
+export interface Tag {
+  tag_id: string;
+  label: string;
+  type: string;
+  description: string | null;
+  usage_count: number;
+}
+
+export interface BrowseCard {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  type_line: string | null;
+  mana_cost: string | null;
+  set_code: string;
+  collector_number: string;
+  image_version: string | null;
 }
 
 // --- Pricing types ---

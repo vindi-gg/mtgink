@@ -269,8 +269,8 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
 
   function renderSide(card: ClashCard, otherCard: ClashCard, _rating: CardRating | null) {
     const handleClick = () => vote(card.oracle_id, otherCard.oracle_id);
-    const artUrl = artCropUrl(card.set_code, card.collector_number);
-    const cardUrl = normalCardUrl(card.set_code, card.collector_number);
+    const artUrl = artCropUrl(card.set_code, card.collector_number, card.image_version);
+    const cardUrl = normalCardUrl(card.set_code, card.collector_number, card.image_version);
     const showArt = viewMode === "art" || viewMode === "both";
     const showCard = viewMode === "card" || viewMode === "both";
     const showBothSpacer = viewMode === "both";
