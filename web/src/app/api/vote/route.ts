@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordVote, getComparisonPair } from "@/lib/queries";
+import { checkArtVote } from "@/lib/vote-protection";
 import { createClient } from "@/lib/supabase/server";
 import type { VotePayload, CompareFilters } from "@/lib/types";
 
@@ -37,7 +38,19 @@ export async function POST(request: NextRequest) {
       delete body.vote_source;
     }
 
-    const { winnerRating, loserRating } = await recordVote(body);
+    // Vote protection: duplicate check + diminishing K factor
+    const protection = await checkArtVote(
+      body.session_id,
+      body.winner_illustration_id,
+      body.loser_illustration_id,
+      !!body.user_id,
+    );
+
+    if (!protection.allowed) {
+      return NextResponse.json({ error: protection.reason }, { status: 429 });
+    }
+
+    const { winnerRating, loserRating } = await recordVote(body, protection.kFactor);
 
     let next;
     try {
