@@ -1,0 +1,5 @@
+node_modules/
+.wrangler/
+dist/
+container_src/node_modules/
+container_src/dist/
