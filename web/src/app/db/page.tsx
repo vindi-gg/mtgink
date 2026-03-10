@@ -1,38 +1,65 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Card Database — MTG Ink",
-  description: "Browse the Magic: The Gathering card database. Explore expansions, search cards, and view printings.",
+  title: "Magic: The Gathering Database — MTG Ink",
+  description: "Browse the Magic: The Gathering card database. Explore expansions, creature tribes, tags, and more.",
 };
+
+const sections = [
+  {
+    href: "/db/expansions",
+    title: "Expansions",
+    description: "Browse sets, expansions, and products",
+  },
+  {
+    href: "/db/cards",
+    title: "Cards",
+    description: "Search all 36,000+ unique cards",
+  },
+  {
+    href: "/db/tribes",
+    title: "Tribes",
+    description: "Browse creatures by type — Goblins, Elves, Dragons, and more",
+  },
+  {
+    href: "/db/tags",
+    title: "Tags",
+    description: "Browse cards by Scryfall community tags",
+  },
+];
 
 export default function DbIndexPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Database</h1>
+        <h1 className="text-3xl font-bold mb-2">Magic: The Gathering Database</h1>
         <p className="text-gray-400 mb-8">
-          Browse the complete Magic: The Gathering card database.
+          Browse the complete card database.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Link
-            href="/db/expansions"
-            className="block p-6 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
-          >
-            <h2 className="text-xl font-bold mb-1">Expansions</h2>
-            <p className="text-gray-400 text-sm">
-              Browse sets, expansions, and products
-            </p>
-          </Link>
-          <Link
-            href="/db/cards"
-            className="block p-6 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
-          >
-            <h2 className="text-xl font-bold mb-1">Cards</h2>
-            <p className="text-gray-400 text-sm">
-              Search all 36,000+ unique cards
-            </p>
-          </Link>
+          {sections.map((s) => (
+            <Link
+              key={s.href}
+              href={s.href}
+              className="block p-6 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
+            >
+              <h2 className="text-xl font-bold mb-1">{s.title}</h2>
+              <p className="text-gray-400 text-sm">{s.description}</p>
+            </Link>
+          ))}
         </div>
+        <p className="text-gray-600 text-xs mt-8 text-center">
+          Powered by{" "}
+          <a
+            href="https://scryfall.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-500 hover:text-gray-400"
+          >
+            Scryfall.com
+          </a>{" "}
+          data
+        </p>
       </div>
     </main>
   );

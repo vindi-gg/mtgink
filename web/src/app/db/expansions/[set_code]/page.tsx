@@ -71,7 +71,7 @@ export default async function SetDetailPage({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={normalCardUrl(set_code, card.collector_number)}
+                src={normalCardUrl(set_code, card.collector_number, card.image_version)}
                 alt={card.name}
                 className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
                 loading="lazy"
