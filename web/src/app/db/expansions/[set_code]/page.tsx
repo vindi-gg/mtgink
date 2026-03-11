@@ -73,6 +73,12 @@ export default async function SetDetailPage({
           >
             VS
           </Link>
+          <Link
+            href={`/showdown/gauntlet?set_code=${set_code}`}
+            className="px-3 py-1 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors"
+          >
+            Gauntlet
+          </Link>
         </div>
 
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">

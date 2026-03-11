@@ -87,7 +87,7 @@ export default async function ArtistDetailPage({
           Magic: The Gathering Artist — {artist.illustration_count} Card
           Illustrations
         </p>
-        <div className="flex items-center gap-4 text-sm text-gray-500 mt-2 mb-8">
+        <div className="flex items-center gap-4 text-sm text-gray-500 mt-2 mb-4">
           {allTimeStat && allTimeStat.total_votes > 0 && (
             <span>
               {allTimeStat.total_votes.toLocaleString()} total votes
@@ -102,6 +102,16 @@ export default async function ArtistDetailPage({
             </>
           )}
         </div>
+        {sorted.length >= 3 && (
+          <div className="flex gap-2 mb-8">
+            <Link
+              href={`/showdown/gauntlet?artist=${encodeURIComponent(artist.name)}`}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
+            >
+              Gauntlet
+            </Link>
+          </div>
+        )}
 
         {sorted.length > 0 ? (
           <ArtistGallery illustrations={sorted} />

@@ -1,6 +1,8 @@
 import {
   getCardByOracleId,
   getGauntletIllustrations,
+  getGauntletIllustrationsByArtist,
+  getGauntletCardsByTag,
   getGauntletCards,
   getRandomGauntletCard,
   getRandomGauntletGroup,
@@ -29,9 +31,11 @@ export default async function GauntletPage({
     set_code?: string;
     count?: string;
     mode?: string;
+    artist?: string;
+    tag?: string;
   }>;
 }) {
-  const { oracle_id, colors, type, subtype, set_code, count, mode } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag } = await searchParams;
 
   const poolSize = Math.min(parseInt(count ?? String(DEFAULT_POOL_SIZE)), 50);
 
@@ -56,6 +60,15 @@ export default async function GauntletPage({
         pool = await getGauntletIllustrations(card.oracle_id);
         gauntletMode = "remix";
       }
+    } else if (artist) {
+      // Artist gauntlet — all illustrations by this artist
+      filterLabel = artist;
+      pool = await getGauntletIllustrationsByArtist(artist, poolSize);
+      gauntletMode = "remix";
+    } else if (tag) {
+      // Tag gauntlet — cards with this tag
+      filterLabel = tag;
+      pool = await getGauntletCardsByTag(tag, poolSize);
     } else if (mode === "group") {
       // Random creature tribe with 10+ cards
       const group = await getRandomGauntletGroup();

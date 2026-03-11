@@ -64,9 +64,19 @@ export default async function TagDetailPage({
         {tag.description && (
           <p className="text-gray-400 text-sm mb-1">{tag.description}</p>
         )}
-        <p className="text-gray-500 text-sm mb-6">
-          {total.toLocaleString()} cards
-        </p>
+        <div className="flex items-center gap-3 mb-6">
+          <p className="text-gray-500 text-sm">
+            {total.toLocaleString()} cards
+          </p>
+          {total >= 3 && (
+            <Link
+              href={`/showdown/gauntlet?tag=${encodeURIComponent(tagId)}`}
+              className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
+            >
+              Gauntlet
+            </Link>
+          )}
+        </div>
 
         {cards.length === 0 ? (
           <p className="text-gray-500 py-8 text-center">No cards found for this tag.</p>

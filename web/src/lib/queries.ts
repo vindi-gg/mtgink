@@ -1293,3 +1293,118 @@ export async function getGauntletCards(
     })
     .filter((e): e is GauntletEntry => e !== null);
 }
+
+/** Get illustrations by a specific artist as gauntlet entries */
+export async function getGauntletIllustrationsByArtist(artistName: string, count = 20): Promise<GauntletEntry[]> {
+  const { data } = await getAdminClient()
+    .from("printings")
+    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, released_at, sets!inner(name, digital), oracle_cards!inner(name, slug, type_line, mana_cost)")
+    .eq("artist", artistName)
+    .not("illustration_id", "is", null)
+    .eq("sets.digital", false)
+    .order("released_at", { ascending: false });
+
+  if (!data || data.length === 0) return [];
+
+  // Deduplicate by illustration_id (one per unique illustration)
+  const seen = new Set<string>();
+  const entries: GauntletEntry[] = [];
+  for (const p of data) {
+    if (seen.has(p.illustration_id)) continue;
+    seen.add(p.illustration_id);
+    const card = p.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null };
+    entries.push({
+      name: card.name,
+      slug: card.slug,
+      oracle_id: p.oracle_id,
+      illustration_id: p.illustration_id,
+      artist: p.artist,
+      set_code: p.set_code,
+      set_name: (p.sets as unknown as { name: string }).name,
+      collector_number: p.collector_number,
+      image_version: p.image_version,
+      type_line: card.type_line,
+      mana_cost: card.mana_cost,
+    });
+    if (entries.length >= count) break;
+  }
+  return entries;
+}
+
+/** Get cards by tag as gauntlet entries */
+export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<GauntletEntry[]> {
+  // Get oracle_ids for this tag (could be illustration_tags or oracle_tags)
+  const { data: tagData } = await getAdminClient()
+    .from("tags")
+    .select("type")
+    .eq("tag_id", tagId)
+    .maybeSingle();
+
+  const isIllustrationTag = tagData?.type === "illustration";
+
+  let oracleIds: string[];
+  if (isIllustrationTag) {
+    const { data } = await getAdminClient()
+      .from("illustration_tags")
+      .select("printings!inner(oracle_id)")
+      .eq("tag_id", tagId)
+      .limit(count * 5);
+    const ids = new Set((data ?? []).map((d) => (d.printings as unknown as { oracle_id: string }).oracle_id));
+    oracleIds = [...ids];
+  } else {
+    const { data } = await getAdminClient()
+      .from("oracle_tags")
+      .select("oracle_id")
+      .eq("tag_id", tagId)
+      .limit(count * 5);
+    oracleIds = (data ?? []).map((d) => d.oracle_id);
+  }
+
+  if (oracleIds.length === 0) return [];
+
+  // Shuffle and take count
+  const shuffled = oracleIds.sort(() => Math.random() - 0.5).slice(0, count);
+
+  // Get card data + representative printing
+  const { data: cards } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, type_line, mana_cost")
+    .in("oracle_id", shuffled);
+
+  if (!cards || cards.length === 0) return [];
+
+  const { data: printings } = await getAdminClient()
+    .from("printings")
+    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
+    .in("oracle_id", shuffled)
+    .not("illustration_id", "is", null)
+    .eq("sets.digital", false)
+    .order("released_at", { ascending: false });
+
+  const printingMap = new Map<string, (typeof printings extends (infer T)[] | null ? T : never)>();
+  for (const p of printings ?? []) {
+    if (!printingMap.has(p.oracle_id)) {
+      printingMap.set(p.oracle_id, p);
+    }
+  }
+
+  return cards
+    .map((card) => {
+      const printing = printingMap.get(card.oracle_id);
+      if (!printing) return null;
+      return {
+        name: card.name,
+        slug: card.slug,
+        oracle_id: card.oracle_id,
+        illustration_id: printing.illustration_id,
+        artist: printing.artist,
+        set_code: printing.set_code,
+        set_name: (printing.sets as unknown as { name: string }).name,
+        collector_number: printing.collector_number,
+        image_version: printing.image_version,
+        type_line: card.type_line,
+        mana_cost: card.mana_cost,
+      };
+    })
+    .filter((e): e is GauntletEntry => e !== null);
+}

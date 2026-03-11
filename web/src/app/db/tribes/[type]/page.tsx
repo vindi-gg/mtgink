@@ -112,6 +112,12 @@ export default async function TribeDetailPage({
             >
               VS
             </Link>
+            <Link
+              href={`/showdown/gauntlet?subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}&type=Creature`}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors"
+            >
+              Gauntlet
+            </Link>
           </div>
         </div>
 
