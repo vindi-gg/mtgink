@@ -767,6 +767,93 @@ function toCardRating(row: ClashPairRow): CardRating | null {
   };
 }
 
+/** Get a specific ink matchup by two illustration IDs */
+export async function getSpecificComparisonPair(illustrationIdA: string, illustrationIdB: string): Promise<ComparisonPair | null> {
+  const admin = getAdminClient();
+
+  // Fetch both illustrations with their ratings
+  const { data } = await admin
+    .from("printings")
+    .select("illustration_id, oracle_id, artist, set_code, collector_number, image_version, sets!inner(name)")
+    .in("illustration_id", [illustrationIdA, illustrationIdB])
+    .order("released_at", { ascending: false });
+
+  if (!data || data.length < 2) return null;
+
+  // Deduplicate by illustration_id (pick first/newest printing per illustration)
+  const seen = new Set<string>();
+  const unique = data.filter((r: { illustration_id: string }) => {
+    if (seen.has(r.illustration_id)) return false;
+    seen.add(r.illustration_id);
+    return true;
+  });
+  if (unique.length < 2) return null;
+
+  const rowA = unique.find((r: { illustration_id: string }) => r.illustration_id === illustrationIdA) ?? unique[0];
+  const rowB = unique.find((r: { illustration_id: string }) => r.illustration_id === illustrationIdB) ?? unique[1];
+
+  // Fetch the card
+  const card = await getCardByOracleId(rowA.oracle_id);
+  if (!card) return null;
+
+  // Fetch ratings
+  const { data: ratings } = await admin
+    .from("art_ratings")
+    .select("illustration_id, oracle_id, elo_rating, vote_count, win_count, loss_count")
+    .in("illustration_id", [illustrationIdA, illustrationIdB]);
+
+  const ratingMap = new Map((ratings ?? []).map((r: { illustration_id: string }) => [r.illustration_id, r]));
+
+  const toIll = (row: typeof rowA): Illustration => ({
+    illustration_id: row.illustration_id,
+    oracle_id: row.oracle_id,
+    artist: row.artist,
+    set_code: row.set_code,
+    set_name: (row.sets as unknown as { name: string }).name,
+    collector_number: row.collector_number,
+    released_at: "",
+    image_version: row.image_version,
+  });
+
+  const toRat = (illId: string): ArtRating | null => {
+    const r = ratingMap.get(illId) as { illustration_id: string; oracle_id: string; elo_rating: number; vote_count: number; win_count: number; loss_count: number } | undefined;
+    if (!r) return null;
+    return { illustration_id: r.illustration_id, oracle_id: r.oracle_id, elo_rating: r.elo_rating, vote_count: r.vote_count, win_count: r.win_count, loss_count: r.loss_count, updated_at: "" };
+  };
+
+  // Check if cross-card (different oracle_ids)
+  const cardB = rowA.oracle_id !== rowB.oracle_id ? await getCardByOracleId(rowB.oracle_id) : undefined;
+
+  return {
+    card,
+    ...(cardB ? { card_b: cardB } : {}),
+    a: toIll(rowA),
+    b: toIll(rowB),
+    a_rating: toRat(illustrationIdA),
+    b_rating: toRat(illustrationIdB),
+  };
+}
+
+/** Get a specific clash matchup by two oracle IDs */
+export async function getSpecificClashPair(oracleIdA: string, oracleIdB: string): Promise<ClashPair | null> {
+  const { data, error } = await getAdminClient().rpc("get_clash_pair", {
+    p_oracle_id_a: oracleIdA,
+    p_oracle_id_b: oracleIdB,
+  });
+
+  if (error || !data || data.length < 2) return null;
+
+  const rowA = data.find((r: ClashPairRow) => r.oracle_id === oracleIdA) ?? data[0];
+  const rowB = data.find((r: ClashPairRow) => r.oracle_id === oracleIdB) ?? data[1];
+
+  return {
+    a: toClashCard(rowA),
+    b: toClashCard(rowB),
+    a_rating: toCardRating(rowA),
+    b_rating: toCardRating(rowB),
+  };
+}
+
 /** Record a card-level vote and return updated ratings */
 export async function recordCardVote(payload: CardVotePayload, kFactor?: number) {
   const { data, error } = await getAdminClient().rpc("record_card_vote", {

@@ -123,6 +123,7 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
   const [filters, setFilters] = useState<CompareFilters>(initialFilters ?? {});
   const [showFilters, setShowFilters] = useState(hasActiveFilters(initialFilters ?? {}));
   const [filterError, setFilterError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const pairRef = useRef(pair);
   const votingRef = useRef(false);
   const filtersRef = useRef(filters);
@@ -224,6 +225,13 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
       setVoting(false);
     }
   }
+
+  // On mobile, scroll past nav so cards are fully visible
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      window.scrollTo({ top: 56, behavior: "instant" });
+    }
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -328,12 +336,12 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
 
   return (
     <div>
-      {/* Compact heading */}
-      <h2 className="text-lg font-bold text-center mb-3">
-        Which card wins?
+      {/* Compact heading — auto-scales to fit one line */}
+      <h2 className="font-bold text-center mb-1 md:mb-2 text-base md:text-lg truncate max-w-full px-2">
+        Which card is best?
       </h2>
 
-      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-4 md:gap-6 max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6 max-w-4xl mx-auto">
         {renderSide(pair.a, pair.b, pair.a_rating)}
         {renderSide(pair.b, pair.a, pair.b_rating)}
       </div>
@@ -350,6 +358,17 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
           className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
         >
           Skip (S)
+        </button>
+        <button
+          onClick={() => {
+            const url = `${window.location.origin}/clash?a=${pair.a.oracle_id}&b=${pair.b.oracle_id}`;
+            navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
+        >
+          {copied ? "Copied!" : "Share"}
         </button>
       </div>
 

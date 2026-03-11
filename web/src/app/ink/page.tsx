@@ -1,4 +1,4 @@
-import { getComparisonPair } from "@/lib/queries";
+import { getComparisonPair, getSpecificComparisonPair } from "@/lib/queries";
 import ComparisonView from "@/components/ComparisonView";
 import type { CompareFilters } from "@/lib/types";
 
@@ -12,9 +12,9 @@ export const metadata = {
 export default async function InkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; mode?: string }>;
+  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; mode?: string; a?: string; b?: string }>;
 }) {
-  const { oracle_id, colors, type, subtype, mode } = await searchParams;
+  const { oracle_id, colors, type, subtype, mode, a, b } = await searchParams;
 
   const isVs = mode === "vs";
 
@@ -33,13 +33,19 @@ export default async function InkPage({
 
   let pair;
   try {
-    pair = await getComparisonPair(oracle_id, hasFilters ? filters : undefined);
+    // Specific matchup via share link
+    if (a && b) {
+      pair = await getSpecificComparisonPair(a, b);
+    }
+    if (!pair) {
+      pair = await getComparisonPair(oracle_id, hasFilters ? filters : undefined);
+    }
   } catch {
     pair = await getComparisonPair(undefined, isVs ? { mode: "cross" } : undefined);
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
+    <main className="min-h-screen bg-gray-950 text-white px-4 py-2 md:py-8">
       <ComparisonView
         initialPair={pair}
         initialFilters={hasFilters ? filters : undefined}

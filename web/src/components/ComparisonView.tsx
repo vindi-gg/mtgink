@@ -151,6 +151,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
   const [filterError, setFilterError] = useState<string | null>(null);
   const [subMode, setSubMode] = useState<"mirror" | "vs">(initialSubMode);
   const [showingCard, setShowingCard] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function showCardPreview(illustrationId: string) {
     setShowingCard(illustrationId);
@@ -167,6 +168,13 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
 
   // Reset card preview when pair changes
   useEffect(() => { setShowingCard(null); }, [pair]);
+
+  // On mobile, scroll past nav so art is fully visible
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      window.scrollTo({ top: 56, behavior: "instant" });
+    }
+  }, []);
 
   function changeViewMode(mode: ViewMode) {
     setViewMode(mode);
@@ -414,6 +422,17 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
                 onImageError={skip}
                 className="w-full"
               />
+              {/* Tap zone hint overlay — thin bar at bottom of art */}
+              {isInk && (
+                <div className="absolute bottom-0 left-0 right-0 z-10 flex pointer-events-none" style={{ height: 10 }}>
+                  <div className="w-1/4 bg-white/30 flex items-center justify-center">
+                    <span className="text-[6px] font-bold text-white/90 uppercase tracking-wider">Card</span>
+                  </div>
+                  <div className="w-3/4 bg-black/30 flex items-center justify-center">
+                    <span className="text-[6px] font-bold text-white/90 uppercase tracking-wider">Vote</span>
+                  </div>
+                </div>
+              )}
               {/* Desktop card preview overlay */}
               {isInk && showingCard === side.illustration_id && (
                 <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center bg-black/80 rounded-[3.8%] animate-fade-in pointer-events-none">
@@ -473,13 +492,13 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
 
   return (
     <div>
-      {/* Compact heading */}
-      <h2 className="text-lg font-bold text-center mb-3">
+      {/* Compact heading — auto-scales to fit one line */}
+      <h2 className="font-bold text-center mb-1 md:mb-2 text-base md:text-lg truncate max-w-full px-2">
         {subMode === "vs" || isCross ? (
-          <>Which art do you prefer?</>
+          <>Which art is best?</>
         ) : (
           <>
-            Which <a href={`/card/${pair.card.slug}`} className="text-amber-400 hover:text-amber-300">{pair.card.name}</a> art?
+            Which <a href={`/card/${pair.card.slug}`} className="text-amber-400 hover:text-amber-300">{pair.card.name}</a> art is best?
           </>
         )}
       </h2>
@@ -517,7 +536,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
           {renderSide(pair.a, pair.b, aArt, aCard, pair.card)}
           {renderSide(pair.b, pair.a, bArt, bCard, pair.card_b ?? pair.card)}
         </div>
@@ -540,6 +559,17 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
             All arts
           </a>
         )}
+        <button
+          onClick={() => {
+            const url = `${window.location.origin}/ink?a=${pair.a.illustration_id}&b=${pair.b.illustration_id}`;
+            navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
+        >
+          {copied ? "Copied!" : "Share"}
+        </button>
       </div>
 
       {/* Sub-mode toggle — below art */}
