@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-export function useFavorites(illustrationIds: string[]) {
+export function useFavorites(illustrationIds: string[], source: "ink" | "clash" = "ink") {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const idsKey = illustrationIds.sort().join(",");
   const prevIdsKey = useRef(idsKey);
@@ -14,6 +14,10 @@ export function useFavorites(illustrationIds: string[]) {
       setFavorites(new Set());
       prevIdsKey.current = idsKey;
     }
+
+    // Skip fetch for anonymous users — no auth cookie means no favorites
+    const hasSession = document.cookie.split(";").some((c) => c.trim().startsWith("sb-"));
+    if (!hasSession) return;
 
     fetch(`/api/favorites?illustration_ids=${idsKey}`)
       .then((res) => {
@@ -51,7 +55,7 @@ export function useFavorites(illustrationIds: string[]) {
           : await fetch(`/api/favorites/${illustrationId}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ oracle_id: oracleId }),
+              body: JSON.stringify({ oracle_id: oracleId, source }),
             });
 
         if (res.status === 401) {

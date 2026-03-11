@@ -23,7 +23,7 @@ export async function PUT(
       return NextResponse.json({ error: "Missing oracle_id" }, { status: 400 });
     }
 
-    await addFavorite(user.id, illustrationId, body.oracle_id);
+    await addFavorite(user.id, illustrationId, body.oracle_id, body.source || "ink");
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

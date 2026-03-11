@@ -7,6 +7,7 @@ import {
   getPrintingsForCard,
   slugify,
 } from "@/lib/queries";
+import { getAdminClient } from "@/lib/supabase/admin";
 import ArtGallery from "@/components/ArtGallery";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
@@ -61,11 +62,37 @@ export default async function CardPage({
 
   if (!card) notFound();
 
-  const [illustrations, ratings, printingsMap] = await Promise.all([
+  const [illustrations, ratings, printingsMap, { data: allPrices }] = await Promise.all([
     getIllustrationsForCard(card.oracle_id),
     getRatingsForCard(card.oracle_id),
     getPrintingsForCard(card.oracle_id),
+    getAdminClient()
+      .from("best_prices")
+      .select("scryfall_id, marketplace_display_name, market_price, currency, product_url")
+      .in(
+        "scryfall_id",
+        // Will be filtered after printings load — fetch all for this card
+        (await getAdminClient()
+          .from("printings")
+          .select("scryfall_id")
+          .eq("oracle_id", card.oracle_id)).data?.map((p) => p.scryfall_id) ?? []
+      ),
   ]);
+
+  // Map scryfall_id -> cheapest price
+  const priceMap = new Map<string, { price: number; currency: string; url: string; marketplace: string }>();
+  for (const p of allPrices ?? []) {
+    if (p.market_price == null) continue;
+    const existing = priceMap.get(p.scryfall_id);
+    if (!existing || (p.currency === "USD" && (existing.currency !== "USD" || p.market_price < existing.price))) {
+      priceMap.set(p.scryfall_id, {
+        price: p.market_price,
+        currency: p.currency,
+        url: p.product_url,
+        marketplace: p.marketplace_display_name,
+      });
+    }
+  }
   const ratingsMap = new Map(ratings.map((r) => [r.illustration_id, r]));
 
   const illustrationsWithRatings = illustrations
@@ -133,49 +160,61 @@ export default async function CardPage({
                     </span>
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {printings.map((p) => (
-                      <div key={p.scryfall_id} className="group">
-                        <img
-                          src={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
-                          alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
-                          className="w-full rounded-lg"
-                          loading="lazy"
-                        />
-                        <div className="mt-1.5 px-0.5">
-                          <p className="text-xs text-gray-400 truncate">
-                            {p.set_name}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-gray-600">
-                              #{p.collector_number}
-                            </span>
-                            <span
-                              className={
-                                p.rarity === "mythic"
-                                  ? "text-orange-400"
-                                  : p.rarity === "rare"
-                                    ? "text-amber-400"
-                                    : p.rarity === "uncommon"
-                                      ? "text-gray-300"
-                                      : "text-gray-600"
-                              }
-                            >
-                              {p.rarity}
-                            </span>
-                            {p.tcgplayer_id && (
-                              <a
-                                href={`https://www.tcgplayer.com/product/${p.tcgplayer_id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-amber-500/70 hover:text-amber-400 ml-auto"
+                    {printings.map((p) => {
+                      const price = priceMap.get(p.scryfall_id);
+                      return (
+                        <div key={p.scryfall_id} className="group">
+                          <img
+                            src={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
+                            alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
+                            className="w-full rounded-lg"
+                            loading="lazy"
+                          />
+                          <div className="mt-1.5 px-0.5">
+                            <p className="text-xs text-gray-400 truncate">
+                              {p.set_name}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-gray-600">
+                                #{p.collector_number}
+                              </span>
+                              <span
+                                className={
+                                  p.rarity === "mythic"
+                                    ? "text-orange-400"
+                                    : p.rarity === "rare"
+                                      ? "text-amber-400"
+                                      : p.rarity === "uncommon"
+                                        ? "text-gray-300"
+                                        : "text-gray-600"
+                                }
                               >
-                                Buy
-                              </a>
-                            )}
+                                {p.rarity}
+                              </span>
+                              {price ? (
+                                <a
+                                  href={price.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-green-400 hover:text-green-300 ml-auto"
+                                >
+                                  ${price.price.toFixed(2)}
+                                </a>
+                              ) : p.tcgplayer_id ? (
+                                <a
+                                  href={`https://www.tcgplayer.com/product/${p.tcgplayer_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-amber-500/70 hover:text-amber-400 ml-auto"
+                                >
+                                  Buy
+                                </a>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );

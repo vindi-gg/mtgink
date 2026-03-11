@@ -24,11 +24,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ favorited: Array.from(favorited) });
     }
 
-    // List mode: ?limit=50&offset=0
+    // List mode: ?limit=50&offset=0&source=ink|clash
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 100);
     const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10), 0);
+    const source = searchParams.get("source") as "ink" | "clash" | null;
 
-    const result = await getUserFavorites(user.id, limit, offset);
+    const result = await getUserFavorites(user.id, limit, offset, source ?? undefined);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

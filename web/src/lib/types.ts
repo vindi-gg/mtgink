@@ -226,6 +226,8 @@ export interface MoxfieldCard {
   card: { name: string; oracle_id?: string };
 }
 
+export type FavoriteSource = "ink" | "clash";
+
 export interface FavoriteEntry {
   illustration_id: string;
   oracle_id: string;
@@ -235,6 +237,7 @@ export interface FavoriteEntry {
   set_code: string;
   collector_number: string;
   image_version: string | null;
+  source: FavoriteSource;
   created_at: string;
 }
 

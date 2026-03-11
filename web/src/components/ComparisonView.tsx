@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CardImage from "./CardImage";
 import FavoriteButton from "./FavoriteButton";
+import PriceTag from "./PriceTag";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ComparisonPair, CompareFilters, VoteResponse } from "@/lib/types";
@@ -391,6 +392,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
               src={artUrl}
               alt={`${sideCard.name} art by ${side.artist}`}
               onClick={handleClick}
+              onImageError={skip}
               className="w-full"
             />
           )}
@@ -401,6 +403,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
               src={cardUrl}
               alt={`${sideCard.name} by ${side.artist}`}
               onClick={handleClick}
+              onImageError={skip}
               className="w-full"
             />
           )}
@@ -418,6 +421,9 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
           <p className="text-xs text-gray-400">
             {side.set_name} ({side.set_code.toUpperCase()})
           </p>
+          <div className="mt-1">
+            <PriceTag oracleId={sideCard.oracle_id} />
+          </div>
           {isInk && (
             <div className="mt-1 flex items-center justify-center gap-2 text-xs text-gray-500">
               {shortType && <span>{shortType}</span>}

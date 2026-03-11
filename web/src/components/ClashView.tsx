@@ -4,7 +4,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CardImage from "./CardImage";
+import FavoriteButton from "./FavoriteButton";
+import PriceTag from "./PriceTag";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
+import { useFavorites } from "@/hooks/useFavorites";
 import type { ClashPair, ClashCard, CardRating, CompareFilters, CardVoteResponse } from "@/lib/types";
 
 function getSessionId(): string {
@@ -123,6 +126,11 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
   const pairRef = useRef(pair);
   const votingRef = useRef(false);
   const filtersRef = useRef(filters);
+
+  const { favorites, toggle: toggleFavorite } = useFavorites([
+    pair.a.illustration_id,
+    pair.b.illustration_id,
+  ], "clash");
 
   filtersRef.current = filters;
   pairRef.current = pair;
@@ -290,6 +298,7 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
               src={artUrl}
               alt={`${card.name} art by ${card.artist}`}
               onClick={handleClick}
+              onImageError={skip}
               className="w-full"
             />
           )}
@@ -300,9 +309,18 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
               src={cardUrl}
               alt={`${card.name} by ${card.artist}`}
               onClick={handleClick}
+              onImageError={skip}
               className="w-full"
             />
           )}
+          <div className="absolute top-2 right-2 z-10">
+            <FavoriteButton
+              illustrationId={card.illustration_id}
+              oracleId={card.oracle_id}
+              isFavorited={favorites.has(card.illustration_id)}
+              onToggle={toggleFavorite}
+            />
+          </div>
         </div>
         <div className="mt-3 text-center">
           <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
@@ -313,6 +331,9 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
                 {renderManaCost(card.mana_cost)}
               </>
             )}
+          </div>
+          <div className="mt-1">
+            <PriceTag oracleId={card.oracle_id} />
           </div>
         </div>
       </div>

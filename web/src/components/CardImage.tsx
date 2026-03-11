@@ -6,6 +6,7 @@ interface CardImageProps {
   src: string;
   alt: string;
   onClick?: () => void;
+  onImageError?: () => void;
   className?: string;
 }
 
@@ -13,6 +14,7 @@ export default function CardImage({
   src,
   alt,
   onClick,
+  onImageError,
   className = "",
 }: CardImageProps) {
   const [loaded, setLoaded] = useState(false);
@@ -49,7 +51,7 @@ export default function CardImage({
         alt={alt}
         className={`w-full h-auto transition-opacity duration-300 ${loaded && !errored ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setLoaded(true)}
-        onError={() => { setErrored(true); setLoaded(true); }}
+        onError={() => { setErrored(true); setLoaded(true); onImageError?.(); }}
         draggable={false}
       />
     </button>

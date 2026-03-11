@@ -425,13 +425,14 @@ export async function getUserVoteHistory(
 export async function addFavorite(
   userId: string,
   illustrationId: string,
-  oracleId: string
+  oracleId: string,
+  source: "ink" | "clash" = "ink"
 ): Promise<void> {
   const supabase = await createClient();
   if (!supabase) return;
   await supabase
     .from("favorites")
-    .upsert({ user_id: userId, illustration_id: illustrationId, oracle_id: oracleId });
+    .upsert({ user_id: userId, illustration_id: illustrationId, oracle_id: oracleId, source });
 }
 
 /** Remove an illustration from a user's favorites */
@@ -470,22 +471,28 @@ export async function getFavoritedIllustrations(
 export async function getUserFavorites(
   userId: string,
   limit = 50,
-  offset = 0
+  offset = 0,
+  source?: "ink" | "clash"
 ): Promise<{ favorites: FavoriteEntry[]; total: number }> {
   const supabase = await createClient();
   if (!supabase) return { favorites: [], total: 0 };
 
-  const { count } = await supabase
+  let countQuery = supabase
     .from("favorites")
     .select("*", { count: "exact", head: true })
     .eq("user_id", userId);
+  if (source) countQuery = countQuery.eq("source", source);
+  const { count } = await countQuery;
 
-  const { data: rawFavorites } = await supabase
+  let query = supabase
     .from("favorites")
-    .select("illustration_id, oracle_id, created_at")
+    .select("illustration_id, oracle_id, source, created_at")
     .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    .order("created_at", { ascending: false });
+
+  if (source) query = query.eq("source", source);
+
+  const { data: rawFavorites } = await query.range(offset, offset + limit - 1);
 
   if (!rawFavorites || rawFavorites.length === 0) return { favorites: [], total: count ?? 0 };
 
@@ -520,6 +527,7 @@ export async function getUserFavorites(
       set_code: printing?.set_code ?? "",
       collector_number: printing?.collector_number ?? "",
       image_version: printing?.image_version ?? null,
+      source: (f.source ?? "ink") as "ink" | "clash",
       created_at: f.created_at,
     };
   });
