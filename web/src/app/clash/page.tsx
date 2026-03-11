@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Clash — MTG Ink",
   description: "Cards go head-to-head — pick the winner",
+  robots: { index: false, follow: false },
 };
 
 export default async function ClashPage({
