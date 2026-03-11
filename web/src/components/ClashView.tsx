@@ -97,11 +97,12 @@ function filtersToParams(filters: CompareFilters): string {
   if (filters.colors?.length) params.set("colors", filters.colors.join(","));
   if (filters.type) params.set("type", filters.type);
   if (filters.subtype) params.set("subtype", filters.subtype);
+  if (filters.set_code) params.set("set_code", filters.set_code);
   return params.toString();
 }
 
 function hasActiveFilters(filters: CompareFilters): boolean {
-  return !!((filters.colors && filters.colors.length > 0) || filters.type || filters.subtype);
+  return !!((filters.colors && filters.colors.length > 0) || filters.type || filters.subtype || filters.set_code);
 }
 
 function filtersEqual(a: CompareFilters, b: CompareFilters): boolean {
@@ -356,6 +357,8 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
           <>Which <span className="text-amber-400 capitalize">{filters.subtype}</span> is best?</>
         ) : filters.type ? (
           <>Which <span className="text-amber-400 capitalize">{filters.type}</span> is best?</>
+        ) : filters.set_code ? (
+          <>Which <span className="text-amber-400 uppercase">{filters.set_code}</span> card is best?</>
         ) : (
           <>Which card is best?</>
         )}

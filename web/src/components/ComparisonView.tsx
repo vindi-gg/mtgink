@@ -107,6 +107,7 @@ function filtersToParams(filters: CompareFilters): string {
   if (filters.colors?.length) params.set("colors", filters.colors.join(","));
   if (filters.type) params.set("type", filters.type);
   if (filters.subtype) params.set("subtype", filters.subtype);
+  if (filters.set_code) params.set("set_code", filters.set_code);
   // mode is not included — it's implicit in the route (/ink vs /clash)
   return params.toString();
 }
@@ -116,6 +117,7 @@ function apiParams(filters: CompareFilters): string {
   if (filters.colors?.length) params.set("colors", filters.colors.join(","));
   if (filters.type) params.set("type", filters.type);
   if (filters.subtype) params.set("subtype", filters.subtype);
+  if (filters.set_code) params.set("set_code", filters.set_code);
   if (filters.mode === "cross") params.set("mode", "cross");
   return params.toString();
 }
@@ -124,7 +126,8 @@ function hasActiveFilters(filters: CompareFilters): boolean {
   return !!(
     (filters.colors && filters.colors.length > 0) ||
     filters.type ||
-    filters.subtype
+    filters.subtype ||
+    filters.set_code
   );
 }
 
@@ -507,7 +510,15 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
       {/* Compact heading — auto-scales to fit one line */}
       <h2 className="font-bold text-center mb-1 md:mb-2 text-base md:text-lg truncate max-w-full px-2">
         {subMode === "vs" || isCross ? (
-          <>Which art is best?</>
+          filters.subtype ? (
+            <>Which <span className="text-amber-400 capitalize">{filters.subtype}</span> art is best?</>
+          ) : filters.type ? (
+            <>Which <span className="text-amber-400 capitalize">{filters.type}</span> art is best?</>
+          ) : filters.set_code ? (
+            <>Which <span className="text-amber-400 uppercase">{filters.set_code}</span> art is best?</>
+          ) : (
+            <>Which art is best?</>
+          )
         ) : (
           <>
             Which <a href={`/card/${pair.card.slug}`} className="text-amber-400 hover:text-amber-300">{pair.card.name}</a> art is best?

@@ -12,19 +12,20 @@ export const metadata = {
 export default async function InkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; mode?: string; a?: string; b?: string }>;
+  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; set_code?: string; mode?: string; a?: string; b?: string }>;
 }) {
-  const { oracle_id, colors, type, subtype, mode, a, b } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, mode, a, b } = await searchParams;
 
   const isVs = mode === "vs";
 
   const filters: CompareFilters = {
     ...(isVs ? { mode: "cross" as const } : {}),
-    ...(colors || type || subtype
+    ...(colors || type || subtype || set_code
       ? {
           colors: colors ? colors.split(",").filter(Boolean) : undefined,
           type: type || undefined,
           subtype: subtype || undefined,
+          set_code: set_code || undefined,
         }
       : {}),
   };

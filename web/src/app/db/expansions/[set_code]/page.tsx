@@ -56,10 +56,24 @@ export default async function SetDetailPage({
           )}
           <h1 className="text-3xl font-bold">{set.name}</h1>
         </div>
-        <p className="text-gray-400 text-sm mb-6">
-          {set.set_type} &middot; {set.released_at?.slice(0, 4)} &middot;{" "}
-          {cards.length} cards
-        </p>
+        <div className="flex items-center gap-3 mb-6">
+          <p className="text-gray-400 text-sm">
+            {set.set_type} &middot; {set.released_at?.slice(0, 4)} &middot;{" "}
+            {cards.length} cards
+          </p>
+          <Link
+            href={`/ink?mode=vs&set_code=${set_code}`}
+            className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
+          >
+            Ink VS
+          </Link>
+          <Link
+            href={`/clash?set_code=${set_code}`}
+            className="px-3 py-1 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
+          >
+            Clash
+          </Link>
+        </div>
 
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
           {cards.map((card) => (

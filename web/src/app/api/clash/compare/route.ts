@@ -9,13 +9,15 @@ export async function GET(request: Request) {
   const colors = searchParams.get("colors");
   const type = searchParams.get("type");
   const subtype = searchParams.get("subtype");
+  const set_code = searchParams.get("set_code");
 
   const filters: CompareFilters | undefined =
-    colors || type || subtype
+    colors || type || subtype || set_code
       ? {
           colors: colors ? colors.split(",").filter(Boolean) : undefined,
           type: type || undefined,
           subtype: subtype || undefined,
+          set_code: set_code || undefined,
         }
       : undefined;
 

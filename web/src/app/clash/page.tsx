@@ -12,16 +12,17 @@ export const metadata = {
 export default async function ClashPage({
   searchParams,
 }: {
-  searchParams: Promise<{ colors?: string; type?: string; subtype?: string; a?: string; b?: string }>;
+  searchParams: Promise<{ colors?: string; type?: string; subtype?: string; set_code?: string; a?: string; b?: string }>;
 }) {
-  const { colors, type, subtype, a, b } = await searchParams;
+  const { colors, type, subtype, set_code, a, b } = await searchParams;
 
   const filters: CompareFilters | undefined =
-    colors || type || subtype
+    colors || type || subtype || set_code
       ? {
           colors: colors ? colors.split(",").filter(Boolean) : undefined,
           type: type || undefined,
           subtype: subtype || undefined,
+          set_code: set_code || undefined,
         }
       : undefined;
 

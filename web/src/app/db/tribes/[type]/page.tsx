@@ -101,6 +101,12 @@ export default async function TribeDetailPage({
               </Link>
             </div>
             <Link
+              href={`/ink?mode=vs&subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}`}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
+            >
+              Ink VS
+            </Link>
+            <Link
               href={`/clash?subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}`}
               className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
             >

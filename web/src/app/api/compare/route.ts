@@ -6,14 +6,16 @@ function parseFilters(searchParams: URLSearchParams): CompareFilters | undefined
   const colors = searchParams.get("colors");
   const type = searchParams.get("type");
   const subtype = searchParams.get("subtype");
+  const set_code = searchParams.get("set_code");
   const mode = searchParams.get("mode");
 
-  if (!colors && !type && !subtype && !mode) return undefined;
+  if (!colors && !type && !subtype && !set_code && !mode) return undefined;
 
   return {
     colors: colors ? colors.split(",").filter(Boolean) : undefined,
     type: type || undefined,
     subtype: subtype || undefined,
+    set_code: set_code || undefined,
     mode: mode === "cross" ? "cross" : undefined,
   };
 }

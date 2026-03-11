@@ -54,6 +54,7 @@ export interface CompareFilters {
   colors?: string[];
   type?: string;
   subtype?: string;
+  set_code?: string;
   mode?: "same" | "cross";
 }
 

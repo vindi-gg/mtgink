@@ -82,6 +82,7 @@ function filterParams(filters?: CompareFilters) {
     p_colors: filters?.colors?.length ? filters.colors : null,
     p_type: filters?.type || null,
     p_subtype: filters?.subtype || null,
+    p_set_code: filters?.set_code || null,
   };
 }
 
