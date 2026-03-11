@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Navbar from "@/components/Navbar";
+import AdBanner from "@/components/AdBanner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -46,7 +47,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Navbar />
-        {children}
+        <div className="pb-[58px] md:pb-[98px]">
+          {children}
+        </div>
+        <AdBanner />
       </body>
     </html>
   );

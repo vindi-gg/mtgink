@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant landscape (@media (orientation: landscape));
+
 @theme inline {
   --color-background: #030712;
   --color-foreground: #f9fafb;

@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from "react";
 interface CardImageProps {
   src: string;
   alt: string;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
   onImageError?: () => void;
   className?: string;
 }

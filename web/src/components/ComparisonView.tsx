@@ -150,6 +150,11 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
   const [showFilters, setShowFilters] = useState(hasActiveFilters(initialFilters ?? {}));
   const [filterError, setFilterError] = useState<string | null>(null);
   const [subMode, setSubMode] = useState<"mirror" | "vs">(initialSubMode);
+  const [showingCard, setShowingCard] = useState<string | null>(null);
+
+  function showCardPreview(illustrationId: string) {
+    setShowingCard(illustrationId);
+  }
   const pairRef = useRef(pair);
   const votingRef = useRef(false);
   const filtersRef = useRef(filters);
@@ -159,6 +164,9 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
   ]);
 
   filtersRef.current = filters;
+
+  // Reset card preview when pair changes
+  useEffect(() => { setShowingCard(null); }, [pair]);
 
   function changeViewMode(mode: ViewMode) {
     setViewMode(mode);
@@ -363,8 +371,18 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     cardUrl: string,
     sideCard: typeof pair.card
   ) {
-    const handleClick = () =>
+    const handleClick = (e?: React.MouseEvent) => {
+      // In Ink mode on mobile: left 25% opens card preview, rest votes
+      if (isInk && e) {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x < rect.width * 0.25) {
+          showCardPreview(side.illustration_id);
+          return;
+        }
+      }
       vote(side.illustration_id, otherSide.illustration_id);
+    };
 
     // Ink mode: always art crop + card metadata. Clash mode: uses viewMode toggle.
     const showArt = isInk || viewMode === "art" || viewMode === "both";
@@ -387,14 +405,34 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
         )}
         <div className="relative w-full">
           {showArt && (
-            <CardImage
-              key={`${side.illustration_id}-art`}
-              src={artUrl}
-              alt={`${sideCard.name} art by ${side.artist}`}
-              onClick={handleClick}
-              onImageError={skip}
-              className="w-full"
-            />
+            <>
+              <CardImage
+                key={`${side.illustration_id}-art`}
+                src={artUrl}
+                alt={`${sideCard.name} art by ${side.artist}`}
+                onClick={handleClick}
+                onImageError={skip}
+                className="w-full"
+              />
+              {/* Desktop card preview overlay */}
+              {isInk && showingCard === side.illustration_id && (
+                <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center bg-black/80 rounded-[3.8%] animate-fade-in pointer-events-none">
+                  <img
+                    src={cardUrl}
+                    alt={`${sideCard.name} full card`}
+                    className="max-h-full max-w-full rounded-[3.8%]"
+                  />
+                </div>
+              )}
+              {/* Desktop hover zone — left 25% reveals card on hover */}
+              {isInk && (
+                <div
+                  className="absolute inset-y-0 left-0 w-1/4 z-30 cursor-zoom-in hidden md:block"
+                  onPointerEnter={() => setShowingCard(side.illustration_id)}
+                  onPointerLeave={() => setShowingCard(null)}
+                />
+              )}
+            </>
           )}
           {showBothSpacer && <div className="h-3" />}
           {showCard && (
@@ -416,30 +454,17 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
             />
           </div>
         </div>
-        <div className="mt-3 text-center">
-          <p className="text-sm font-medium text-gray-200">{side.artist}</p>
-          <p className="text-xs text-gray-400">
-            {side.set_name} ({side.set_code.toUpperCase()})
-          </p>
-          <div className="mt-1">
-            <PriceTag oracleId={sideCard.oracle_id} />
-          </div>
-          {isInk && (
-            <div className="mt-1 flex items-center justify-center gap-2 text-xs text-gray-500">
-              {shortType && <span>{shortType}</span>}
-              {sideCard.mana_cost && (
-                <>
-                  <span className="text-gray-700">&middot;</span>
-                  {renderManaCost(sideCard.mana_cost)}
-                </>
-              )}
-              {sideCard.cmc != null && (
-                <>
-                  <span className="text-gray-700">&middot;</span>
-                  <span>MV {sideCard.cmc}</span>
-                </>
-              )}
-            </div>
+        <div className="mt-2 text-center">
+          {!isInk && (
+            <>
+              <p className="text-sm font-medium text-gray-200">{side.artist}</p>
+              <p className="text-xs text-gray-400">
+                {side.set_name} ({side.set_code.toUpperCase()})
+              </p>
+              <div className="mt-1">
+                <PriceTag oracleId={sideCard.oracle_id} />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -448,23 +473,81 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-center mb-4">
+      {/* Compact heading */}
+      <h2 className="text-lg font-bold text-center mb-3">
         {subMode === "vs" || isCross ? (
           <>Which art do you prefer?</>
         ) : (
           <>
-            Which <span className="text-amber-400">{pair.card.name}</span> art do
-            you prefer?
+            Which <a href={`/card/${pair.card.slug}`} className="text-amber-400 hover:text-amber-300">{pair.card.name}</a> art?
           </>
         )}
       </h2>
 
-      {/* Sub-mode toggle */}
-      <div className="flex justify-center mb-4">
+      {/* View mode toggle — non-Ink only, kept above */}
+      {!isInk && (
+        <div className="flex justify-center mb-4">
+          <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
+            {viewModes.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => changeViewMode(m.value)}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === m.value
+                    ? "bg-amber-500 text-gray-900"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="relative max-w-4xl mx-auto">
+        {voting && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/60 rounded-lg backdrop-blur-[2px] pointer-events-none">
+            <div className="flex items-center gap-2 text-amber-400">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-sm font-medium">Loading next...</span>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
+          {renderSide(pair.a, pair.b, aArt, aCard, pair.card)}
+          {renderSide(pair.b, pair.a, bArt, bCard, pair.card_b ?? pair.card)}
+        </div>
+      </div>
+
+      {/* Controls below art */}
+      <div className="flex justify-center gap-3 mt-4">
+        <button
+          onClick={skip}
+          disabled={voting}
+          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
+        >
+          Skip (S)
+        </button>
+        {!isCross && (
+          <a
+            href={`/card/${pair.card.slug}`}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
+          >
+            All arts
+          </a>
+        )}
+      </div>
+
+      {/* Sub-mode toggle — below art */}
+      <div className="flex justify-center mt-4">
         <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
           <button
             onClick={() => switchSubMode("mirror")}
-            className={`px-5 py-2 text-sm font-bold transition-colors ${
+            className={`px-4 py-1.5 text-xs font-bold transition-colors ${
               subMode === "mirror"
                 ? "bg-amber-500 text-gray-900"
                 : "text-gray-400 hover:text-white hover:bg-gray-800"
@@ -474,7 +557,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
           </button>
           <button
             onClick={() => switchSubMode("vs")}
-            className={`px-5 py-2 text-sm font-bold transition-colors ${
+            className={`px-4 py-1.5 text-xs font-bold transition-colors ${
               subMode === "vs"
                 ? "bg-amber-500 text-gray-900"
                 : "text-gray-400 hover:text-white hover:bg-gray-800"
@@ -484,15 +567,15 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
           </button>
           <Link
             href="/ink/gauntlet"
-            className="px-5 py-2 text-sm font-bold text-gray-600 hover:text-gray-400 transition-colors"
+            className="px-4 py-1.5 text-xs font-bold text-gray-600 hover:text-gray-400 transition-colors"
           >
             Gauntlet
           </Link>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="max-w-4xl mx-auto mb-4">
+      {/* Filters — below art */}
+      <div className="max-w-4xl mx-auto mt-4">
         <div className="flex items-center justify-center gap-2 mb-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
@@ -505,7 +588,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
             Filter{active ? " (active)" : ""}
           </button>
 
-          {/* Quick presets */}
           <div className="flex flex-wrap gap-1">
             {PRESETS.slice(0, 7).map((preset) => {
               const isActive = hasActiveFilters(filters) && filtersEqual(filters, preset.filters);
@@ -537,7 +619,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
 
         {showFilters && (
           <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-3 space-y-3">
-            {/* Colors */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 w-14 flex-shrink-0">Colors</span>
               <div className="flex gap-1">
@@ -560,7 +641,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
               </div>
             </div>
 
-            {/* Type */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 w-14 flex-shrink-0">Type</span>
               <select
@@ -575,7 +655,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
               </select>
             </div>
 
-            {/* Subtype */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 w-14 flex-shrink-0">Subtype</span>
               <input
@@ -593,7 +672,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
               </datalist>
             </div>
 
-            {/* More presets */}
             <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-800">
               {PRESETS.map((preset) => {
                 const isActive = hasActiveFilters(filters) && filtersEqual(filters, preset.filters);
@@ -620,65 +698,28 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
         )}
       </div>
 
-      {!isInk && (
-        <div className="flex justify-center mb-6">
-          <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
-            {viewModes.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => changeViewMode(m.value)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  viewMode === m.value
-                    ? "bg-amber-500 text-gray-900"
-                    : "text-gray-400 hover:text-white hover:bg-gray-800"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+      <p className="text-center text-xs text-gray-600 mt-3">
+        Arrow keys to vote, S to skip
+      </p>
+
+      {/* Fullscreen card preview modal — mobile-friendly */}
+      {showingCard && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fade-in md:hidden"
+          onClick={() => setShowingCard(null)}
+        >
+          <img
+            src={normalCardUrl(
+              (showingCard === pair.a.illustration_id ? pair.a : pair.b).set_code,
+              (showingCard === pair.a.illustration_id ? pair.a : pair.b).collector_number,
+              (showingCard === pair.a.illustration_id ? pair.a : pair.b).image_version
+            )}
+            alt="Card preview"
+            className="max-h-[85vh] max-w-full rounded-[3.8%]"
+          />
         </div>
       )}
 
-      <div className="relative max-w-4xl mx-auto">
-        {voting && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/60 rounded-lg backdrop-blur-[2px] pointer-events-none">
-            <div className="flex items-center gap-2 text-amber-400">
-              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              <span className="text-sm font-medium">Loading next...</span>
-            </div>
-          </div>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {renderSide(pair.a, pair.b, aArt, aCard, pair.card)}
-          {renderSide(pair.b, pair.a, bArt, bCard, pair.card_b ?? pair.card)}
-        </div>
-      </div>
-
-      <div className="flex justify-center gap-4 mt-6">
-        <button
-          onClick={skip}
-          disabled={voting}
-          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
-        >
-          Skip (S)
-        </button>
-        {!isCross && (
-          <a
-            href={`/card/${pair.card.slug}`}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
-          >
-            See all arts
-          </a>
-        )}
-      </div>
-
-      <p className="text-center text-xs text-gray-600 mt-4">
-        Use arrow keys to vote, S to skip
-      </p>
     </div>
   );
 }

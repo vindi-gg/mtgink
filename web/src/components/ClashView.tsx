@@ -508,7 +508,7 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
         <p className="text-center text-amber-400 text-sm mb-4">Loading next...</p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-4 md:gap-6 max-w-4xl mx-auto">
         {renderSide(pair.a, pair.b, pair.a_rating)}
         {renderSide(pair.b, pair.a, pair.b_rating)}
       </div>
