@@ -36,6 +36,8 @@ export const metadata: Metadata = {
   },
 };
 
+const adsEnabled = process.env.NEXT_PUBLIC_ADS_ENABLED === "true";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -47,10 +49,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Navbar />
-        <div className="pb-[58px] md:pb-[98px]">
+        <div className={adsEnabled ? "pb-[58px] md:pb-[98px]" : ""}>
           {children}
         </div>
-        <AdBanner />
+        {adsEnabled && <AdBanner />}
       </body>
     </html>
   );
