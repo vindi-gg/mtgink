@@ -331,6 +331,450 @@ async function processJob(
   return { uploaded: 0, skipped: 0, failed: 1 };
 }
 
+// ── Card data import job ─────────────────────────────────
+
+const SCRYFALL_HEADERS = {
+  "User-Agent": "MTGInk/1.0 (card art popularity tracker)",
+  Accept: "application/json",
+};
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/'/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+interface ScryfallOracleCard {
+  oracle_id?: string;
+  name: string;
+  layout?: string;
+  mana_cost?: string;
+  cmc?: number;
+  type_line?: string;
+  oracle_text?: string;
+  colors?: string[];
+  color_identity?: string[];
+  keywords?: string[];
+  power?: string;
+  toughness?: string;
+  loyalty?: string;
+  defense?: string;
+  legalities?: Record<string, string>;
+  reserved?: boolean;
+}
+
+interface ScryfallPrintingCard extends ScryfallOracleCard {
+  id: string;
+  set: string;
+  collector_number: string;
+  illustration_id?: string;
+  artist?: string;
+  rarity?: string;
+  released_at?: string;
+  digital?: boolean;
+  tcgplayer_id?: number;
+  cardmarket_id?: number;
+  prices?: Record<string, string | null>;
+  purchase_uris?: Record<string, string>;
+  image_uris?: Record<string, string>;
+  card_faces?: {
+    name: string;
+    mana_cost?: string;
+    type_line?: string;
+    oracle_text?: string;
+    colors?: string[];
+    power?: string;
+    toughness?: string;
+    loyalty?: string;
+    defense?: string;
+    illustration_id?: string;
+    image_uris?: Record<string, string>;
+    oracle_id?: string;
+  }[];
+}
+
+interface ScryfallSet {
+  code: string;
+  id: string;
+  name: string;
+  set_type?: string;
+  released_at?: string;
+  card_count?: number;
+  printed_size?: number;
+  icon_svg_uri?: string;
+  parent_set_code?: string;
+  block_code?: string;
+  block?: string;
+  digital?: boolean;
+}
+
+function computeSlugs(oracleCards: ScryfallOracleCard[]): Map<string, string> {
+  const byName = new Map<string, ScryfallOracleCard[]>();
+  for (const card of oracleCards) {
+    const name = card.name || "";
+    const list = byName.get(name) || [];
+    list.push(card);
+    byName.set(name, list);
+  }
+
+  const slugs = new Map<string, string>();
+  for (const [name, cards] of byName) {
+    const base = slugify(name);
+
+    if (cards.length === 1) {
+      slugs.set(cards[0].oracle_id!, base);
+      continue;
+    }
+
+    const tokens = cards.filter((c) => (c.type_line || "").startsWith("Token"));
+    const nonTokens = cards.filter((c) => !(c.type_line || "").startsWith("Token"));
+
+    if (nonTokens.length === 1) {
+      slugs.set(nonTokens[0].oracle_id!, base);
+    } else {
+      for (const c of nonTokens) {
+        slugs.set(c.oracle_id!, `${base}-${c.oracle_id!.slice(0, 8)}`);
+      }
+    }
+
+    if (tokens.length === 1) {
+      slugs.set(tokens[0].oracle_id!, `${base}-token`);
+    } else {
+      for (const c of tokens) {
+        slugs.set(c.oracle_id!, `${base}-token-${c.oracle_id!.slice(0, 8)}`);
+      }
+    }
+  }
+
+  return slugs;
+}
+
+async function importData() {
+  const startTime = Date.now();
+  console.log("MTG Ink card data import starting");
+
+  const client = new pg.Client(process.env.SUPABASE_DB_URL);
+  await client.connect();
+
+  // Log job start
+  const { rows: [jobLog] } = await client.query(
+    `INSERT INTO job_runs (job_type, status, message) VALUES ('data', 'running', 'Starting card data import') RETURNING id`
+  );
+  const jobLogId = jobLog.id;
+
+  try {
+    // 1. Download sets
+    status.state = "loading";
+    status.message = "Downloading sets from Scryfall";
+    console.log("  Downloading sets...");
+
+    const setsResp = await fetch("https://api.scryfall.com/sets", { headers: SCRYFALL_HEADERS });
+    if (!setsResp.ok) throw new Error(`Failed to fetch sets: ${setsResp.status}`);
+    const setsJson = (await setsResp.json()) as { data: ScryfallSet[] };
+    const sets = setsJson.data;
+    console.log(`  Got ${sets.length} sets`);
+
+    // 2. Download bulk data URLs
+    status.message = "Getting bulk data download URLs";
+    const bulkResp = await fetch("https://api.scryfall.com/bulk-data", { headers: SCRYFALL_HEADERS });
+    if (!bulkResp.ok) throw new Error(`Failed to fetch bulk data index: ${bulkResp.status}`);
+    const bulkData = (await bulkResp.json()) as { data: { type: string; download_uri: string }[] };
+
+    const oracleUrl = bulkData.data.find((d) => d.type === "oracle_cards")?.download_uri;
+    const defaultUrl = bulkData.data.find((d) => d.type === "default_cards")?.download_uri;
+    if (!oracleUrl || !defaultUrl) throw new Error("Could not find bulk data URLs");
+
+    // 3. Download oracle cards (~100MB)
+    status.message = "Downloading oracle cards from Scryfall (~100MB)";
+    console.log("  Downloading oracle cards...");
+    const oracleResp = await fetch(oracleUrl, { headers: SCRYFALL_HEADERS });
+    if (!oracleResp.ok) throw new Error(`Failed to download oracle cards: ${oracleResp.status}`);
+    const oracleCards = (await oracleResp.json()) as ScryfallOracleCard[];
+    console.log(`  Got ${oracleCards.length} oracle cards`);
+
+    // 4. Download default cards (~300MB)
+    status.message = "Downloading default cards from Scryfall (~300MB)";
+    console.log("  Downloading default cards (this takes a while)...");
+    const defaultResp = await fetch(defaultUrl, { headers: SCRYFALL_HEADERS });
+    if (!defaultResp.ok) throw new Error(`Failed to download default cards: ${defaultResp.status}`);
+    const defaultCards = (await defaultResp.json()) as ScryfallPrintingCard[];
+    console.log(`  Got ${defaultCards.length} default cards`);
+
+    // 5. Compute slugs
+    status.state = "processing";
+    status.message = "Computing slugs";
+    const slugs = computeSlugs(oracleCards);
+    console.log(`  Computed slugs for ${slugs.size} cards`);
+
+    // 6. Import sets
+    status.message = "Importing sets";
+    console.log("  Importing sets...");
+    const SET_BATCH = 500;
+    for (let i = 0; i < sets.length; i += SET_BATCH) {
+      const batch = sets.slice(i, i + SET_BATCH);
+      const values: string[] = [];
+      const params: (string | number | boolean | null)[] = [];
+      batch.forEach((s, j) => {
+        const o = j * 12 + 1;
+        values.push(`($${o},$${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11})`);
+        params.push(
+          s.code, s.id, s.name, s.set_type || null, s.released_at || null,
+          s.card_count || null, s.printed_size || null, s.icon_svg_uri || null,
+          s.parent_set_code || null, s.block_code || null, s.block || null,
+          s.digital ?? false
+        );
+      });
+      await client.query(
+        `INSERT INTO sets (set_code, set_id, name, set_type, released_at, card_count,
+           printed_size, icon_svg_uri, parent_set_code, block_code, block, digital)
+         VALUES ${values.join(", ")}
+         ON CONFLICT (set_code) DO UPDATE SET
+           name = EXCLUDED.name, set_type = EXCLUDED.set_type,
+           released_at = EXCLUDED.released_at, card_count = EXCLUDED.card_count,
+           icon_svg_uri = EXCLUDED.icon_svg_uri, digital = EXCLUDED.digital`,
+        params
+      );
+    }
+    console.log(`  Imported ${sets.length} sets`);
+
+    // 7. Import oracle cards
+    status.message = "Importing oracle cards";
+    console.log("  Importing oracle cards...");
+    const OC_BATCH = 1000;
+    let ocCount = 0;
+    for (let i = 0; i < oracleCards.length; i += OC_BATCH) {
+      const batch = oracleCards.slice(i, i + OC_BATCH).filter((c) => c.oracle_id);
+      const values: string[] = [];
+      const params: (string | number | boolean | null)[] = [];
+      batch.forEach((c, j) => {
+        const o = j * 17 + 1;
+        values.push(`($${o},$${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8}::jsonb,$${o+9}::jsonb,$${o+10}::jsonb,$${o+11},$${o+12},$${o+13},$${o+14},$${o+15}::jsonb,$${o+16})`);
+        params.push(
+          c.oracle_id!, c.name, slugs.get(c.oracle_id!) || slugify(c.name),
+          c.layout || null, c.mana_cost || null, c.cmc ?? null,
+          c.type_line || null, c.oracle_text || null,
+          JSON.stringify(c.colors || []), JSON.stringify(c.color_identity || []),
+          JSON.stringify(c.keywords || []),
+          c.power || null, c.toughness || null, c.loyalty || null, c.defense || null,
+          JSON.stringify(c.legalities || {}), c.reserved ?? false
+        );
+      });
+      if (values.length > 0) {
+        await client.query(
+          `INSERT INTO oracle_cards
+             (oracle_id, name, slug, layout, mana_cost, cmc, type_line, oracle_text,
+              colors, color_identity, keywords, power, toughness, loyalty, defense,
+              legalities, reserved)
+           VALUES ${values.join(", ")}
+           ON CONFLICT (oracle_id) DO UPDATE SET
+             name = EXCLUDED.name, slug = EXCLUDED.slug, layout = EXCLUDED.layout,
+             type_line = EXCLUDED.type_line, colors = EXCLUDED.colors,
+             mana_cost = EXCLUDED.mana_cost, cmc = EXCLUDED.cmc`,
+          params
+        );
+      }
+      ocCount += batch.length;
+      if (ocCount % 10000 === 0) {
+        status.message = `Importing oracle cards: ${ocCount.toLocaleString()}`;
+        console.log(`    ${ocCount.toLocaleString()} oracle cards...`);
+      }
+    }
+    console.log(`  Imported ${ocCount} oracle cards`);
+
+    // 8. Import printings
+    status.message = "Importing printings";
+    console.log("  Importing printings...");
+    const P_BATCH = 1000;
+    let pCount = 0;
+    let skipped = 0;
+    const faceBatch: (string | number | null)[][] = [];
+
+    for (let i = 0; i < defaultCards.length; i += P_BATCH) {
+      const batch = defaultCards.slice(i, i + P_BATCH);
+      const values: string[] = [];
+      const params: (string | number | boolean | null)[] = [];
+      let paramIdx = 1;
+
+      for (const card of batch) {
+        let oracleId = card.oracle_id;
+        if (!oracleId && card.card_faces) {
+          oracleId = card.card_faces[0]?.oracle_id;
+        }
+        if (!oracleId) { skipped++; continue; }
+
+        let imageUris = card.image_uris || {};
+        if (!card.image_uris && card.card_faces) {
+          imageUris = card.card_faces[0]?.image_uris || {};
+        }
+
+        const prices = card.prices || {};
+        const purchase = card.purchase_uris || {};
+
+        const placeholders = [];
+        for (let p = 0; p < 21; p++) {
+          placeholders.push(`$${paramIdx++}`);
+        }
+        // Cast the jsonb columns
+        const ph = placeholders;
+        values.push(`(${ph[0]}::uuid,${ph[1]}::uuid,${ph[2]},${ph[3]},${ph[4]},${ph[5]},${ph[6]},${ph[7]},${ph[8]}::uuid,${ph[9]},${ph[10]},${ph[11]},${ph[12]}::boolean,${ph[13]},${ph[14]},${ph[15]}::numeric,${ph[16]}::numeric,${ph[17]}::jsonb,${ph[18]}::jsonb,${ph[19]},${ph[20]})`);
+        params.push(
+          card.id, oracleId, card.set || "", card.collector_number || "",
+          card.name || "", card.layout || null, card.mana_cost || null,
+          card.type_line || null, card.illustration_id || null,
+          card.artist || null, card.rarity || null, card.released_at || null,
+          card.digital ?? false, card.tcgplayer_id ?? null, card.cardmarket_id ?? null,
+          prices.usd ?? null, prices.eur ?? null,
+          Object.keys(purchase).length > 0 ? JSON.stringify(purchase) : null,
+          Object.keys(imageUris).length > 0 ? JSON.stringify(imageUris) : null,
+          null, null  // local_image_normal, local_image_art_crop
+        );
+
+        // Collect card faces
+        if (card.card_faces) {
+          for (let fi = 0; fi < card.card_faces.length; fi++) {
+            const face = card.card_faces[fi];
+            const faceImages = face.image_uris || {};
+            faceBatch.push([
+              card.id, fi, face.name || "", face.mana_cost || null,
+              face.type_line || null, face.oracle_text || null,
+              JSON.stringify(face.colors || []),
+              face.power || null, face.toughness || null,
+              face.loyalty || null, face.defense || null,
+              face.illustration_id || null,
+              Object.keys(faceImages).length > 0 ? JSON.stringify(faceImages) : null,
+            ]);
+          }
+        }
+      }
+
+      if (values.length > 0) {
+        await client.query(
+          `INSERT INTO printings
+             (scryfall_id, oracle_id, set_code, collector_number, name, layout,
+              mana_cost, type_line, illustration_id, artist, rarity, released_at,
+              digital, tcgplayer_id, cardmarket_id, price_usd, price_eur,
+              purchase_uris, image_uris, local_image_normal, local_image_art_crop)
+           VALUES ${values.join(", ")}
+           ON CONFLICT (scryfall_id) DO UPDATE SET
+             price_usd = EXCLUDED.price_usd, price_eur = EXCLUDED.price_eur,
+             tcgplayer_id = EXCLUDED.tcgplayer_id, cardmarket_id = EXCLUDED.cardmarket_id,
+             image_uris = EXCLUDED.image_uris`,
+          params
+        );
+      }
+
+      // Flush faces periodically
+      if (faceBatch.length >= 5000) {
+        await insertFaceBatch(client, faceBatch.splice(0));
+      }
+
+      pCount += batch.length - skipped;
+      if (pCount % 20000 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        status.message = `Importing printings: ${pCount.toLocaleString()} — ${elapsed}s`;
+        console.log(`    ${pCount.toLocaleString()} printings... (${elapsed}s)`);
+        await client.query(
+          `UPDATE job_runs SET processed_items = $1, message = $2, updated_at = NOW() WHERE id = $3`,
+          [pCount, status.message, jobLogId]
+        );
+      }
+    }
+
+    // Flush remaining faces
+    if (faceBatch.length > 0) {
+      await insertFaceBatch(client, faceBatch);
+    }
+    console.log(`  Imported ${pCount} printings (${skipped} skipped)`);
+
+    // 9. Update illustration_count
+    status.message = "Updating illustration counts";
+    console.log("  Updating illustration counts...");
+    await client.query(`
+      UPDATE oracle_cards o SET illustration_count = (
+        SELECT COUNT(DISTINCT p.illustration_id)
+        FROM printings p
+        WHERE p.oracle_id = o.oracle_id AND p.illustration_id IS NOT NULL
+      )
+    `);
+    console.log("  Illustration counts updated");
+
+    // 10. Update artists table if it exists
+    try {
+      await client.query(`
+        INSERT INTO artists (name, slug, illustration_count)
+        SELECT
+          p.artist,
+          LOWER(REGEXP_REPLACE(REGEXP_REPLACE(p.artist, '''', '', 'g'), '[^a-z0-9]+', '-', 'gi')),
+          COUNT(DISTINCT p.illustration_id)
+        FROM printings p
+        WHERE p.artist IS NOT NULL AND p.illustration_id IS NOT NULL
+        GROUP BY p.artist
+        ON CONFLICT (name) DO UPDATE SET
+          illustration_count = EXCLUDED.illustration_count
+      `);
+      console.log("  Artists table updated");
+    } catch {
+      console.log("  Artists table not found, skipping");
+    }
+
+    // Final stats
+    const { rows: stats } = await client.query(`
+      SELECT
+        (SELECT COUNT(*) FROM sets) as sets,
+        (SELECT COUNT(*) FROM oracle_cards) as oracle_cards,
+        (SELECT COUNT(*) FROM printings) as printings,
+        (SELECT COUNT(*) FROM card_faces) as card_faces,
+        (SELECT COUNT(DISTINCT illustration_id) FROM printings WHERE illustration_id IS NOT NULL) as illustrations
+    `);
+    const s = stats[0];
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const summary = `Done in ${elapsed}s — ${s.sets} sets, ${s.oracle_cards} oracle cards, ${s.printings} printings, ${s.card_faces} faces, ${s.illustrations} illustrations`;
+    console.log(`\n${summary}`);
+
+    await client.query(
+      `UPDATE job_runs SET status = 'completed', processed_items = $1, message = $2, completed_at = NOW(), updated_at = NOW() WHERE id = $3`,
+      [pCount, summary, jobLogId]
+    );
+
+    status.state = "done";
+    status.message = summary;
+    status.elapsed = elapsed + "s";
+  } catch (err) {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const msg = `Data import failed after ${elapsed}s: ${(err as Error).message}`;
+    console.error(msg);
+    await client.query(
+      `UPDATE job_runs SET status = 'failed', message = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      [msg, jobLogId]
+    ).catch(() => {});
+    throw err;
+  } finally {
+    await client.end();
+  }
+}
+
+async function insertFaceBatch(client: pg.Client, rows: (string | number | null)[][]): Promise<void> {
+  if (rows.length === 0) return;
+  const values: string[] = [];
+  const params: (string | number | null)[] = [];
+  rows.forEach((row, j) => {
+    const o = j * 13 + 1;
+    values.push(`($${o}::uuid,$${o+1}::int,$${o+2},$${o+3},$${o+4},$${o+5},$${o+6}::jsonb,$${o+7},$${o+8},$${o+9},$${o+10},$${o+11}::uuid,$${o+12}::jsonb)`);
+    for (const v of row) params.push(v);
+  });
+  await client.query(
+    `INSERT INTO card_faces
+       (scryfall_id, face_index, name, mana_cost, type_line, oracle_text,
+        colors, power, toughness, loyalty, defense, illustration_id, image_uris)
+     VALUES ${values.join(", ")}
+     ON CONFLICT (scryfall_id, face_index) DO NOTHING`,
+    params
+  );
+}
+
 // ── Tag import job ───────────────────────────────────────
 
 interface ScryfallTag {
@@ -741,6 +1185,11 @@ async function runJob(
     console.error(`  ${msg}`);
     status.state = "error";
     status.error = msg;
+    return;
+  }
+
+  if (jobType === "data") {
+    await importData();
     return;
   }
 

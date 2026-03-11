@@ -201,7 +201,9 @@ export default {
       });
 
       const jobLabel =
-        jobType === "tags"
+        jobType === "data"
+          ? "card data import from Scryfall"
+          : jobType === "tags"
           ? "tag import"
           : jobType === "prices"
             ? "price import from Scryfall"
