@@ -350,6 +350,32 @@ def _insert_face_batch(cur, conn, batch):
     conn.commit()
 
 
+def update_digital_only(cur, conn):
+    """Mark cards as digital_only if all printings are in digital sets, or Alchemy/art_series."""
+    print("Updating digital_only flags...")
+    # Reset all to false first
+    cur.execute("UPDATE oracle_cards SET digital_only = FALSE")
+    # Cards where every printing is in a digital-only set
+    cur.execute("""
+        UPDATE oracle_cards o SET digital_only = TRUE
+        WHERE NOT EXISTS (
+            SELECT 1 FROM printings p
+            JOIN sets s ON s.set_code = p.set_code
+            WHERE p.oracle_id = o.oracle_id AND s.digital = FALSE
+        )
+    """)
+    digital_count = cur.rowcount
+    # Alchemy rebalanced cards (A- prefix)
+    cur.execute("UPDATE oracle_cards SET digital_only = TRUE WHERE name LIKE 'A-%%' AND digital_only = FALSE")
+    alchemy_count = cur.rowcount
+    # Art series layout
+    cur.execute("UPDATE oracle_cards SET digital_only = TRUE WHERE layout = 'art_series' AND digital_only = FALSE")
+    art_count = cur.rowcount
+    conn.commit()
+    total = digital_count + alchemy_count + art_count
+    print(f"  Marked {total} cards as digital_only ({digital_count} digital, {alchemy_count} Alchemy, {art_count} art_series)")
+
+
 def print_stats(cur):
     print("\n=== Database Statistics ===")
     stats = [
@@ -390,6 +416,7 @@ def main():
     import_sets(cur, conn)
     import_oracle_cards(cur, conn, slugs)
     import_printings(cur, conn, slugs)
+    update_digital_only(cur, conn)
     print_stats(cur)
 
     elapsed = time.time() - start
