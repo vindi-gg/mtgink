@@ -166,8 +166,20 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
 
   filtersRef.current = filters;
 
-  // Reset card preview when pair changes
-  useEffect(() => { setShowingCard(null); }, [pair]);
+  const isFirstPair = useRef(true);
+
+  // Reset card preview when pair changes + update URL with current matchup (skip initial)
+  useEffect(() => {
+    setShowingCard(null);
+    if (isFirstPair.current) {
+      isFirstPair.current = false;
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("a", pair.a.illustration_id);
+    url.searchParams.set("b", pair.b.illustration_id);
+    window.history.replaceState(null, "", url.toString());
+  }, [pair]);
 
   // On mobile, scroll past nav so art is fully visible
   useEffect(() => {

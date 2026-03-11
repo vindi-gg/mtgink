@@ -984,12 +984,13 @@ export async function getCreatureTribes(): Promise<Tribe[]> {
 export async function getCardsByTribe(
   tribe: string,
   page = 1,
-  pageSize = 60
+  pageSize = 60,
+  sort: "name" | "popular" | "price" = "popular"
 ): Promise<{ cards: BrowseCard[]; total: number }> {
   const offset = (page - 1) * pageSize;
   const [{ data, error }, { data: countData }] = await Promise.all([
     getAdminClient().rpc("get_cards_by_tribe", {
-      p_slug: tribe, p_limit: pageSize, p_offset: offset,
+      p_slug: tribe, p_limit: pageSize, p_offset: offset, p_sort: sort,
     }),
     getAdminClient().rpc("count_cards_by_tribe", { p_slug: tribe }),
   ]);

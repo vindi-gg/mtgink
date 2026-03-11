@@ -136,6 +136,20 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
   filtersRef.current = filters;
   pairRef.current = pair;
 
+  const isFirstPair = useRef(true);
+
+  // Update URL with current matchup IDs (skip initial to preserve clean URLs like ?subtype=elf)
+  useEffect(() => {
+    if (isFirstPair.current) {
+      isFirstPair.current = false;
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("a", pair.a.oracle_id);
+    url.searchParams.set("b", pair.b.oracle_id);
+    window.history.replaceState(null, "", url.toString());
+  }, [pair]);
+
   function changeViewMode(mode: ViewMode) {
     setViewMode(mode);
     localStorage.setItem("mtgink_view_mode", mode);
@@ -338,7 +352,13 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
     <div>
       {/* Compact heading — auto-scales to fit one line */}
       <h2 className="font-bold text-center mb-1 md:mb-2 text-base md:text-lg truncate max-w-full px-2">
-        Which card is best?
+        {filters.subtype ? (
+          <>Which <span className="text-amber-400 capitalize">{filters.subtype}</span> is best?</>
+        ) : filters.type ? (
+          <>Which <span className="text-amber-400 capitalize">{filters.type}</span> is best?</>
+        ) : (
+          <>Which card is best?</>
+        )}
       </h2>
 
       <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6 max-w-4xl mx-auto">

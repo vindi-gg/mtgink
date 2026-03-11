@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function AuthPage() {
   const [email, setEmail] = useState("");
@@ -11,9 +11,11 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/";
   const supabase = createClient();
 
-  const redirectTo = `${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback`;
+  const redirectTo = `${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback?returnTo=${encodeURIComponent(returnTo)}`;
 
   async function handleOAuth(provider: "google" | "discord") {
     if (!supabase) return;
@@ -45,7 +47,7 @@ export default function AuthPage() {
       return;
     }
 
-    router.push("/");
+    router.push(returnTo);
     router.refresh();
   }
 

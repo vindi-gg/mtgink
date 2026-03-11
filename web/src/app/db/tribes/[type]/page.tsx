@@ -34,16 +34,17 @@ export default async function TribeDetailPage({
   searchParams,
 }: {
   params: Promise<{ type: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; sort?: string }>;
 }) {
   const { type } = await params;
-  const { page: pageStr } = await searchParams;
+  const { page: pageStr, sort: sortParam } = await searchParams;
   const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const sort = sortParam === "name" ? "name" as const : sortParam === "price" ? "price" as const : "popular" as const;
 
   const tribe = await getTribeBySlug(type);
   if (!tribe) notFound();
 
-  const { cards, total } = await getCardsByTribe(type, page, PAGE_SIZE);
+  const { cards, total } = await getCardsByTribe(type, page, PAGE_SIZE, sort);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
@@ -65,6 +66,46 @@ export default async function TribeDetailPage({
             <p className="text-gray-400 text-sm">
               {total.toLocaleString()} creatures
             </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
+              <Link
+                href={`/db/tribes/${type}`}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  sort === "popular"
+                    ? "bg-amber-500 text-gray-900"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                Popular
+              </Link>
+              <Link
+                href={`/db/tribes/${type}?sort=price`}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  sort === "price"
+                    ? "bg-amber-500 text-gray-900"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                $
+              </Link>
+              <Link
+                href={`/db/tribes/${type}?sort=name`}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  sort === "name"
+                    ? "bg-amber-500 text-gray-900"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                }`}
+              >
+                A–Z
+              </Link>
+            </div>
+            <Link
+              href={`/clash?subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}`}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
+            >
+              Clash
+            </Link>
           </div>
         </div>
 

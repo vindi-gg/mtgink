@@ -24,7 +24,7 @@ export default function FavoriteButton({
     e.preventDefault();
     const result = await onToggle(illustrationId, oracleId);
     if (result === "auth_required") {
-      router.push("/auth");
+      router.push(`/auth?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     }
   }
 
