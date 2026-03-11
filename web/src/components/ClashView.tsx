@@ -287,7 +287,7 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
       <div className="flex flex-col items-center">
         <a
           href={`/card/${card.slug}`}
-          className="text-sm font-bold text-amber-400 hover:text-amber-300 mb-2 transition-colors"
+          className="text-xs font-bold text-amber-400 hover:text-amber-300 mb-1 transition-colors truncate max-w-full"
         >
           {card.name}
         </a>
@@ -322,47 +322,70 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
             />
           </div>
         </div>
-        <div className="mt-3 text-center">
-          <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-            {card.type_line && <span>{card.type_line.split("\u2014")[0].trim()}</span>}
-            {card.mana_cost && (
-              <>
-                <span className="text-gray-700">&middot;</span>
-                {renderManaCost(card.mana_cost)}
-              </>
-            )}
-          </div>
-          <div className="mt-1">
-            <PriceTag oracleId={card.oracle_id} />
-          </div>
-        </div>
       </div>
     );
   }
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-center mb-4">
+      {/* Compact heading */}
+      <h2 className="text-lg font-bold text-center mb-3">
         Which card wins?
       </h2>
 
-      {/* Sub-mode toggle */}
-      <div className="flex justify-center mb-4">
+      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-4 md:gap-6 max-w-4xl mx-auto">
+        {renderSide(pair.a, pair.b, pair.a_rating)}
+        {renderSide(pair.b, pair.a, pair.b_rating)}
+      </div>
+
+      {voting && (
+        <p className="text-center text-amber-400 text-sm mt-3">Loading next...</p>
+      )}
+
+      {/* Controls below cards */}
+      <div className="flex justify-center gap-3 mt-4">
+        <button
+          onClick={skip}
+          disabled={voting}
+          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
+        >
+          Skip (S)
+        </button>
+      </div>
+
+      {/* Sub-mode + view mode toggles */}
+      <div className="flex justify-center gap-3 mt-4">
         <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
-          <span className="px-5 py-2 text-sm font-bold bg-amber-500 text-gray-900">
+          <span className="px-4 py-1.5 text-xs font-bold bg-amber-500 text-gray-900">
             VS
           </span>
           <Link
             href="/clash/gauntlet"
-            className="px-5 py-2 text-sm font-bold text-gray-600 hover:text-gray-400 transition-colors"
+            className="px-4 py-1.5 text-xs font-bold text-gray-600 hover:text-gray-400 transition-colors"
           >
             Gauntlet
           </Link>
         </div>
+
+        <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
+          {viewModes.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => changeViewMode(m.value)}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === m.value
+                  ? "bg-amber-500 text-gray-900"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="max-w-4xl mx-auto mb-4">
+      {/* Filters */}
+      <div className="max-w-4xl mx-auto mt-4">
         <div className="flex items-center justify-center gap-2 mb-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
@@ -485,46 +508,8 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
         )}
       </div>
 
-      {/* View mode toggle */}
-      <div className="flex justify-center mb-6">
-        <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
-          {viewModes.map((m) => (
-            <button
-              key={m.value}
-              onClick={() => changeViewMode(m.value)}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                viewMode === m.value
-                  ? "bg-amber-500 text-gray-900"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {voting && (
-        <p className="text-center text-amber-400 text-sm mb-4">Loading next...</p>
-      )}
-
-      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-4 md:gap-6 max-w-4xl mx-auto">
-        {renderSide(pair.a, pair.b, pair.a_rating)}
-        {renderSide(pair.b, pair.a, pair.b_rating)}
-      </div>
-
-      <div className="flex justify-center gap-4 mt-6">
-        <button
-          onClick={skip}
-          disabled={voting}
-          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
-        >
-          Skip (S)
-        </button>
-      </div>
-
-      <p className="text-center text-xs text-gray-600 mt-4">
-        Use arrow keys to vote, S to skip
+      <p className="text-center text-xs text-gray-600 mt-3">
+        Arrow keys to vote, S to skip
       </p>
     </div>
   );
