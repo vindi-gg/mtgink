@@ -5,6 +5,7 @@ import Link from "next/link";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
+import RecentActivity from "./RecentActivity";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { GauntletEntry, CompareFilters } from "@/lib/types";
@@ -585,6 +586,8 @@ export default function GauntletView({
         {renderModeLinks()}
         {renderViewToggle()}
       </div>
+
+      {!hideControls && <RecentActivity />}
     </div>
   );
 }

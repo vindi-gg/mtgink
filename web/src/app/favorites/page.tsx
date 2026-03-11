@@ -8,6 +8,20 @@ import FavoriteButton from "@/components/FavoriteButton";
 import type { FavoriteEntry, FavoriteSource } from "@/lib/types";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
 
+interface CardFavorite {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  type_line: string | null;
+  set_code: string;
+  collector_number: string;
+  image_version: string | null;
+  artist: string;
+  created_at: string;
+}
+
+type Tab = "ink" | "clash" | "cards";
+
 const PAGE_SIZE = 50;
 
 function FavoriteGrid({
@@ -81,11 +95,14 @@ export default function FavoritesPage() {
   const [clashFavorites, setClashFavorites] = useState<FavoriteEntry[]>([]);
   const [inkTotal, setInkTotal] = useState(0);
   const [clashTotal, setClashTotal] = useState(0);
+  const [cardFavorites, setCardFavorites] = useState<CardFavorite[]>([]);
+  const [cardTotal, setCardTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMoreInk, setLoadingMoreInk] = useState(false);
   const [loadingMoreClash, setLoadingMoreClash] = useState(false);
+  const [loadingMoreCards, setLoadingMoreCards] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [activeTab, setActiveTab] = useState<FavoriteSource>("ink");
+  const [activeTab, setActiveTab] = useState<Tab>("ink");
 
   useEffect(() => {
     if (!supabase) {
@@ -116,23 +133,38 @@ export default function FavoritesPage() {
     []
   );
 
+  const fetchCardFavorites = useCallback(
+    async (offset: number) => {
+      const res = await fetch(`/api/card-favorites?limit=${PAGE_SIZE}&offset=${offset}`);
+      if (!res.ok) return null;
+      return res.json() as Promise<{ cards: CardFavorite[]; total: number }>;
+    },
+    []
+  );
+
   useEffect(() => {
     if (!authChecked) return;
 
-    Promise.all([fetchFavorites(0, "ink"), fetchFavorites(0, "clash")]).then(
-      ([inkData, clashData]) => {
-        if (inkData) {
-          setInkFavorites(inkData.favorites);
-          setInkTotal(inkData.total);
-        }
-        if (clashData) {
-          setClashFavorites(clashData.favorites);
-          setClashTotal(clashData.total);
-        }
-        setLoading(false);
+    Promise.all([
+      fetchFavorites(0, "ink"),
+      fetchFavorites(0, "clash"),
+      fetchCardFavorites(0),
+    ]).then(([inkData, clashData, cardData]) => {
+      if (inkData) {
+        setInkFavorites(inkData.favorites);
+        setInkTotal(inkData.total);
       }
-    );
-  }, [authChecked, fetchFavorites]);
+      if (clashData) {
+        setClashFavorites(clashData.favorites);
+        setClashTotal(clashData.total);
+      }
+      if (cardData) {
+        setCardFavorites(cardData.cards);
+        setCardTotal(cardData.total);
+      }
+      setLoading(false);
+    });
+  }, [authChecked, fetchFavorites, fetchCardFavorites]);
 
   async function loadMore(source: FavoriteSource) {
     const current = source === "ink" ? inkFavorites : clashFavorites;
@@ -152,6 +184,16 @@ export default function FavoritesPage() {
     setLoadingMore(false);
   }
 
+  async function loadMoreCards() {
+    setLoadingMoreCards(true);
+    const data = await fetchCardFavorites(cardFavorites.length);
+    if (data) {
+      setCardFavorites((prev) => [...prev, ...data.cards]);
+      setCardTotal(data.total);
+    }
+    setLoadingMoreCards(false);
+  }
+
   async function handleUnfavorite(illustrationId: string, source: FavoriteSource) {
     const res = await fetch(`/api/favorites/${illustrationId}`, {
       method: "DELETE",
@@ -167,6 +209,18 @@ export default function FavoritesPage() {
     }
   }
 
+  async function handleUnsaveCard(oracleId: string) {
+    const res = await fetch("/api/card-favorites", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oracle_id: oracleId }),
+    });
+    if (res.ok) {
+      setCardFavorites((prev) => prev.filter((f) => f.oracle_id !== oracleId));
+      setCardTotal((prev) => prev - 1);
+    }
+  }
+
   if (!authChecked) {
     return (
       <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
@@ -177,10 +231,7 @@ export default function FavoritesPage() {
     );
   }
 
-  const totalAll = inkTotal + clashTotal;
-  const currentItems = activeTab === "ink" ? inkFavorites : clashFavorites;
-  const currentTotal = activeTab === "ink" ? inkTotal : clashTotal;
-  const isLoadingMore = activeTab === "ink" ? loadingMoreInk : loadingMoreClash;
+  const totalAll = inkTotal + clashTotal + cardTotal;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
@@ -193,46 +244,108 @@ export default function FavoritesPage() {
         </p>
 
         {/* Tab toggle */}
-        <div className="flex gap-1 mb-6">
+        <div className="flex gap-1 mb-6 border-b border-gray-800">
           <button
             onClick={() => setActiveTab("ink")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
               activeTab === "ink"
-                ? "bg-amber-500 text-gray-900"
-                : "text-gray-400 hover:text-white hover:bg-gray-800"
+                ? "border-amber-500 text-amber-400"
+                : "border-transparent text-gray-400 hover:text-gray-200"
             }`}
           >
-            Illustrations{inkTotal > 0 ? ` (${inkTotal})` : ""}
+            Art{inkTotal > 0 ? ` (${inkTotal})` : ""}
           </button>
           <button
             onClick={() => setActiveTab("clash")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
               activeTab === "clash"
-                ? "bg-amber-500 text-gray-900"
-                : "text-gray-400 hover:text-white hover:bg-gray-800"
+                ? "border-amber-500 text-amber-400"
+                : "border-transparent text-gray-400 hover:text-gray-200"
             }`}
           >
-            Cards{clashTotal > 0 ? ` (${clashTotal})` : ""}
+            Clash{clashTotal > 0 ? ` (${clashTotal})` : ""}
+          </button>
+          <button
+            onClick={() => setActiveTab("cards")}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === "cards"
+                ? "border-amber-500 text-amber-400"
+                : "border-transparent text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            Saved Cards{cardTotal > 0 ? ` (${cardTotal})` : ""}
           </button>
         </div>
 
         {loading ? (
           <div className="text-gray-400">Loading favorites...</div>
+        ) : activeTab === "cards" ? (
+          <>
+            {cardFavorites.length === 0 ? (
+              <div className="text-gray-500 text-sm">
+                Use the &quot;Save Card&quot; button on any card page to save it here.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {cardFavorites.map((card) => (
+                  <div
+                    key={card.oracle_id}
+                    className="bg-gray-900 rounded-lg overflow-hidden border border-gray-800"
+                  >
+                    <Link href={`/card/${card.slug}`}>
+                      <img
+                        src={artCropUrl(card.set_code, card.collector_number, card.image_version)}
+                        alt={card.name}
+                        className="w-full aspect-[4/3] object-cover"
+                        loading="lazy"
+                      />
+                    </Link>
+                    <div className="p-3 flex items-start justify-between gap-2">
+                      <Link href={`/card/${card.slug}`} className="min-w-0">
+                        <p className="text-sm font-medium text-gray-200 truncate">{card.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{card.type_line}</p>
+                      </Link>
+                      <button
+                        onClick={() => handleUnsaveCard(card.oracle_id)}
+                        className="text-amber-400 hover:text-red-400 text-xs shrink-0 transition-colors"
+                        title="Remove"
+                      >
+                        ★
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {cardFavorites.length < cardTotal && (
+              <button
+                onClick={loadMoreCards}
+                disabled={loadingMoreCards}
+                className="mt-6 w-full py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium text-gray-300 transition-colors disabled:opacity-50"
+              >
+                {loadingMoreCards ? "Loading..." : "Load more"}
+              </button>
+            )}
+          </>
         ) : (
           <>
             <FavoriteGrid
-              items={currentItems}
-              source={activeTab}
-              onUnfavorite={(id) => handleUnfavorite(id, activeTab)}
+              items={activeTab === "ink" ? inkFavorites : clashFavorites}
+              source={activeTab as FavoriteSource}
+              onUnfavorite={(id) => handleUnfavorite(id, activeTab as FavoriteSource)}
             />
 
-            {currentItems.length < currentTotal && (
+            {(activeTab === "ink" ? inkFavorites : clashFavorites).length <
+              (activeTab === "ink" ? inkTotal : clashTotal) && (
               <button
-                onClick={() => loadMore(activeTab)}
-                disabled={isLoadingMore}
+                onClick={() => loadMore(activeTab as FavoriteSource)}
+                disabled={activeTab === "ink" ? loadingMoreInk : loadingMoreClash}
                 className="mt-6 w-full py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium text-gray-300 transition-colors disabled:opacity-50"
               >
-                {isLoadingMore ? "Loading..." : "Load more"}
+                {(activeTab === "ink" ? loadingMoreInk : loadingMoreClash)
+                  ? "Loading..."
+                  : "Load more"}
               </button>
             )}
           </>

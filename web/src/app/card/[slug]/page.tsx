@@ -9,6 +9,7 @@ import {
 } from "@/lib/queries";
 import { getAdminClient } from "@/lib/supabase/admin";
 import ArtGallery from "@/components/ArtGallery";
+import FavoriteCardButton from "@/components/FavoriteCardButton";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
 
@@ -127,24 +128,25 @@ export default async function CardPage({
               {card.type_line && ` · ${card.type_line}`}
             </p>
           </div>
-          {illustrations.length >= 2 && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
+            <FavoriteCardButton oracleId={card.oracle_id} />
+            {illustrations.length >= 2 && (
               <Link
                 href={`/showdown/remix?oracle_id=${card.oracle_id}`}
                 className="px-4 py-2 text-sm bg-amber-500 text-black font-medium rounded-lg hover:bg-amber-400 transition-colors"
               >
                 Remix
               </Link>
-              {illustrations.length >= 3 && (
-                <Link
-                  href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}
-                  className="px-4 py-2 text-sm border border-amber-500 text-amber-400 font-medium rounded-lg hover:bg-amber-500/10 transition-colors"
-                >
-                  Gauntlet
-                </Link>
-              )}
-            </div>
-          )}
+            )}
+            {illustrations.length >= 3 && (
+              <Link
+                href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}
+                className="px-4 py-2 text-sm border border-amber-500 text-amber-400 font-medium rounded-lg hover:bg-amber-500/10 transition-colors"
+              >
+                Gauntlet
+              </Link>
+            )}
+          </div>
         </div>
 
         <ArtGallery illustrations={illustrationsWithRatings} oracleId={card.oracle_id} />
