@@ -154,6 +154,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
   const [filterError, setFilterError] = useState<string | null>(null);
   const [subMode, setSubMode] = useState<"mirror" | "vs">(initialSubMode);
   const [showingCard, setShowingCard] = useState<string | null>(null);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
 
   function showCardPreview(illustrationId: string) {
@@ -401,16 +402,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     cardUrl: string,
     sideCard: typeof pair.card
   ) {
-    const handleClick = (e?: React.MouseEvent) => {
-      // In Ink mode on mobile: left 25% opens card preview, rest votes
-      if (isInk && e) {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        if (x < rect.width * 0.25) {
-          showCardPreview(side.illustration_id);
-          return;
-        }
-      }
+    const handleClick = () => {
       vote(side.illustration_id, otherSide.illustration_id);
     };
 
@@ -444,34 +436,36 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
                 onImageError={skip}
                 className="w-full"
               />
-              {/* Tap zone hint overlay — thin bar at bottom of art */}
+              {/* Bottom-left card preview button — tap on mobile, hover on desktop */}
               {isInk && (
-                <div className="absolute bottom-0 left-0 right-0 z-10 flex pointer-events-none" style={{ height: 10 }}>
-                  <div className="w-1/4 bg-white/30 flex items-center justify-center">
-                    <span className="text-[6px] font-bold text-white/90 uppercase tracking-wider">Card</span>
-                  </div>
-                  <div className="w-3/4 bg-black/30 flex items-center justify-center">
-                    <span className="text-[6px] font-bold text-white/90 uppercase tracking-wider">Vote</span>
-                  </div>
-                </div>
-              )}
-              {/* Desktop card preview overlay */}
-              {isInk && showingCard === side.illustration_id && (
-                <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center bg-black/80 rounded-[3.8%] animate-fade-in pointer-events-none">
-                  <img
-                    src={cardUrl}
-                    alt={`${sideCard.name} full card`}
-                    className="max-h-full max-w-full rounded-[3.8%]"
-                  />
-                </div>
-              )}
-              {/* Desktop hover zone — left 25% reveals card on hover */}
-              {isInk && (
-                <div
-                  className="absolute inset-y-0 left-0 w-1/4 z-30 cursor-zoom-in hidden md:block"
-                  onPointerEnter={() => setShowingCard(side.illustration_id)}
-                  onPointerLeave={() => setShowingCard(null)}
-                />
+                <button
+                  type="button"
+                  className="absolute bottom-2 left-2 z-30 w-8 h-10 rounded bg-black/40 backdrop-blur-sm flex items-center justify-center cursor-zoom-in hover:bg-black/60 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showCardPreview(side.illustration_id);
+                  }}
+                  onPointerEnter={(e) => {
+                    if (window.innerWidth >= 768) {
+                      setShowingCard(side.illustration_id);
+                      setCursorPos({ x: e.clientX, y: e.clientY });
+                    }
+                  }}
+                  onPointerMove={(e) => {
+                    if (window.innerWidth >= 768) setCursorPos({ x: e.clientX, y: e.clientY });
+                  }}
+                  onPointerLeave={() => {
+                    if (window.innerWidth >= 768) { setShowingCard(null); setCursorPos(null); }
+                  }}
+                >
+                  {/* Simple card icon */}
+                  <svg width="16" height="20" viewBox="0 0 16 20" fill="none" className="text-white/70">
+                    <rect x="1" y="1" width="14" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                    <rect x="3.5" y="3.5" width="9" height="6" rx="0.5" fill="currentColor" opacity="0.4" />
+                    <line x1="3.5" y1="12" x2="12.5" y2="12" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+                    <line x1="3.5" y1="14.5" x2="10" y2="14.5" stroke="currentColor" strokeWidth="1" opacity="0.3" />
+                  </svg>
+                </button>
               )}
             </>
           )}
@@ -762,7 +756,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
         Arrow keys to vote, S to skip
       </p>
 
-      {/* Fullscreen card preview modal — mobile-friendly */}
+      {/* Fullscreen card preview modal — mobile-only */}
       {showingCard && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fade-in md:hidden"
@@ -776,6 +770,28 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
             )}
             alt="Card preview"
             className="max-h-[85vh] max-w-full rounded-[3.8%]"
+          />
+        </div>
+      )}
+
+      {/* Desktop card preview — follows cursor, large enough to read */}
+      {showingCard && cursorPos && (
+        <div
+          className="fixed z-50 pointer-events-none hidden md:block"
+          style={{
+            left: cursorPos.x + 20,
+            top: Math.min(cursorPos.y - 200, window.innerHeight - 520),
+            width: 336,
+          }}
+        >
+          <img
+            src={normalCardUrl(
+              (showingCard === pair.a.illustration_id ? pair.a : pair.b).set_code,
+              (showingCard === pair.a.illustration_id ? pair.a : pair.b).collector_number,
+              (showingCard === pair.a.illustration_id ? pair.a : pair.b).image_version
+            )}
+            alt="Card preview"
+            className="w-full rounded-[3.8%] shadow-2xl shadow-black/80"
           />
         </div>
       )}
