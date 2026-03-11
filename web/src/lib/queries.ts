@@ -18,12 +18,16 @@ import type {
   ClashPair,
   CardRating,
   CardVotePayload,
+  GauntletEntry,
   Artist,
   ArtistStats,
   ArtistIllustration,
   Tribe,
   Tag,
   BrowseCard,
+  DailyChallenge,
+  DailyChallengeStats,
+  DailyChallengeWithStatus,
 } from "./types";
 
 /** Row shape returned by get_comparison_pair / get_cross_comparison_pair RPCs */
@@ -258,13 +262,14 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
   return { ...m, colors: m.colors ? JSON.stringify(m.colors) : null };
 }
 
-/** Get all printings for a card, grouped by illustration_id */
+/** Get all printings for a card, grouped by illustration_id (excludes digital-only sets) */
 export async function getPrintingsForCard(oracleId: string): Promise<Map<string, Printing[]>> {
   const { data, error } = await getAdminClient()
     .from("printings")
-    .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, image_version, sets!inner(name)")
+    .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, image_version, sets!inner(name, digital)")
     .eq("oracle_id", oracleId)
     .not("illustration_id", "is", null)
+    .eq("sets.digital", false)
     .order("released_at", { ascending: true });
 
   if (error) throw new Error(`Failed to get printings: ${error.message}`);
@@ -768,6 +773,24 @@ function toCardRating(row: ClashPairRow): CardRating | null {
   };
 }
 
+/** Resolve a short printing ref (e.g. "ice-64") to illustration_id and oracle_id */
+export async function resolvePrintingRef(ref: string): Promise<{ illustration_id: string; oracle_id: string } | null> {
+  const dash = ref.indexOf("-");
+  if (dash < 1) return null;
+  const setCode = ref.slice(0, dash);
+  const collectorNumber = ref.slice(dash + 1);
+
+  const { data } = await getAdminClient()
+    .from("printings")
+    .select("illustration_id, oracle_id")
+    .eq("set_code", setCode)
+    .eq("collector_number", collectorNumber)
+    .limit(1)
+    .maybeSingle();
+
+  return data ?? null;
+}
+
 /** Get a specific ink matchup by two illustration IDs */
 export async function getSpecificComparisonPair(illustrationIdA: string, illustrationIdB: string): Promise<ComparisonPair | null> {
   const admin = getAdminClient();
@@ -1049,4 +1072,224 @@ export async function getCardsByTag(
   ]);
   if (error) throw new Error(`Failed to load tag cards: ${error.message}`);
   return { cards: (data ?? []) as BrowseCard[], total: countData ?? 0 };
+}
+
+// =============================================================================
+// Gauntlet — king of the hill pools
+// =============================================================================
+
+/** Get all illustrations for a card as gauntlet entries (remix mode) */
+export async function getGauntletIllustrations(oracleId: string): Promise<GauntletEntry[]> {
+  const [card, illustrations] = await Promise.all([
+    getCardByOracleId(oracleId),
+    getIllustrationsForCard(oracleId),
+  ]);
+
+  if (!card || illustrations.length === 0) return [];
+
+  return illustrations.map((ill) => ({
+    name: card.name,
+    slug: card.slug,
+    oracle_id: card.oracle_id,
+    illustration_id: ill.illustration_id,
+    artist: ill.artist,
+    set_code: ill.set_code,
+    set_name: ill.set_name,
+    collector_number: ill.collector_number,
+    image_version: ill.image_version,
+    type_line: card.type_line,
+    mana_cost: card.mana_cost,
+  }));
+}
+
+/** Pick a random card with 5+ illustrations for a remix gauntlet */
+export async function getRandomGauntletCard(): Promise<OracleCard | null> {
+  const cards = await getRandomCards(1, 5);
+  return cards[0] ?? null;
+}
+
+/** Pick a random creature tribe with 10+ cards for a group gauntlet */
+export async function getRandomGauntletGroup(): Promise<{ subtype: string; label: string } | null> {
+  const { data } = await getAdminClient().rpc("get_creature_tribes");
+  if (!data) return null;
+  const eligible = (data as { tribe: string; slug: string; card_count: number }[]).filter(
+    (t) => t.card_count >= 10,
+  );
+  if (eligible.length === 0) return null;
+  const pick = eligible[Math.floor(Math.random() * eligible.length)];
+  return { subtype: pick.tribe, label: pick.tribe };
+}
+
+// =============================================================================
+// Daily Challenges
+// =============================================================================
+
+/** Get today's daily challenges with participation status */
+export async function getDailyChallenges(sessionId: string): Promise<DailyChallengeWithStatus[]> {
+  const today = new Date().toISOString().split("T")[0];
+
+  // Generate challenges if they don't exist (idempotent)
+  const { data: challenges, error } = await getAdminClient().rpc("generate_daily_challenges", {
+    p_date: today,
+  });
+
+  if (error) throw new Error(`Failed to get daily challenges: ${error.message}`);
+  if (!challenges || challenges.length === 0) return [];
+
+  const challengeIds = (challenges as DailyChallenge[]).map((c) => c.id);
+
+  // Get stats and participation status in parallel
+  const [{ data: statsData }, { data: participationData }] = await Promise.all([
+    getAdminClient()
+      .from("daily_challenge_stats")
+      .select("*")
+      .in("challenge_id", challengeIds),
+    getAdminClient()
+      .from("daily_participations")
+      .select("challenge_id")
+      .in("challenge_id", challengeIds)
+      .eq("session_id", sessionId),
+  ]);
+
+  const statsMap = new Map(
+    (statsData ?? []).map((s: DailyChallengeStats & { challenge_id: number }) => [s.challenge_id, s]),
+  );
+  const participatedSet = new Set(
+    (participationData ?? []).map((p: { challenge_id: number }) => p.challenge_id),
+  );
+
+  return (challenges as DailyChallenge[]).map((c) => ({
+    ...c,
+    stats: statsMap.get(c.id) ?? {
+      participation_count: 0,
+      illustration_votes: null,
+      side_a_votes: 0,
+      side_b_votes: 0,
+      champion_counts: null,
+      avg_champion_wins: null,
+      max_champion_wins: 0,
+    },
+    participated: participatedSet.has(c.id),
+  }));
+}
+
+/** Get a single daily challenge by type for today */
+export async function getDailyChallenge(type: string): Promise<DailyChallenge | null> {
+  const today = new Date().toISOString().split("T")[0];
+
+  // Ensure challenges exist
+  await getAdminClient().rpc("generate_daily_challenges", { p_date: today });
+
+  const { data } = await getAdminClient()
+    .from("daily_challenges")
+    .select("*")
+    .eq("challenge_date", today)
+    .eq("challenge_type", type)
+    .maybeSingle();
+
+  return data as DailyChallenge | null;
+}
+
+/** Record daily participation and return updated stats */
+export async function recordDailyParticipation(
+  challengeId: number,
+  sessionId: string,
+  userId: string | null,
+  result: Record<string, unknown>,
+): Promise<DailyChallengeStats> {
+  const { data, error } = await getAdminClient().rpc("record_daily_participation", {
+    p_challenge_id: challengeId,
+    p_session_id: sessionId,
+    p_user_id: userId,
+    p_result: result,
+  });
+
+  if (error) throw new Error(`Failed to record participation: ${error.message}`);
+  const row = (data as Record<string, unknown>[])[0];
+  return {
+    participation_count: row.participation_count as number,
+    illustration_votes: row.illustration_votes as Record<string, number> | null,
+    side_a_votes: row.side_a_votes as number,
+    side_b_votes: row.side_b_votes as number,
+    champion_counts: row.champion_counts as Record<string, number> | null,
+    avg_champion_wins: row.avg_champion_wins as number | null,
+    max_champion_wins: row.max_champion_wins as number,
+  };
+}
+
+/** Check if a session has participated in a challenge */
+export async function hasParticipated(challengeId: number, sessionId: string): Promise<boolean> {
+  const { data } = await getAdminClient()
+    .from("daily_participations")
+    .select("id")
+    .eq("challenge_id", challengeId)
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  return !!data;
+}
+
+/** Get stats for a challenge */
+export async function getDailyChallengeStats(challengeId: number): Promise<DailyChallengeStats | null> {
+  const { data } = await getAdminClient()
+    .from("daily_challenge_stats")
+    .select("*")
+    .eq("challenge_id", challengeId)
+    .maybeSingle();
+  return data as DailyChallengeStats | null;
+}
+
+/** Get random cards with representative printings as gauntlet entries (VS mode) */
+export async function getGauntletCards(
+  count: number,
+  filters?: CompareFilters,
+  excludeOracleIds?: string[],
+): Promise<GauntletEntry[]> {
+  const fetchCount = excludeOracleIds?.length ? count * 3 : count;
+  const cards = await getRandomCards(fetchCount, 1, filters);
+
+  let filtered = cards;
+  if (excludeOracleIds?.length) {
+    const excludeSet = new Set(excludeOracleIds);
+    filtered = cards.filter((c) => !excludeSet.has(c.oracle_id));
+  }
+  filtered = filtered.slice(0, count);
+  if (filtered.length === 0) return [];
+
+  // Batch fetch one representative printing per card (newest non-digital first)
+  const oracleIds = filtered.map((c) => c.oracle_id);
+  const { data: printings } = await getAdminClient()
+    .from("printings")
+    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
+    .in("oracle_id", oracleIds)
+    .not("illustration_id", "is", null)
+    .eq("sets.digital", false)
+    .order("released_at", { ascending: false });
+
+  // Deduplicate — one printing per oracle_id (newest first)
+  const printingMap = new Map<string, (typeof printings extends (infer T)[] | null ? T : never)>();
+  for (const p of printings ?? []) {
+    if (!printingMap.has(p.oracle_id)) {
+      printingMap.set(p.oracle_id, p);
+    }
+  }
+
+  return filtered
+    .map((card) => {
+      const printing = printingMap.get(card.oracle_id);
+      if (!printing) return null;
+      return {
+        name: card.name,
+        slug: card.slug,
+        oracle_id: card.oracle_id,
+        illustration_id: printing.illustration_id,
+        artist: printing.artist,
+        set_code: printing.set_code,
+        set_name: (printing.sets as unknown as { name: string }).name,
+        collector_number: printing.collector_number,
+        image_version: printing.image_version,
+        type_line: card.type_line,
+        mana_cost: card.mana_cost,
+      };
+    })
+    .filter((e): e is GauntletEntry => e !== null);
 }

@@ -157,7 +157,7 @@ function DeckCardRow({
             </Link>
             {artCount >= 2 && (
               <Link
-                href={`/compare?oracle_id=${oracleId}`}
+                href={`/showdown/remix?oracle_id=${oracleId}`}
                 className="hover:text-amber-400 transition-colors"
               >
                 Compare art

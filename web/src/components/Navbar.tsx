@@ -8,8 +8,8 @@ import type { User } from "@supabase/supabase-js";
 import SearchModal from "./SearchModal";
 
 function isActiveLink(pathname: string, href: string): boolean {
-  if (href === "/ink" && pathname.startsWith("/ink")) return true;
-  if (href === "/clash" && pathname.startsWith("/clash")) return true;
+  if (href === "/showdown/remix" && (pathname.startsWith("/showdown/remix") || pathname === "/showdown")) return true;
+  if (href === "/showdown/vs" && pathname.startsWith("/showdown/vs")) return true;
   if (href === "/db" && (pathname === "/db" || pathname.startsWith("/db/"))) return true;
   if (href === "/deck" && (pathname === "/deck" || pathname.startsWith("/deck/"))) return true;
   if (href === "/browse" && pathname.startsWith("/browse")) return true;
@@ -87,8 +87,8 @@ export default function Navbar() {
 
   // Primary links — always visible on desktop and mobile
   const primaryLinks = [
-    { href: "/ink", label: "Ink" },
-    { href: "/clash", label: "Clash" },
+    { href: "/showdown/remix", label: "Remix" },
+    { href: "/showdown/vs", label: "VS" },
   ];
 
   // Secondary links — visible on desktop, in hamburger on mobile

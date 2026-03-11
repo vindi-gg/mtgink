@@ -354,6 +354,58 @@ export interface BrowseCard {
   image_version: string | null;
 }
 
+// --- Gauntlet types ---
+
+export interface GauntletEntry {
+  name: string;
+  slug: string;
+  oracle_id: string;
+  illustration_id: string;
+  artist: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  image_version: string | null;
+  type_line: string | null;
+  mana_cost: string | null;
+}
+
+// --- Daily Challenge types ---
+
+export interface DailyChallenge {
+  id: number;
+  challenge_date: string;
+  challenge_type: "remix" | "vs" | "gauntlet";
+  oracle_id: string | null;
+  oracle_id_a: string | null;
+  oracle_id_b: string | null;
+  illustration_id_a: string | null;
+  illustration_id_b: string | null;
+  pool: GauntletEntry[] | null;
+  gauntlet_mode: "remix" | "vs" | null;
+  title: string;
+  description: string | null;
+  preview_set_code: string | null;
+  preview_collector_number: string | null;
+  preview_image_version: string | null;
+  created_at: string;
+}
+
+export interface DailyChallengeStats {
+  participation_count: number;
+  illustration_votes: Record<string, number> | null;
+  side_a_votes: number;
+  side_b_votes: number;
+  champion_counts: Record<string, number> | null;
+  avg_champion_wins: number | null;
+  max_champion_wins: number;
+}
+
+export interface DailyChallengeWithStatus extends DailyChallenge {
+  stats: DailyChallengeStats;
+  participated: boolean;
+}
+
 // --- Pricing types ---
 
 export interface Marketplace {

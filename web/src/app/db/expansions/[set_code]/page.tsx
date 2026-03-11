@@ -62,16 +62,16 @@ export default async function SetDetailPage({
             {cards.length} cards
           </p>
           <Link
-            href={`/ink?mode=vs&set_code=${set_code}`}
+            href={`/showdown/remix?set_code=${set_code}`}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
           >
-            Ink VS
+            Remix
           </Link>
           <Link
-            href={`/clash?set_code=${set_code}`}
+            href={`/showdown/vs?set_code=${set_code}`}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
           >
-            Clash
+            VS
           </Link>
         </div>
 

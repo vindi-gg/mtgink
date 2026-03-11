@@ -128,12 +128,22 @@ export default async function CardPage({
             </p>
           </div>
           {illustrations.length >= 2 && (
-            <Link
-              href={`/ink?oracle_id=${card.oracle_id}`}
-              className="px-4 py-2 text-sm bg-amber-500 text-black font-medium rounded-lg hover:bg-amber-400 transition-colors"
-            >
-              Compare arts
-            </Link>
+            <div className="flex gap-2">
+              <Link
+                href={`/showdown/remix?oracle_id=${card.oracle_id}`}
+                className="px-4 py-2 text-sm bg-amber-500 text-black font-medium rounded-lg hover:bg-amber-400 transition-colors"
+              >
+                Remix
+              </Link>
+              {illustrations.length >= 3 && (
+                <Link
+                  href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}
+                  className="px-4 py-2 text-sm border border-amber-500 text-amber-400 font-medium rounded-lg hover:bg-amber-500/10 transition-colors"
+                >
+                  Gauntlet
+                </Link>
+              )}
+            </div>
           )}
         </div>
 
