@@ -207,7 +207,14 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
       });
 
       if (!res.ok) {
-        console.error("Vote failed:", res.status, await res.text());
+        // Vote rejected (e.g. 429 duplicate) — still fetch a new pair so user isn't stuck
+        const fq = filtersToParams(filtersRef.current);
+        const fallback = await fetch(`/api/clash/compare${fq ? `?${fq}` : ""}`);
+        if (fallback.ok) {
+          const next: ClashPair = await fallback.json();
+          setPair(next);
+          pairRef.current = next;
+        }
         return;
       }
 

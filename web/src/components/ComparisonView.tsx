@@ -253,7 +253,14 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
       });
 
       if (!res.ok) {
-        console.error("Vote failed:", res.status, await res.text());
+        // Vote rejected (e.g. 429 duplicate) — still fetch a new pair so user isn't stuck
+        const aq = apiParams(filtersRef.current);
+        const fallback = await fetch(`/api/compare${aq ? `?${aq}` : ""}`);
+        if (fallback.ok) {
+          const next: ComparisonPair = await fallback.json();
+          setPair(next);
+          pairRef.current = next;
+        }
         return;
       }
 
