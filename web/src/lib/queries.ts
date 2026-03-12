@@ -1006,6 +1006,97 @@ export async function getCreatureTribes(): Promise<Tribe[]> {
   return (data ?? []) as Tribe[];
 }
 
+export interface TopCard {
+  oracle_id: string;
+  name: string;
+  slug: string;
+  type_line: string | null;
+  mana_cost: string | null;
+  illustration_count: number;
+  total_votes: number;
+  set_code: string;
+  collector_number: string;
+  image_version: string | null;
+}
+
+export async function getTopCards(
+  sort: "popular" | "prints" = "popular",
+  limit = 50,
+  offset = 0,
+): Promise<{ cards: TopCard[]; total: number }> {
+  const admin = getAdminClient();
+
+  // Step 1: get oracle_ids sorted appropriately
+  let query = admin
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, type_line, mana_cost, illustration_count", { count: "exact" })
+    .gt("illustration_count", 1);
+
+  if (sort === "prints") {
+    query = query.order("illustration_count", { ascending: false }).order("name", { ascending: true });
+  } else {
+    // For popular sort, we'll re-sort after joining votes
+    query = query.order("name", { ascending: true });
+  }
+
+  if (sort === "prints") {
+    query = query.range(offset, offset + limit - 1);
+  }
+
+  const { data: cards, count } = await query;
+  if (!cards || cards.length === 0) return { cards: [], total: 0 };
+
+  // Step 2: for popular sort, get vote counts and re-sort
+  let sortedCards = cards as { oracle_id: string; name: string; slug: string; type_line: string | null; mana_cost: string | null; illustration_count: number }[];
+  const votesMap = new Map<string, number>();
+
+  if (sort === "popular") {
+    // Get all vote counts for cards with illustrations
+    const oracleIds = sortedCards.map((c) => c.oracle_id);
+    const { data: ratings } = await admin
+      .from("art_ratings")
+      .select("oracle_id, vote_count")
+      .in("oracle_id", oracleIds)
+      .gt("vote_count", 0);
+
+    for (const r of ratings ?? []) {
+      votesMap.set(r.oracle_id, (votesMap.get(r.oracle_id) ?? 0) + r.vote_count);
+    }
+
+    sortedCards = sortedCards
+      .sort((a, b) => (votesMap.get(b.oracle_id) ?? 0) - (votesMap.get(a.oracle_id) ?? 0))
+      .slice(offset, offset + limit);
+  }
+
+  // Step 3: get representative printing for each card
+  const oracleIds = sortedCards.map((c) => c.oracle_id);
+  const { data: printings } = await admin
+    .from("printings")
+    .select("oracle_id, set_code, collector_number, image_version, released_at")
+    .in("oracle_id", oracleIds)
+    .order("released_at", { ascending: false });
+
+  const printingMap = new Map<string, { set_code: string; collector_number: string; image_version: string | null }>();
+  for (const p of printings ?? []) {
+    if (!printingMap.has(p.oracle_id)) {
+      printingMap.set(p.oracle_id, p);
+    }
+  }
+
+  const result: TopCard[] = sortedCards.map((c) => {
+    const printing = printingMap.get(c.oracle_id);
+    return {
+      ...c,
+      total_votes: votesMap.get(c.oracle_id) ?? 0,
+      set_code: printing?.set_code ?? "",
+      collector_number: printing?.collector_number ?? "",
+      image_version: printing?.image_version ?? null,
+    };
+  });
+
+  return { cards: result, total: count ?? 0 };
+}
+
 export async function getCardsByTribe(
   tribe: string,
   page = 1,
