@@ -1,4 +1,4 @@
-import { getDailyChallengeByDate, getDailyChallengeStats } from "@/lib/queries";
+import { getDailyChallengeByDate, getDailyChallengeStats, getDailyGauntletResults } from "@/lib/queries";
 import { artCropUrl } from "@/lib/image-utils";
 import Link from "next/link";
 import type { GauntletEntry, DailyChallengeStats } from "@/lib/types";
@@ -41,7 +41,10 @@ export default async function DailyGauntletResultsPage({
     );
   }
 
-  const stats = await getDailyChallengeStats(challenge.id);
+  const [stats, gauntletResults] = await Promise.all([
+    getDailyChallengeStats(challenge.id),
+    getDailyGauntletResults(challenge.id),
+  ]);
   const pool = (challenge.pool as GauntletEntry[]).slice(0, 20);
 
   // Build ranked list from champion_counts
@@ -63,6 +66,36 @@ export default async function DailyGauntletResultsPage({
   // Split into champions (picked at least once) and neglected (never picked)
   const champions = ranked.filter((r) => r.count > 0);
   const neglected = ranked.filter((r) => r.count === 0);
+
+  // Top win streaks from individual results
+  const topStreaks = gauntletResults
+    .filter((r) => r.champion_wins > 0)
+    .slice(0, 10);
+
+  // Biggest losers: aggregate total wins across all results entries
+  // Cards with fewest total wins (that aren't champions) are biggest losers
+  const winTotals: Record<string, { name: string; totalWins: number; appearances: number; entry?: typeof ranked[0] }> = {};
+  for (const result of gauntletResults) {
+    const results = result.results as { oracle_id: string; illustration_id: string; name: string; wins: number }[];
+    if (!Array.isArray(results)) continue;
+    for (const r of results) {
+      const id = challenge.gauntlet_mode === "remix" ? r.illustration_id : r.oracle_id;
+      if (!winTotals[id]) {
+        const poolEntry = ranked.find((e) => e.champId === id);
+        winTotals[id] = { name: r.name, totalWins: 0, appearances: 0, entry: poolEntry };
+      }
+      winTotals[id].totalWins += r.wins;
+      winTotals[id].appearances += 1;
+    }
+  }
+  const biggestLosers = Object.entries(winTotals)
+    .map(([id, data]) => ({
+      id,
+      ...data,
+      avgWins: data.appearances > 0 ? data.totalWins / data.appearances : 0,
+    }))
+    .sort((a, b) => a.avgWins - b.avgWins)
+    .slice(0, 5);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-4 md:py-8">
@@ -152,7 +185,75 @@ export default async function DailyGauntletResultsPage({
               </div>
             </div>
 
-            {/* Most Neglected */}
+            {/* Top Win Streaks */}
+            {topStreaks.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">
+                  Top Win Streaks
+                </h2>
+                <div className="space-y-1.5">
+                  {topStreaks.map((result, i) => {
+                    const champId = challenge.gauntlet_mode === "remix"
+                      ? result.champion_illustration_id
+                      : result.champion_oracle_id;
+                    const poolEntry = ranked.find((e) => e.champId === champId);
+                    return (
+                      <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-gray-900">
+                        <span className="text-sm text-gray-600 w-6 text-right font-mono">
+                          {i + 1}.
+                        </span>
+                        {poolEntry && (
+                          <img
+                            src={artCropUrl(poolEntry.set_code, poolEntry.collector_number, poolEntry.image_version)}
+                            alt={result.champion_name}
+                            className="w-10 h-7 object-cover rounded"
+                          />
+                        )}
+                        <span className="text-sm text-gray-300 truncate flex-1">
+                          {result.champion_name}
+                        </span>
+                        <span className="text-sm font-bold text-amber-400 shrink-0">
+                          {result.champion_wins} win{result.champion_wins !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Biggest Losers */}
+            {biggestLosers.length > 0 && gauntletResults.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">
+                  Biggest Losers
+                </h2>
+                <div className="space-y-1.5">
+                  {biggestLosers.map((loser, i) => (
+                    <div key={loser.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-900">
+                      <span className="text-sm text-gray-600 w-6 text-right font-mono">
+                        {i + 1}.
+                      </span>
+                      {loser.entry && (
+                        <img
+                          src={artCropUrl(loser.entry.set_code, loser.entry.collector_number, loser.entry.image_version)}
+                          alt={loser.name}
+                          className="w-10 h-7 object-cover rounded opacity-50"
+                        />
+                      )}
+                      <span className="text-sm text-gray-400 truncate flex-1">
+                        {loser.name}
+                      </span>
+                      <span className="text-xs text-gray-600 shrink-0">
+                        avg {loser.avgWins.toFixed(1)} wins
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Never Chosen */}
             {neglected.length > 0 && (
               <div className="mb-8">
                 <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">

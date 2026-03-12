@@ -1267,6 +1267,17 @@ export async function recordDailyParticipation(
   };
 }
 
+/** Get individual gauntlet results for a daily challenge (for streaks/losers) */
+export async function getDailyGauntletResults(challengeId: number) {
+  const { data } = await getAdminClient()
+    .from("gauntlet_results")
+    .select("champion_name, champion_wins, champion_oracle_id, champion_illustration_id, results")
+    .eq("daily_challenge_id", challengeId)
+    .order("champion_wins", { ascending: false })
+    .limit(100);
+  return data ?? [];
+}
+
 /** Check if a session has participated in a challenge */
 export async function hasParticipated(challengeId: number, sessionId: string): Promise<boolean> {
   const { data } = await getAdminClient()
