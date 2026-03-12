@@ -3,6 +3,7 @@ import { artCropUrl } from "@/lib/image-utils";
 import Link from "next/link";
 import type { GauntletEntry, DailyChallengeStats } from "@/lib/types";
 import DailyGauntletResultsClient from "./DailyGauntletResultsClient";
+import DailyGauntletShareButton from "./DailyGauntletShareButton";
 
 export const metadata = {
   title: "Daily Gauntlet Results — MTG Ink",
@@ -10,6 +11,12 @@ export const metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
 
 export default async function DailyGauntletResultsPage({
   searchParams,
@@ -31,9 +38,9 @@ export default async function DailyGauntletResultsPage({
           <p className="text-gray-500 mb-4">
             {isToday
               ? "No daily gauntlet challenge available today."
-              : `No daily gauntlet found for ${date}.`}
+              : `No daily gauntlet found for ${formatDate(date)}.`}
           </p>
-          <Link href="/daily/gauntlet" className="text-amber-400 hover:underline text-sm">
+          <Link href="/daily/gauntlet" className="text-amber-400 hover:underline text-sm cursor-pointer">
             Play today&apos;s gauntlet
           </Link>
         </div>
@@ -68,7 +75,7 @@ export default async function DailyGauntletResultsPage({
   const neglected = ranked.filter((r) => r.count === 0);
 
   // Top win streaks: best individual card streaks across all plays
-  const allStreaks: { name: string; wins: number; entry?: typeof ranked[0] }[] = [];
+  const allStreaks: { name: string; wins: number; slug: string; entry?: typeof ranked[0] }[] = [];
   for (const result of gauntletResults) {
     const results = result.results as { oracle_id: string; illustration_id: string; name: string; wins: number }[];
     if (!Array.isArray(results)) continue;
@@ -76,7 +83,7 @@ export default async function DailyGauntletResultsPage({
       if (r.wins === 0) continue;
       const id = challenge.gauntlet_mode === "remix" ? r.illustration_id : r.oracle_id;
       const poolEntry = ranked.find((e) => e.champId === id);
-      allStreaks.push({ name: r.name, wins: r.wins, entry: poolEntry });
+      allStreaks.push({ name: r.name, wins: r.wins, slug: poolEntry?.slug ?? "", entry: poolEntry });
     }
   }
   const topStreaks = allStreaks
@@ -84,7 +91,6 @@ export default async function DailyGauntletResultsPage({
     .slice(0, 10);
 
   // Biggest losers: aggregate total wins across all results entries
-  // Cards with fewest total wins (that aren't champions) are biggest losers
   const winTotals: Record<string, { name: string; totalWins: number; appearances: number; entry?: typeof ranked[0] }> = {};
   for (const result of gauntletResults) {
     const results = result.results as { oracle_id: string; illustration_id: string; name: string; wins: number }[];
@@ -108,24 +114,25 @@ export default async function DailyGauntletResultsPage({
     .sort((a, b) => a.avgWins - b.avgWins)
     .slice(0, 5);
 
+  const shareText = `Daily Gauntlet: ${challenge.title}\n${participationCount} player${participationCount !== 1 ? "s" : ""}\nmtg.ink/daily/gauntlet/results${isToday ? "" : `?date=${date}`}`;
+
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-4 md:py-8">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            {!isToday && (
-              <Link
-                href="/daily/gauntlet/results"
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                &larr; Today
-              </Link>
-            )}
-          </div>
+          {!isToday && (
+            <Link
+              href="/daily/gauntlet/results"
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors cursor-pointer inline-block mb-2"
+            >
+              &larr; Today&apos;s results
+            </Link>
+          )}
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Daily Gauntlet</p>
           <h1 className="text-2xl font-bold text-amber-400">{challenge.title}</h1>
           <p className="text-sm text-gray-400 mt-1">
-            {isToday ? "Today's gauntlet" : date} &middot;{" "}
+            {isToday ? "Today" : formatDate(date)} &middot;{" "}
             {participationCount.toLocaleString()} player{participationCount !== 1 ? "s" : ""}
           </p>
           {stats && stats.avg_champion_wins != null && (
@@ -144,7 +151,7 @@ export default async function DailyGauntletResultsPage({
           <div className="text-center py-12">
             <p className="text-gray-500">No one has completed this gauntlet yet.</p>
             {isToday && (
-              <Link href="/daily/gauntlet" className="text-amber-400 hover:underline text-sm mt-2 inline-block">
+              <Link href="/daily/gauntlet" className="text-amber-400 hover:underline text-sm mt-2 inline-block cursor-pointer">
                 Be the first to play
               </Link>
             )}
@@ -162,7 +169,11 @@ export default async function DailyGauntletResultsPage({
                     ? Math.round((entry.count / participationCount) * 100)
                     : 0;
                   return (
-                    <div key={entry.champId} className="flex items-center gap-3 p-2 rounded-lg bg-gray-900">
+                    <Link
+                      key={entry.champId}
+                      href={`/card/${entry.slug}`}
+                      className="flex items-center gap-3 p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors cursor-pointer"
+                    >
                       <span className="text-sm text-gray-600 w-6 text-right font-mono">
                         {i + 1}.
                       </span>
@@ -173,12 +184,9 @@ export default async function DailyGauntletResultsPage({
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <Link
-                            href={`/card/${entry.slug}`}
-                            className="text-sm font-medium text-gray-200 hover:text-amber-400 truncate transition-colors"
-                          >
+                          <span className="text-sm font-medium text-gray-200 truncate">
                             {entry.name}
-                          </Link>
+                          </span>
                           <span className="text-xs text-gray-500 ml-2 shrink-0">
                             {entry.count}x ({pct}%)
                           </span>
@@ -190,7 +198,7 @@ export default async function DailyGauntletResultsPage({
                           />
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
@@ -204,24 +212,28 @@ export default async function DailyGauntletResultsPage({
                 </h2>
                 <div className="space-y-1.5">
                   {topStreaks.map((streak, i) => (
-                      <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-gray-900">
-                        <span className="text-sm text-gray-600 w-6 text-right font-mono">
-                          {i + 1}.
-                        </span>
-                        {streak.entry && (
-                          <img
-                            src={artCropUrl(streak.entry.set_code, streak.entry.collector_number, streak.entry.image_version)}
-                            alt={streak.name}
-                            className="w-10 h-7 object-cover rounded"
-                          />
-                        )}
-                        <span className="text-sm text-gray-300 truncate flex-1">
-                          {streak.name}
-                        </span>
-                        <span className="text-sm font-bold text-amber-400 shrink-0">
-                          {streak.wins} win{streak.wins !== 1 ? "s" : ""}
-                        </span>
-                      </div>
+                    <Link
+                      key={i}
+                      href={streak.slug ? `/card/${streak.slug}` : "#"}
+                      className="flex items-center gap-3 p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors cursor-pointer"
+                    >
+                      <span className="text-sm text-gray-600 w-6 text-right font-mono">
+                        {i + 1}.
+                      </span>
+                      {streak.entry && (
+                        <img
+                          src={artCropUrl(streak.entry.set_code, streak.entry.collector_number, streak.entry.image_version)}
+                          alt={streak.name}
+                          className="w-10 h-7 object-cover rounded"
+                        />
+                      )}
+                      <span className="text-sm text-gray-300 truncate flex-1">
+                        {streak.name}
+                      </span>
+                      <span className="text-sm font-bold text-amber-400 shrink-0">
+                        {streak.wins} win{streak.wins !== 1 ? "s" : ""}
+                      </span>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -235,7 +247,11 @@ export default async function DailyGauntletResultsPage({
                 </h2>
                 <div className="space-y-1.5">
                   {biggestLosers.map((loser, i) => (
-                    <div key={loser.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-900">
+                    <Link
+                      key={loser.id}
+                      href={loser.entry?.slug ? `/card/${loser.entry.slug}` : "#"}
+                      className="flex items-center gap-3 p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors cursor-pointer"
+                    >
                       <span className="text-sm text-gray-600 w-6 text-right font-mono">
                         {i + 1}.
                       </span>
@@ -252,7 +268,7 @@ export default async function DailyGauntletResultsPage({
                       <span className="text-xs text-gray-600 shrink-0">
                         avg {loser.avgWins.toFixed(1)} wins
                       </span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -269,7 +285,7 @@ export default async function DailyGauntletResultsPage({
                     <Link
                       key={entry.champId}
                       href={`/card/${entry.slug}`}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors group"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors cursor-pointer group"
                     >
                       <img
                         src={artCropUrl(entry.set_code, entry.collector_number, entry.image_version)}
@@ -288,10 +304,10 @@ export default async function DailyGauntletResultsPage({
         )}
 
         {/* Share + Nav */}
-        <ShareButton challenge={challenge} stats={stats} date={date} />
+        <DailyGauntletShareButton text={shareText} />
 
         <div className="text-center mt-6">
-          <Link href="/daily/gauntlet" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+          <Link href="/daily/gauntlet" className="text-sm text-gray-500 hover:text-gray-300 transition-colors cursor-pointer">
             {isToday ? "Play today's gauntlet" : "Back to today's gauntlet"}
           </Link>
         </div>
@@ -299,13 +315,3 @@ export default async function DailyGauntletResultsPage({
     </main>
   );
 }
-
-function ShareButton({ challenge, stats, date }: { challenge: { title: string }, stats: DailyChallengeStats | null, date: string }) {
-  const text = `${challenge.title}\n${stats?.participation_count ?? 0} players\nmtg.ink/daily/gauntlet/results?date=${date}`;
-  return (
-    <DailyGauntletShareButton text={text} />
-  );
-}
-
-// Need a client component for clipboard
-import DailyGauntletShareButton from "./DailyGauntletShareButton";
