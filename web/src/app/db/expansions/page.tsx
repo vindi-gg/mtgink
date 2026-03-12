@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPlayableSets, getAllSets } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 export const metadata = {
   title: "Expansions — MTG Ink",

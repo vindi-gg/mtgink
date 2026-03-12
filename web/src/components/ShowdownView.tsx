@@ -152,7 +152,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
   const router = useRouter();
   const baseUrl = `/showdown/${mode}`;
   const isRemix = mode === "remix";
-  const defaultView: ViewMode = isRemix ? "art" : "card";
+  const defaultView: ViewMode = "art";
 
   const [sides, setSides] = useState(() => normalizePair(initialPair, mode));
   const [voting, setVoting] = useState(false);

@@ -13,7 +13,7 @@ import FavoriteCardButton from "@/components/FavoriteCardButton";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600; // Re-generate card pages hourly
 
 export async function generateMetadata({
   params,

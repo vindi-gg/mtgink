@@ -9,7 +9,7 @@ import { artCropUrl } from "@/lib/image-utils";
 import ArtistGallery from "@/components/ArtistGallery";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 export async function generateMetadata({
   params,

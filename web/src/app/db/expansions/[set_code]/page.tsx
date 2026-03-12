@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { getSetByCode, getCardsForSet } from "@/lib/queries";
 import { normalCardUrl } from "@/lib/image-utils";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 export async function generateMetadata({
   params,

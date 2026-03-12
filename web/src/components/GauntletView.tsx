@@ -41,6 +41,17 @@ export interface GauntletResult {
   position: number;
 }
 
+interface GauntletMatchup {
+  mode: "remix" | "vs";
+  // Remix mode (same card, different art)
+  oracle_id?: string;
+  winner_illustration_id?: string;
+  loser_illustration_id?: string;
+  // VS mode (different cards)
+  winner_oracle_id?: string;
+  loser_oracle_id?: string;
+}
+
 interface GauntletViewProps {
   mode: "remix" | "vs";
   pool: GauntletEntry[];
@@ -74,12 +85,13 @@ export default function GauntletView({
   const [phase, setPhase] = useState<"playing" | "complete">(
     initialPool.length < 2 ? "complete" : "playing",
   );
-  const [viewMode, setViewMode] = useState<ViewMode>(isRemix ? "art" : "card");
+  const [viewMode, setViewMode] = useState<ViewMode>("art");
   const [extending, setExtending] = useState(false);
   const [showNewGame, setShowNewGame] = useState(false);
 
   const votingRef = useRef(false);
   const eliminationOrder = useRef(0);
+  const matchups = useRef<GauntletMatchup[]>([]);
 
   const champion = pool[championIdx];
   const challenger = pool[challengerIdx];
@@ -129,6 +141,7 @@ export default function GauntletView({
         champion_name: champ.name,
         champion_wins: champWins,
         results: resultEntries,
+        matchups: matchups.current,
         daily_challenge_id: dailyChallengeId ?? null,
         card_name: cardName ?? null,
         filter_label: filterLabel ?? null,
@@ -159,7 +172,24 @@ export default function GauntletView({
     if (votingRef.current || phase !== "playing") return;
     votingRef.current = true;
 
+    const winner = winnerSide === 0 ? champion : challenger;
     const loser = winnerSide === 0 ? challenger : champion;
+
+    // Record matchup for ELO processing at completion
+    if (isRemix) {
+      matchups.current.push({
+        mode: "remix",
+        oracle_id: winner.oracle_id,
+        winner_illustration_id: winner.illustration_id,
+        loser_illustration_id: loser.illustration_id,
+      });
+    } else {
+      matchups.current.push({
+        mode: "vs",
+        winner_oracle_id: winner.oracle_id,
+        loser_oracle_id: loser.oracle_id,
+      });
+    }
 
     // Update gauntlet state
     eliminationOrder.current++;

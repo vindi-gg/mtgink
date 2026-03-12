@@ -1,31 +1,11 @@
 import Link from "next/link";
 import DailyChallengesSection from "@/components/DailyChallengesSection";
+import ModeCards from "@/components/ModeCards";
 
 export const metadata = {
   title: "MTG Ink — Discover & Rank Magic Cards and Art",
   description: "Discover and rank the best Magic: The Gathering cards and art.",
 };
-
-const MODES = [
-  {
-    name: "Remix",
-    description: "Same card, pick the best art version",
-    href: "/showdown/remix",
-    ready: true,
-  },
-  {
-    name: "VS",
-    description: "Different cards' art compared by theme",
-    href: "/showdown/vs",
-    ready: true,
-  },
-  {
-    name: "Gauntlet",
-    description: "Winner stays, faces the next challenger",
-    href: "/showdown/gauntlet",
-    ready: true,
-  },
-];
 
 export default function HomePage() {
   return (
@@ -44,27 +24,7 @@ export default function HomePage() {
           <DailyChallengesSection />
 
           {/* Modes */}
-          <div className="mb-8">
-            <div className="grid grid-cols-1 gap-4">
-              {MODES.map((mode) => (
-                <Link
-                  key={mode.name}
-                  href={mode.href}
-                  className={`relative block border rounded-xl p-6 text-left transition-all ${
-                    mode.ready
-                      ? "border-amber-500/30 hover:border-amber-500 hover:bg-amber-500/5"
-                      : "border-gray-800 opacity-50 pointer-events-none"
-                  }`}
-                >
-                  <h3 className="text-xl font-bold text-white mb-1">{mode.name}</h3>
-                  <p className="text-sm text-gray-400">{mode.description}</p>
-                  {!mode.ready && (
-                    <span className="absolute top-3 right-3 text-xs text-gray-600">Soon</span>
-                  )}
-                </Link>
-              ))}
-            </div>
-          </div>
+          <ModeCards />
 
           <div className="flex gap-4 justify-center">
             <Link

@@ -6,7 +6,7 @@ import { getCardsByTribe, getCreatureTribes } from "@/lib/queries";
 import CardGrid from "@/components/CardGrid";
 import Pagination from "@/components/Pagination";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 const PAGE_SIZE = 30;
 
