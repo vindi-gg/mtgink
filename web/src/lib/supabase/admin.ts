@@ -12,6 +12,9 @@ export function getAdminClient(): SupabaseClient {
     }
     _adminClient = createClient(url, key, {
       auth: { persistSession: false },
+      global: {
+        fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }),
+      },
     });
   }
   return _adminClient;

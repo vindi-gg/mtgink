@@ -365,6 +365,17 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
         </button>
       </div>
 
+      {!isRemix && hasActiveFilters(filters) && (
+        <div className="text-center mt-3">
+          <a
+            href={`/showdown/vs`}
+            className="text-xs text-gray-500 hover:text-amber-400 transition-colors cursor-pointer"
+          >
+            New theme
+          </a>
+        </div>
+      )}
+
       {filterError && (
         <p className="text-center text-sm text-red-400 mt-2">{filterError}</p>
       )}
