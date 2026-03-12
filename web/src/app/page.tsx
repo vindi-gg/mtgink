@@ -75,9 +75,9 @@ export default async function HomePage() {
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       <div className="flex-1 px-4 pt-8 md:pt-16">
         <div className="text-center max-w-2xl mx-auto">
-          <h1 className="text-5xl font-bold mb-4 flex flex-col items-center" style={{ lineHeight: 1.1 }}>
-            <span className="tracking-widest">MTG</span>
-            <span className="text-amber-400" style={{ letterSpacing: "0.32em" }}>INK</span>
+          <h1 className="font-bold mb-4 flex flex-col items-center" style={{ lineHeight: 0.9, fontFamily: "'Futura', 'Futura Bold', 'Trebuchet MS', Arial, sans-serif" }}>
+            <span className="text-3xl tracking-[0.25em] text-white">MTG</span>
+            <span className="text-6xl text-amber-400 tracking-wide">INK</span>
           </h1>
           <p className="text-gray-400 text-lg mb-10">
             Discover and rank the best Magic: The Gathering cards and art.
