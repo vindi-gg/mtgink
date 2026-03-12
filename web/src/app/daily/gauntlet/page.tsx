@@ -20,9 +20,9 @@ export default async function DailyGauntletPage() {
     );
   }
 
-  // Cap pool size — stored proc may return too many entries
+  // Pool comes pre-ordered from the stored proc — keep it deterministic for all users
   const rawPool = challenge.pool as GauntletEntry[];
-  const pool = rawPool.length > 20 ? rawPool.sort(() => Math.random() - 0.5).slice(0, 20) : rawPool;
+  const pool = rawPool.slice(0, 20);
   const gauntletMode = challenge.gauntlet_mode ?? "vs";
 
   return (

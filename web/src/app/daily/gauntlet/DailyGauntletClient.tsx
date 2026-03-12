@@ -77,6 +77,7 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
         dailyChallengeId={challenge.id}
         onComplete={handleComplete}
         hideControls
+        fixedOrder
       />
 
       {stats && (

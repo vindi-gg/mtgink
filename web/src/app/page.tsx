@@ -54,15 +54,10 @@ export default async function HomePage() {
       };
 
       challenges = (dailyChallenges as (DailyChallenge & { daily_challenge_stats: DailyChallengeStats | null })[])
-        .filter((c) => c.challenge_type !== "vs")
         .map((c) => ({
           ...c,
           stats: c.daily_challenge_stats ?? defaultStats,
-        }))
-        .sort((a, b) => {
-          const order: Record<string, number> = { remix: 0, gauntlet: 1 };
-          return (order[a.challenge_type] ?? 9) - (order[b.challenge_type] ?? 9);
-        });
+        }));
     }
 
     // Mode card images — pick 3 random from recent printings (no extra query)

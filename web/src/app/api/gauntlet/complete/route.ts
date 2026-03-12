@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
   const admin = getAdminClient();
 
-  const { error } = await admin.from("gauntlet_results").insert({
+  const { data: inserted, error } = await admin.from("gauntlet_results").insert({
     user_id: userId,
     session_id,
     mode,
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     daily_challenge_id: daily_challenge_id ?? null,
     card_name: card_name ?? null,
     filter_label: filter_label ?? null,
-  });
+  }).select("id").single();
 
   if (error) {
     console.error("Failed to save gauntlet result:", error);
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, id: inserted?.id ?? null });
 }
 
 async function processMatchups(

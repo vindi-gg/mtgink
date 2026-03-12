@@ -60,6 +60,7 @@ interface GauntletViewProps {
   onComplete?: (champion: GauntletEntry, championWins: number, results: GauntletResult[]) => void;
   hideControls?: boolean;
   themeName?: string;
+  fixedOrder?: boolean;
 }
 
 export default function GauntletView({
@@ -72,11 +73,12 @@ export default function GauntletView({
   onComplete,
   hideControls,
   themeName,
+  fixedOrder,
 }: GauntletViewProps) {
   const isRemix = mode === "remix";
 
   const [pool, setPool] = useState(() =>
-    [...initialPool].sort(() => Math.random() - 0.5),
+    fixedOrder ? [...initialPool] : [...initialPool].sort(() => Math.random() - 0.5),
   );
   const [championIdx, setChampionIdx] = useState(0);
   const [challengerIdx, setChallengerIdx] = useState(1);
@@ -87,10 +89,89 @@ export default function GauntletView({
   );
   const [extending, setExtending] = useState(false);
   const [showNewGame, setShowNewGame] = useState(false);
+  const [resultId, setResultId] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const votingRef = useRef(false);
   const eliminationOrder = useRef(0);
   const matchups = useRef<GauntletMatchup[]>([]);
+
+  // Undo history — snapshot state before each vote
+  interface UndoSnapshot {
+    championIdx: number;
+    challengerIdx: number;
+    championWins: number;
+    results: GauntletResult[];
+    eliminationOrder: number;
+  }
+  const [undoStack, setUndoStack] = useState<UndoSnapshot[]>([]);
+
+  // --- localStorage persistence ---
+  const storageKey = dailyChallengeId
+    ? `mtgink_gauntlet_daily_${dailyChallengeId}`
+    : null; // Only persist daily gauntlets (regular ones get fresh pools)
+
+  interface SavedGauntletState {
+    pool: GauntletEntry[];
+    championIdx: number;
+    challengerIdx: number;
+    championWins: number;
+    results: GauntletResult[];
+    eliminationOrder: number;
+    matchups: GauntletMatchup[];
+    undoStack: UndoSnapshot[];
+    phase: "playing" | "complete";
+  }
+
+  // Restore from localStorage on mount
+  const [didRestore, setDidRestore] = useState(false);
+  useEffect(() => {
+    if (!storageKey || didRestore) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) { setDidRestore(true); return; }
+      const saved: SavedGauntletState = JSON.parse(raw);
+      if (saved.phase === "complete") {
+        // Already completed — clear saved state
+        localStorage.removeItem(storageKey);
+        setDidRestore(true);
+        return;
+      }
+      setPool(saved.pool);
+      setChampionIdx(saved.championIdx);
+      setChallengerIdx(saved.challengerIdx);
+      setChampionWins(saved.championWins);
+      setResults(saved.results);
+      eliminationOrder.current = saved.eliminationOrder;
+      matchups.current = saved.matchups;
+      setUndoStack(saved.undoStack);
+      setPhase(saved.phase);
+    } catch {
+      localStorage.removeItem(storageKey);
+    }
+    setDidRestore(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save to localStorage after each state change
+  useEffect(() => {
+    if (!storageKey || !didRestore) return;
+    if (phase === "complete") {
+      localStorage.removeItem(storageKey);
+      return;
+    }
+    const state: SavedGauntletState = {
+      pool,
+      championIdx,
+      challengerIdx,
+      championWins,
+      results,
+      eliminationOrder: eliminationOrder.current,
+      matchups: matchups.current,
+      undoStack,
+      phase,
+    };
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  }, [storageKey, didRestore, pool, championIdx, challengerIdx, championWins, results, undoStack, phase]);
 
   const champion = pool[championIdx];
   const challenger = pool[challengerIdx];
@@ -145,7 +226,10 @@ export default function GauntletView({
         card_name: cardName ?? null,
         filter_label: filterLabel ?? null,
       }),
-    }).catch(() => {});
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.id) setResultId(data.id); })
+      .catch(() => {});
   }
 
   // Keyboard shortcuts
@@ -155,6 +239,7 @@ export default function GauntletView({
       if (e.target instanceof HTMLInputElement) return;
       if (e.key === "ArrowLeft") vote(0);
       else if (e.key === "ArrowRight") vote(1);
+      else if ((e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) undo();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -167,9 +252,31 @@ export default function GauntletView({
     }
   }, []);
 
+  function undo() {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setChampionIdx(prev.championIdx);
+    setChallengerIdx(prev.challengerIdx);
+    setChampionWins(prev.championWins);
+    setResults(prev.results);
+    eliminationOrder.current = prev.eliminationOrder;
+    matchups.current.pop();
+    setUndoStack(undoStack.slice(0, -1));
+    setPhase("playing");
+  }
+
   function vote(winnerSide: 0 | 1) {
     if (votingRef.current || phase !== "playing") return;
     votingRef.current = true;
+
+    // Save snapshot for undo
+    setUndoStack((prev) => [...prev, {
+      championIdx,
+      challengerIdx,
+      championWins,
+      results,
+      eliminationOrder: eliminationOrder.current,
+    }]);
 
     const winner = winnerSide === 0 ? champion : challenger;
     const loser = winnerSide === 0 ? challenger : champion;
@@ -267,14 +374,18 @@ export default function GauntletView({
     }
   }
 
-  function restart() {
-    const shuffled = [...initialPool].sort(() => Math.random() - 0.5);
-    setPool(shuffled);
+  function resetGauntlet() {
+    if (!confirm("Reset this gauntlet? All progress will be lost.")) return;
+    const newPool = fixedOrder ? [...initialPool] : [...initialPool].sort(() => Math.random() - 0.5);
+    setPool(newPool);
     setChampionIdx(0);
     setChallengerIdx(1);
     setChampionWins(0);
     setResults([]);
+    setUndoStack([]);
     eliminationOrder.current = 0;
+    matchups.current = [];
+    if (storageKey) localStorage.removeItem(storageKey);
     setPhase(initialPool.length < 2 ? "complete" : "playing");
   }
 
@@ -452,7 +563,7 @@ export default function GauntletView({
         <div className="flex items-center justify-between mb-1">
           <span className="text-sm font-bold text-amber-400 truncate">{title}</span>
           <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-            {currentMatch}/{totalMatches}
+            {currentMatch + 1}/{pool.length}
           </span>
         </div>
 
@@ -468,6 +579,24 @@ export default function GauntletView({
             {renderEntry(challenger, 1, "Challenger")}
           </div>
         </div>
+
+        {/* Undo + Reset */}
+        {undoStack.length > 0 && (
+          <div className="flex justify-center gap-3 mt-3">
+            <button
+              onClick={undo}
+              className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Undo (Z)
+            </button>
+            <button
+              onClick={resetGauntlet}
+              className="px-3 py-1 text-xs text-gray-500 hover:text-red-400 transition-colors"
+            >
+              Reset
+            </button>
+          </div>
+        )}
 
         {/* Controls */}
         {!hideControls && (
@@ -569,7 +698,18 @@ export default function GauntletView({
           {repeatLabel}
         </a>
         <button
-          onClick={restart}
+          onClick={() => {
+            const newPool = fixedOrder ? [...initialPool] : [...initialPool].sort(() => Math.random() - 0.5);
+            setPool(newPool);
+            setChampionIdx(0);
+            setChallengerIdx(1);
+            setChampionWins(0);
+            setResults([]);
+            setUndoStack([]);
+            eliminationOrder.current = 0;
+            matchups.current = [];
+            setPhase(initialPool.length < 2 ? "complete" : "playing");
+          }}
           className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
         >
           Replay
@@ -586,6 +726,26 @@ export default function GauntletView({
           </>
         )}
         {renderNewGameDropdown()}
+        {resultId && (
+          <button
+            onClick={async () => {
+              const url = `${window.location.origin}/gauntlet/result/${resultId}`;
+              try { await navigator.clipboard.writeText(url); } catch {
+                const input = document.createElement("input");
+                input.value = url;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand("copy");
+                document.body.removeChild(input);
+              }
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 transition-colors"
+          >
+            {copied ? "Link copied!" : "Share"}
+          </button>
+        )}
       </div>
 
       {/* Mode + view toggles */}
