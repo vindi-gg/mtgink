@@ -48,8 +48,7 @@ export default async function ArtistsPage({
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
-      <div className="max-w-5xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white py-8">
         <h1 className="text-3xl font-bold mb-1">Artists</h1>
         <p className="text-gray-400 text-sm mb-6">
           {total.toLocaleString()} artists
@@ -182,7 +181,6 @@ export default async function ArtistsPage({
             )}
           </div>
         )}
-      </div>
     </main>
   );
 }

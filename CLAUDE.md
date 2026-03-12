@@ -151,6 +151,24 @@ supabase/migrations/
 - **Images**: Cloudflare R2 at `cdn.mtg.ink`
 - **Cache rules**: Images cached 30d on CF edge, API bypasses CF cache, pages respect origin headers
 
+## Deployment
+
+### Web (Next.js → Vercel)
+- `git push origin main` triggers automatic Vercel deploy
+- ISR pages (`revalidate = 60`) serve stale content until cache expires — wait up to 60s after deploy for fresh data
+- Force fresh ISR: visit the page to trigger revalidation
+
+### Database Migrations (Supabase)
+Migrations live in `supabase/migrations/`. Run them manually via psql:
+```bash
+export SUPABASE_DB_URL=$(grep SUPABASE_DB_URL web/.env.local | cut -d= -f2-)
+/opt/homebrew/opt/libpq/bin/psql "$SUPABASE_DB_URL" -f supabase/migrations/<filename>.sql
+```
+- `psql` is installed via `brew install libpq` (not in PATH by default, use full path above)
+- No `exec_sql` RPC on Supabase — must use psql directly
+- No Supabase CLI `migration up` — the `SUPABASE_DB_URL` format doesn't work with it
+- Always test migrations locally or review SQL before running against prod
+
 ## Env Vars
 ```
 NEXT_PUBLIC_SUPABASE_URL=...       # Supabase project URL

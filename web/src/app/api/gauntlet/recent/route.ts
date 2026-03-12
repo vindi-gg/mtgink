@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const admin = getAdminClient();
   let query = admin
     .from("gauntlet_results")
-    .select("id, mode, pool_size, champion_name, champion_wins, results, card_name, filter_label, completed_at")
+    .select("id, mode, pool_size, champion_name, champion_wins, results, card_name, filter_label, daily_challenge_id, completed_at")
     .order("completed_at", { ascending: false })
     .limit(limit);
 

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import GauntletView from "@/components/GauntletView";
-import DailyResultsPanel from "@/components/DailyResultsPanel";
 import type { GauntletResult } from "@/components/GauntletView";
-import type { DailyChallenge, DailyChallengeStats, GauntletEntry } from "@/lib/types";
+import type { DailyChallenge, GauntletEntry } from "@/lib/types";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -25,43 +25,52 @@ interface DailyGauntletClientProps {
 }
 
 export default function DailyGauntletClient({ challenge, pool, mode }: DailyGauntletClientProps) {
-  const [stats, setStats] = useState<DailyChallengeStats | null>(null);
-  const [championId, setChampionId] = useState<string | null>(null);
-  const [champWins, setChampWins] = useState(0);
+  const router = useRouter();
+  const [alreadyDone, setAlreadyDone] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  async function handleComplete(champion: GauntletEntry, championWins: number, results: GauntletResult[]) {
-    const champId = mode === "remix" ? champion.illustration_id : champion.oracle_id;
-    setChampionId(champId);
-    setChampWins(championWins);
-
+  // Check if already participated — redirect to results
+  useEffect(() => {
     const sessionId = getSessionId();
-
-    try {
-      const res = await fetch("/api/daily/gauntlet/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          result: {
-            champion_id: champId,
-            champion_wins: championWins,
-            results: results.map((r) => ({
-              id: mode === "remix" ? r.entry.illustration_id : r.entry.oracle_id,
-              name: r.entry.name,
-              wins: r.wins,
-              position: r.position,
-            })),
-          },
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data.stats);
-      }
-    } catch (err) {
-      console.error("Failed to record gauntlet:", err);
+    if (!sessionId) {
+      setChecking(false);
+      return;
     }
+
+    fetch(`/api/daily/participated?session_id=${sessionId}&ids=${challenge.id}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((ids: number[]) => {
+        if (ids.includes(challenge.id)) {
+          setAlreadyDone(true);
+          router.replace("/daily/gauntlet/results");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, [challenge.id, router]);
+
+  async function handleComplete(_champion: GauntletEntry, _championWins: number, _results: GauntletResult[]) {
+    // Redirect to results page after a brief delay for stats to update
+    setTimeout(() => {
+      router.push("/daily/gauntlet/results");
+    }, 500);
+  }
+
+  if (checking) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-gray-400 text-sm">Loading...</p>
+      </div>
+    );
+  }
+
+  // Already completed — will redirect to results
+  if (alreadyDone) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-gray-400 text-sm">Redirecting to results...</p>
+      </div>
+    );
   }
 
   const cardName = mode === "remix" && pool.length > 0 ? pool[0].name : undefined;
@@ -79,17 +88,6 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
         hideControls
         fixedOrder
       />
-
-      {stats && (
-        <div className="mt-6">
-          <DailyResultsPanel
-            challenge={challenge}
-            stats={stats}
-            yourChampionId={championId ?? undefined}
-            yourChampionWins={champWins}
-          />
-        </div>
-      )}
     </div>
   );
 }

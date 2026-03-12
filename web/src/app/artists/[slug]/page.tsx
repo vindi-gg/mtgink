@@ -71,8 +71,7 @@ export default async function ArtistDetailPage({
   const allTimeStat = stats.find((s) => s.period === "all");
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
-      <div className="max-w-5xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white py-8">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 mb-1 text-sm">
           <Link href="/artists" className="text-gray-500 hover:text-gray-300">
@@ -120,7 +119,6 @@ export default async function ArtistDetailPage({
             No illustrations found for this artist.
           </p>
         )}
-      </div>
     </main>
   );
 }

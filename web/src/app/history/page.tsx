@@ -45,6 +45,7 @@ interface GauntletHistoryEntry {
   }[];
   card_name: string | null;
   filter_label: string | null;
+  daily_challenge_id: number | null;
   completed_at: string;
 }
 
@@ -347,10 +348,12 @@ export default function HistoryPage() {
                             </div>
                             <div className="text-xs text-gray-400">
                               {g.card_name
-                                ? `${g.card_name} Remix`
+                                ? `${g.daily_challenge_id ? "Daily: " : ""}${g.card_name} Remix`
                                 : g.filter_label
-                                  ? `${g.filter_label} Gauntlet`
-                                  : "Random Gauntlet"}
+                                  ? `${g.daily_challenge_id ? "Daily: " : ""}${g.filter_label} Gauntlet`
+                                  : g.daily_challenge_id
+                                    ? "Daily Gauntlet"
+                                    : "Random Gauntlet"}
                               <span className="text-gray-600"> · {g.pool_size} cards</span>
                             </div>
                             <div className="text-xs text-gray-600 mt-0.5">

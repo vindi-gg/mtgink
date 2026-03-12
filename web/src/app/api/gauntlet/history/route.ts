@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await admin
       .from("gauntlet_results")
-      .select("id, mode, pool_size, champion_oracle_id, champion_illustration_id, champion_name, champion_wins, results, card_name, filter_label, completed_at")
+      .select("id, mode, pool_size, champion_oracle_id, champion_illustration_id, champion_name, champion_wins, results, card_name, filter_label, daily_challenge_id, completed_at")
       .eq("user_id", user.id)
       .order("completed_at", { ascending: false })
       .range(offset, offset + limit - 1);

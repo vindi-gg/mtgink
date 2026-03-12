@@ -41,16 +41,14 @@ export default function DailyChallengesSection({ challenges }: DailyChallengesSe
   return (
     <div className="mb-8">
       <h2 className="text-xs font-bold uppercase tracking-widest text-amber-400 mb-3">
-        Today&apos;s Challenges
+        Today&apos;s Challenge
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {challenges.map((c) => (
-          <DailyChallengeCard
-            key={c.id}
-            challenge={{ ...c, participated: participated.has(c.id) }}
-          />
-        ))}
-      </div>
+      {challenges.map((c) => (
+        <DailyChallengeCard
+          key={c.id}
+          challenge={{ ...c, participated: participated.has(c.id) }}
+        />
+      ))}
     </div>
   );
 }

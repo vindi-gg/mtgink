@@ -124,7 +124,7 @@ export default function Navbar() {
 
   return (
     <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm md:sticky md:top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex flex-col font-bold" style={{ lineHeight: 1.1 }}>
           <span className="text-sm tracking-widest text-white">MTG</span>
@@ -311,7 +311,7 @@ export default function Navbar() {
       {/* Mobile dropdown menu */}
       {menuOpen && (
         <div className="md:hidden border-t border-gray-800 bg-gray-950/95 backdrop-blur-sm">
-          <div className="max-w-6xl mx-auto px-4 py-3 space-y-1">
+          <div className="max-w-7xl mx-auto px-4 py-3 space-y-1">
             {secondaryLinks.map((link) => (
               <Link
                 key={link.href}

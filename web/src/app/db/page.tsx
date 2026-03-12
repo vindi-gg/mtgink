@@ -2,10 +2,15 @@ import Link from "next/link";
 
 export const metadata = {
   title: "Magic: The Gathering Database — MTG Ink",
-  description: "Browse the Magic: The Gathering card database. Explore expansions, creature tribes, tags, and more.",
+  description: "Browse the Magic: The Gathering card database. Explore artists, expansions, creature tribes, tags, and more.",
 };
 
 const sections = [
+  {
+    href: "/artists",
+    title: "Artists",
+    description: "Browse artists ranked by popularity and illustration count",
+  },
   {
     href: "/db/expansions",
     title: "Expansions",
@@ -30,8 +35,7 @@ const sections = [
 
 export default function DbIndexPage() {
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
-      <div className="max-w-2xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white py-8">
         <h1 className="text-3xl font-bold mb-2">Magic: The Gathering Database</h1>
         <p className="text-gray-400 mb-8">
           Browse the complete card database.
@@ -48,19 +52,6 @@ export default function DbIndexPage() {
             </Link>
           ))}
         </div>
-        <p className="text-gray-600 text-xs mt-8 text-center">
-          Powered by{" "}
-          <a
-            href="https://scryfall.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-500 hover:text-gray-400"
-          >
-            Scryfall.com
-          </a>{" "}
-          data
-        </p>
-      </div>
     </main>
   );
 }

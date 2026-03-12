@@ -115,8 +115,7 @@ export default async function CardPage({
   );
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
-      <div className="max-w-6xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">{card.name}</h1>
@@ -233,7 +232,6 @@ export default async function CardPage({
             })}
           </div>
         </section>
-      </div>
     </main>
   );
 }

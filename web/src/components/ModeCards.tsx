@@ -8,7 +8,7 @@ const MODES = [
   },
   {
     name: "VS",
-    description: "Different cards' art compared by theme",
+    description: "Different cards compared by theme",
     href: "/showdown/vs",
   },
   {
@@ -30,24 +30,36 @@ export default function ModeCards({ images = [] }: ModeCardsProps) {
         {MODES.map((mode, i) => {
           const bgImage = images[i];
           return (
-            <Link
-              key={mode.name}
-              href={mode.href}
-              className="relative block border border-amber-500/30 hover:border-amber-500 rounded-xl overflow-hidden text-left transition-all group"
-            >
+            <div key={mode.name} className="relative border border-amber-500/30 rounded-xl overflow-hidden">
               {bgImage && (
                 <img
                   src={bgImage}
                   alt=""
-                  className="absolute inset-0 w-full h-full object-cover opacity-25 group-hover:opacity-35 transition-opacity scale-105 group-hover:scale-100 duration-500"
+                  className="absolute inset-0 w-full h-full object-cover opacity-25 scale-105"
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/70 to-gray-950/40" />
-              <div className="relative p-6">
-                <h3 className="text-xl font-bold text-white mb-1">{mode.name}</h3>
-                <p className="text-sm text-gray-400">{mode.description}</p>
+              <div className="relative p-5 flex items-center justify-between gap-4">
+                <div className="text-left min-w-0">
+                  <h3 className="text-lg font-bold text-white">{mode.name}</h3>
+                  <p className="text-sm text-gray-400">{mode.description}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Link
+                    href={mode.href}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors whitespace-nowrap"
+                  >
+                    Random Play
+                  </Link>
+                  <Link
+                    href="/showdown/create"
+                    className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-600 text-gray-300 hover:border-gray-400 hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    Create
+                  </Link>
+                </div>
               </div>
-            </Link>
+            </div>
           );
         })}
       </div>

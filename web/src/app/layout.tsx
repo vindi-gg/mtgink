@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import AdBanner from "@/components/AdBanner";
 import "./globals.css";
 
@@ -51,6 +52,7 @@ export default function RootLayout({
         <Navbar />
         <div className={adsEnabled ? "pb-[58px] md:pb-[98px]" : ""}>
           {children}
+          <Footer />
         </div>
         {adsEnabled && <AdBanner />}
       </body>

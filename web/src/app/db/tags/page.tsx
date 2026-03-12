@@ -64,8 +64,7 @@ export default async function TagsPage({
   const page = Math.max(1, parseInt(pageStr || "1", 10));
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 py-8">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white py-8">
         <div className="flex items-center gap-3 mb-1">
           <Link href="/db" className="text-gray-500 hover:text-gray-300 text-sm">
             Database
@@ -102,7 +101,6 @@ export default async function TagsPage({
         <Suspense fallback={<p className="text-gray-500">Loading tags...</p>}>
           <TagsList query={q} type={type} page={page} />
         </Suspense>
-      </div>
     </main>
   );
 }

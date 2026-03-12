@@ -1212,6 +1212,34 @@ export async function getDailyChallenge(type: string): Promise<DailyChallenge | 
   return generated as DailyChallenge | null;
 }
 
+/** Get a daily challenge by date and type (no generation for past dates) */
+export async function getDailyChallengeByDate(type: string, date: string): Promise<DailyChallenge | null> {
+  const admin = getAdminClient();
+  const { data } = await admin
+    .from("daily_challenges")
+    .select("*")
+    .eq("challenge_date", date)
+    .eq("challenge_type", type)
+    .maybeSingle();
+
+  if (data) return data as DailyChallenge;
+
+  // Only generate for today
+  const today = new Date().toISOString().split("T")[0];
+  if (date === today) {
+    await admin.rpc("generate_daily_challenges", { p_date: today });
+    const { data: generated } = await admin
+      .from("daily_challenges")
+      .select("*")
+      .eq("challenge_date", today)
+      .eq("challenge_type", type)
+      .maybeSingle();
+    return generated as DailyChallenge | null;
+  }
+
+  return null;
+}
+
 /** Record daily participation and return updated stats */
 export async function recordDailyParticipation(
   challengeId: number,
