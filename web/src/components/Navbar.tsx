@@ -126,7 +126,7 @@ export default function Navbar() {
     <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm md:sticky md:top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex flex-col items-center font-bold" style={{ lineHeight: 0.9, fontFamily: "'Futura', 'Futura Bold', 'Trebuchet MS', Arial, sans-serif" }}>
+        <Link href="/" className="flex flex-col items-center font-bold pt-0.5" style={{ lineHeight: 0.9, fontFamily: "'Futura', 'Futura Bold', 'Trebuchet MS', Arial, sans-serif" }}>
           <span className="text-[11px] tracking-[0.25em] text-white">MTG</span>
           <span className="text-xl text-amber-400 tracking-wide">INK</span>
         </Link>
