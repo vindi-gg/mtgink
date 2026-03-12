@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import GauntletView from "@/components/GauntletView";
+import { artCropUrl } from "@/lib/image-utils";
 import type { GauntletResult } from "@/components/GauntletView";
 import type { DailyChallenge, GauntletEntry } from "@/lib/types";
 
@@ -28,6 +30,9 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
   const router = useRouter();
   const [alreadyDone, setAlreadyDone] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [justFinished, setJustFinished] = useState(false);
+  const [champion, setChampion] = useState<GauntletEntry | null>(null);
+  const [champWins, setChampWins] = useState(0);
 
   // Check if already participated — redirect to results
   useEffect(() => {
@@ -49,11 +54,10 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
       .finally(() => setChecking(false));
   }, [challenge.id, router]);
 
-  async function handleComplete(_champion: GauntletEntry, _championWins: number, _results: GauntletResult[]) {
-    // Redirect to results page after a brief delay for stats to update
-    setTimeout(() => {
-      router.push("/daily/gauntlet/results");
-    }, 500);
+  async function handleComplete(champ: GauntletEntry, wins: number, _results: GauntletResult[]) {
+    setChampion(champ);
+    setChampWins(wins);
+    setJustFinished(true);
   }
 
   if (checking) {
@@ -69,6 +73,37 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
     return (
       <div className="max-w-4xl mx-auto text-center py-12">
         <p className="text-gray-400 text-sm">Redirecting to results...</p>
+      </div>
+    );
+  }
+
+  // Just finished — show user's champion and link to community results
+  if (justFinished && champion) {
+    return (
+      <div className="max-w-md mx-auto text-center py-8">
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
+          {challenge.title}
+        </p>
+        <h2 className="text-xl font-bold text-amber-400 mb-4">Your Champion</h2>
+        <div className="inline-block mb-4">
+          <img
+            src={artCropUrl(champion.set_code, champion.collector_number, champion.image_version)}
+            alt={champion.name}
+            className="w-48 h-36 object-cover rounded-lg ring-2 ring-amber-500/50 mx-auto"
+          />
+          <p className="text-lg font-bold text-gray-200 mt-2">{champion.name}</p>
+          <p className="text-sm text-gray-400">
+            {champWins} win{champWins !== 1 ? "s" : ""} in a row
+          </p>
+        </div>
+        <div className="mt-4">
+          <Link
+            href="/daily/gauntlet/results"
+            className="inline-block px-6 py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 transition-colors"
+          >
+            See Community Results
+          </Link>
+        </div>
       </div>
     );
   }

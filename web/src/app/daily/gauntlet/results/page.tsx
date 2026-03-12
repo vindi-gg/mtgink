@@ -74,21 +74,31 @@ export default async function DailyGauntletResultsPage({
   const champions = ranked.filter((r) => r.count > 0);
   const neglected = ranked.filter((r) => r.count === 0);
 
-  // Top win streaks: best individual card streaks across all plays
-  const allStreaks: { name: string; wins: number; slug: string; entry?: typeof ranked[0] }[] = [];
+  // Top win streaks: aggregate per card — best streak and average
+  const streakMap: Record<string, { name: string; bestStreak: number; totalWins: number; count: number; slug: string; entry?: typeof ranked[0] }> = {};
   for (const result of gauntletResults) {
     const results = result.results as { oracle_id: string; illustration_id: string; name: string; wins: number }[];
     if (!Array.isArray(results)) continue;
     for (const r of results) {
       if (r.wins === 0) continue;
       const id = challenge.gauntlet_mode === "remix" ? r.illustration_id : r.oracle_id;
-      const poolEntry = ranked.find((e) => e.champId === id);
-      allStreaks.push({ name: r.name, wins: r.wins, slug: poolEntry?.slug ?? "", entry: poolEntry });
+      if (!streakMap[id]) {
+        const poolEntry = ranked.find((e) => e.champId === id);
+        streakMap[id] = { name: r.name, bestStreak: 0, totalWins: 0, count: 0, slug: poolEntry?.slug ?? "", entry: poolEntry };
+      }
+      streakMap[id].bestStreak = Math.max(streakMap[id].bestStreak, r.wins);
+      streakMap[id].totalWins += r.wins;
+      streakMap[id].count += 1;
     }
   }
-  const topStreaks = allStreaks
-    .sort((a, b) => b.wins - a.wins)
-    .slice(0, 10);
+  const topStreaks = Object.entries(streakMap)
+    .map(([id, data]) => ({
+      id,
+      ...data,
+      avgWins: data.count > 0 ? data.totalWins / data.count : 0,
+    }))
+    .sort((a, b) => b.bestStreak - a.bestStreak || b.avgWins - a.avgWins)
+    .slice(0, 20);
 
   // Biggest losers: aggregate total wins across all results entries
   const winTotals: Record<string, { name: string; totalWins: number; appearances: number; entry?: typeof ranked[0] }> = {};
@@ -213,7 +223,7 @@ export default async function DailyGauntletResultsPage({
                 <div className="space-y-1.5">
                   {topStreaks.map((streak, i) => (
                     <Link
-                      key={i}
+                      key={streak.id}
                       href={streak.slug ? `/card/${streak.slug}` : "#"}
                       className="flex items-center gap-3 p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors cursor-pointer"
                     >
@@ -230,8 +240,11 @@ export default async function DailyGauntletResultsPage({
                       <span className="text-sm text-gray-300 truncate flex-1">
                         {streak.name}
                       </span>
+                      <span className="text-xs text-gray-500 shrink-0 mr-1">
+                        avg {streak.avgWins.toFixed(1)}
+                      </span>
                       <span className="text-sm font-bold text-amber-400 shrink-0">
-                        {streak.wins} win{streak.wins !== 1 ? "s" : ""}
+                        {streak.bestStreak} best
                       </span>
                     </Link>
                   ))}
