@@ -1,8 +1,4 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { artCropUrl } from "@/lib/image-utils";
 
 const MODES = [
   {
@@ -22,17 +18,11 @@ const MODES = [
   },
 ];
 
-export default function ModeCards() {
-  const [images, setImages] = useState<(string | null)[]>([null, null, null]);
+interface ModeCardsProps {
+  images?: string[];
+}
 
-  useEffect(() => {
-    fetch("/api/featured-art?count=3")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.images) setImages(data.images);
-      })
-      .catch(() => {});
-  }, []);
+export default function ModeCards({ images = [] }: ModeCardsProps) {
 
   return (
     <div className="mb-8">

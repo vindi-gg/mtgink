@@ -1,13 +1,81 @@
 import Link from "next/link";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { artCropUrl } from "@/lib/image-utils";
 import DailyChallengesSection from "@/components/DailyChallengesSection";
 import ModeCards from "@/components/ModeCards";
+import type { DailyChallenge, DailyChallengeStats } from "@/lib/types";
+
+export const revalidate = 60;
 
 export const metadata = {
   title: "MTG Ink — Discover & Rank Magic Cards and Art",
   description: "Discover and rank the best Magic: The Gathering cards and art.",
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  let challenges: (DailyChallenge & { stats: DailyChallengeStats })[] = [];
+  let modeImages: string[] = [];
+
+  try {
+    const admin = getAdminClient();
+    const today = new Date().toISOString().split("T")[0];
+
+    // One parallel round trip — challenges (with stats joined) + random art
+    const [{ data: challengeRows }, { data: recentPrintings }] = await Promise.all([
+      admin.from("daily_challenges")
+        .select("*, daily_challenge_stats(*)")
+        .eq("challenge_date", today),
+      admin.from("printings")
+        .select("set_code, collector_number")
+        .not("illustration_id", "is", null)
+        .order("released_at", { ascending: false })
+        .limit(50),
+    ]);
+
+    // Generate challenges only on first request of the day (rare)
+    let dailyChallenges = challengeRows;
+    if (!dailyChallenges || dailyChallenges.length === 0) {
+      await admin.rpc("generate_daily_challenges", { p_date: today });
+      const { data: fresh } = await admin.from("daily_challenges")
+        .select("*, daily_challenge_stats(*)")
+        .eq("challenge_date", today);
+      dailyChallenges = fresh;
+    }
+
+    if (dailyChallenges && dailyChallenges.length > 0) {
+      const defaultStats: DailyChallengeStats = {
+        participation_count: 0,
+        illustration_votes: null,
+        side_a_votes: 0,
+        side_b_votes: 0,
+        champion_counts: null,
+        avg_champion_wins: null,
+        max_champion_wins: 0,
+      };
+
+      challenges = (dailyChallenges as (DailyChallenge & { daily_challenge_stats: DailyChallengeStats | null })[])
+        .filter((c) => c.challenge_type !== "vs")
+        .map((c) => ({
+          ...c,
+          stats: c.daily_challenge_stats ?? defaultStats,
+        }))
+        .sort((a, b) => {
+          const order: Record<string, number> = { remix: 0, gauntlet: 1 };
+          return (order[a.challenge_type] ?? 9) - (order[b.challenge_type] ?? 9);
+        });
+    }
+
+    // Mode card images — pick 3 random from recent printings (no extra query)
+    if (recentPrintings && recentPrintings.length > 0) {
+      const shuffled = recentPrintings.sort(() => Math.random() - 0.5).slice(0, 3);
+      modeImages = shuffled.map((p: { set_code: string; collector_number: string }) =>
+        artCropUrl(p.set_code, p.collector_number),
+      );
+    }
+  } catch {
+    // DB not available at build time — render without data
+  }
+
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4">
@@ -20,11 +88,13 @@ export default function HomePage() {
             Discover and rank the best Magic: The Gathering cards and art.
           </p>
 
-          {/* Daily Challenges */}
-          <DailyChallengesSection />
+          {/* Daily Challenges — server-rendered, participation checked client-side */}
+          {challenges.length > 0 && (
+            <DailyChallengesSection challenges={challenges} />
+          )}
 
           {/* Modes */}
-          <ModeCards />
+          <ModeCards images={modeImages} />
 
           <div className="flex gap-4 justify-center">
             <Link

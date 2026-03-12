@@ -6,6 +6,8 @@ import {
   getGauntletCards,
   getRandomGauntletCard,
   getRandomGauntletGroup,
+  getRandomTheme,
+  getTheme,
 } from "@/lib/queries";
 import GauntletView from "@/components/GauntletView";
 import type { CompareFilters, GauntletEntry } from "@/lib/types";
@@ -33,9 +35,10 @@ export default async function GauntletPage({
     mode?: string;
     artist?: string;
     tag?: string;
+    theme?: string;
   }>;
 }) {
-  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag, theme: themeId } = await searchParams;
 
   const poolSize = Math.min(parseInt(count ?? String(DEFAULT_POOL_SIZE)), 50);
 
@@ -44,6 +47,7 @@ export default async function GauntletPage({
   let filterLabel: string | undefined;
   let gauntletMode: "remix" | "vs" = "vs";
   let filters: CompareFilters | undefined;
+  let themeName: string | undefined;
 
   try {
     if (oracle_id) {
@@ -52,6 +56,30 @@ export default async function GauntletPage({
       cardName = card?.name;
       pool = await getGauntletIllustrations(oracle_id);
       gauntletMode = "remix";
+    } else if (themeId) {
+      // Specific theme by ID
+      const t = await getTheme(parseInt(themeId));
+      if (t) {
+        themeName = t.label;
+        gauntletMode = t.pool_mode;
+        if (t.theme_type === "card_remix" && t.oracle_id) {
+          const card = await getCardByOracleId(t.oracle_id);
+          cardName = card?.name;
+          pool = await getGauntletIllustrations(t.oracle_id);
+        } else if (t.theme_type === "tribe" && t.tribe) {
+          filterLabel = t.tribe;
+          pool = await getGauntletCards(poolSize, { type: "Creature", subtype: t.tribe });
+        } else if (t.theme_type === "tag" && t.tag_id) {
+          filterLabel = t.label.replace(" Gauntlet", "");
+          pool = await getGauntletCardsByTag(t.tag_id, poolSize);
+        } else if (t.theme_type === "artist" && t.artist) {
+          filterLabel = t.artist;
+          pool = await getGauntletIllustrationsByArtist(t.artist, poolSize);
+        } else if (t.theme_type === "set" && t.set_code) {
+          filterLabel = t.set_code.toUpperCase();
+          pool = await getGauntletCards(poolSize, { set_code: t.set_code });
+        }
+      }
     } else if (mode === "card") {
       // Random card with 3+ illustrations
       const card = await getRandomGauntletCard();
@@ -77,26 +105,43 @@ export default async function GauntletPage({
         filterLabel = group.label;
         pool = await getGauntletCards(poolSize, filters);
       }
-    } else {
-      // Explicit filters or random VS
+    } else if (colors || type || subtype || set_code) {
+      // Explicit filters
       const explicitFilters: CompareFilters = {
-        ...(colors || type || subtype || set_code
-          ? {
-              colors: colors ? colors.split(",").filter(Boolean) : undefined,
-              type: type || undefined,
-              subtype: subtype || undefined,
-              set_code: set_code || undefined,
-            }
-          : {}),
+        colors: colors ? colors.split(",").filter(Boolean) : undefined,
+        type: type || undefined,
+        subtype: subtype || undefined,
+        set_code: set_code || undefined,
       };
-      const hasFilters = Object.keys(explicitFilters).length > 0;
-
-      if (hasFilters) {
-        filters = explicitFilters;
-        filterLabel = subtype || type || (set_code ? set_code.toUpperCase() : undefined);
+      filters = explicitFilters;
+      filterLabel = subtype || type || (set_code ? set_code.toUpperCase() : undefined);
+      pool = await getGauntletCards(poolSize, explicitFilters);
+    } else {
+      // No params — pick a random theme
+      const t = await getRandomTheme();
+      if (t) {
+        themeName = t.label;
+        gauntletMode = t.pool_mode;
+        if (t.theme_type === "card_remix" && t.oracle_id) {
+          const card = await getCardByOracleId(t.oracle_id);
+          cardName = card?.name;
+          pool = await getGauntletIllustrations(t.oracle_id);
+        } else if (t.theme_type === "tribe" && t.tribe) {
+          filterLabel = t.tribe;
+          pool = await getGauntletCards(poolSize, { type: "Creature", subtype: t.tribe });
+        } else if (t.theme_type === "tag" && t.tag_id) {
+          filterLabel = t.label.replace(" Gauntlet", "");
+          pool = await getGauntletCardsByTag(t.tag_id, poolSize);
+        } else if (t.theme_type === "artist" && t.artist) {
+          filterLabel = t.artist;
+          pool = await getGauntletIllustrationsByArtist(t.artist, poolSize);
+        } else {
+          pool = await getGauntletCards(poolSize);
+        }
+      } else {
+        // Fallback: random VS
+        pool = await getGauntletCards(poolSize);
       }
-
-      pool = await getGauntletCards(poolSize, hasFilters ? explicitFilters : undefined);
     }
   } catch {
     pool = [];
@@ -131,6 +176,7 @@ export default async function GauntletPage({
         cardName={cardName}
         filterLabel={filterLabel}
         filters={filters}
+        themeName={themeName}
       />
     </main>
   );

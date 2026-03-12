@@ -11,7 +11,9 @@ export async function GET(request: Request) {
 
   try {
     const challenges = await getDailyChallenges(sessionId);
-    return NextResponse.json(challenges);
+    return NextResponse.json(challenges, {
+      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" },
+    });
   } catch (err) {
     console.error("Failed to get daily challenges:", err);
     return NextResponse.json({ error: "Failed to load daily challenges" }, { status: 500 });

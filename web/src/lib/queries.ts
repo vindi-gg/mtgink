@@ -28,6 +28,7 @@ import type {
   DailyChallenge,
   DailyChallengeStats,
   DailyChallengeWithStatus,
+  GauntletTheme,
 } from "./types";
 
 /** Row shape returned by get_comparison_pair / get_cross_comparison_pair RPCs */
@@ -1127,13 +1128,23 @@ export async function getRandomGauntletGroup(): Promise<{ subtype: string; label
 /** Get today's daily challenges with participation status */
 export async function getDailyChallenges(sessionId: string): Promise<DailyChallengeWithStatus[]> {
   const today = new Date().toISOString().split("T")[0];
+  const admin = getAdminClient();
 
-  // Generate challenges if they don't exist (idempotent)
-  const { data: challenges, error } = await getAdminClient().rpc("generate_daily_challenges", {
-    p_date: today,
-  });
+  // Fast path: just SELECT existing challenges (avoids expensive stored proc)
+  let { data: challenges } = await admin
+    .from("daily_challenges")
+    .select("*")
+    .eq("challenge_date", today);
 
-  if (error) throw new Error(`Failed to get daily challenges: ${error.message}`);
+  // Only call the stored proc if no challenges exist yet
+  if (!challenges || challenges.length === 0) {
+    const { data, error } = await admin.rpc("generate_daily_challenges", {
+      p_date: today,
+    });
+    if (error) throw new Error(`Failed to get daily challenges: ${error.message}`);
+    challenges = data;
+  }
+
   if (!challenges || challenges.length === 0) return [];
 
   const challengeIds = (challenges as DailyChallenge[]).map((c) => c.id);
@@ -1176,18 +1187,29 @@ export async function getDailyChallenges(sessionId: string): Promise<DailyChalle
 /** Get a single daily challenge by type for today */
 export async function getDailyChallenge(type: string): Promise<DailyChallenge | null> {
   const today = new Date().toISOString().split("T")[0];
+  const admin = getAdminClient();
 
-  // Ensure challenges exist
-  await getAdminClient().rpc("generate_daily_challenges", { p_date: today });
-
-  const { data } = await getAdminClient()
+  // Fast path: try direct SELECT first
+  const { data } = await admin
     .from("daily_challenges")
     .select("*")
     .eq("challenge_date", today)
     .eq("challenge_type", type)
     .maybeSingle();
 
-  return data as DailyChallenge | null;
+  if (data) return data as DailyChallenge;
+
+  // Generate if missing, then re-query
+  await admin.rpc("generate_daily_challenges", { p_date: today });
+
+  const { data: generated } = await admin
+    .from("daily_challenges")
+    .select("*")
+    .eq("challenge_date", today)
+    .eq("challenge_type", type)
+    .maybeSingle();
+
+  return generated as DailyChallenge | null;
 }
 
 /** Record daily participation and return updated stats */
@@ -1237,6 +1259,48 @@ export async function getDailyChallengeStats(challengeId: number): Promise<Daily
     .maybeSingle();
   return data as DailyChallengeStats | null;
 }
+
+// =============================================================================
+// Gauntlet Themes
+// =============================================================================
+
+/** Get a random active theme */
+export async function getRandomTheme(): Promise<GauntletTheme | null> {
+  // Supabase doesn't support ORDER BY random(), so fetch all active and pick one
+  const { data } = await getAdminClient()
+    .from("gauntlet_themes")
+    .select("*")
+    .eq("is_active", true);
+
+  if (!data || data.length === 0) return null;
+  return data[Math.floor(Math.random() * data.length)] as GauntletTheme;
+}
+
+/** Get a random VS theme (tribe-based) for the regular VS page */
+export async function getRandomVsTheme(): Promise<GauntletTheme | null> {
+  const { data } = await getAdminClient()
+    .from("gauntlet_themes")
+    .select("*")
+    .eq("is_active", true)
+    .eq("pool_mode", "vs");
+
+  if (!data || data.length === 0) return null;
+  return data[Math.floor(Math.random() * data.length)] as GauntletTheme;
+}
+
+/** Get a specific theme by ID */
+export async function getTheme(id: number): Promise<GauntletTheme | null> {
+  const { data } = await getAdminClient()
+    .from("gauntlet_themes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  return data as GauntletTheme | null;
+}
+
+// =============================================================================
+// Gauntlet Pool Queries
+// =============================================================================
 
 /** Get random cards with representative printings as gauntlet entries (VS mode) */
 export async function getGauntletCards(

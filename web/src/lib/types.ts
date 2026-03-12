@@ -370,6 +370,26 @@ export interface GauntletEntry {
   mana_cost: string | null;
 }
 
+// --- Gauntlet Theme types ---
+
+export interface GauntletTheme {
+  id: number;
+  theme_type: "card_remix" | "tribe" | "tag" | "set" | "artist";
+  pool_mode: "remix" | "vs";
+  label: string;
+  description: string | null;
+  oracle_id: string | null;
+  tribe: string | null;
+  tag_id: string | null;
+  set_code: string | null;
+  artist: string | null;
+  preview_set_code: string | null;
+  preview_collector_number: string | null;
+  preview_image_version: string | null;
+  pool_size_estimate: number | null;
+  is_active: boolean;
+}
+
 // --- Daily Challenge types ---
 
 export interface DailyChallenge {
@@ -383,6 +403,7 @@ export interface DailyChallenge {
   illustration_id_b: string | null;
   pool: GauntletEntry[] | null;
   gauntlet_mode: "remix" | "vs" | null;
+  theme_id: number | null;
   title: string;
   description: string | null;
   preview_set_code: string | null;

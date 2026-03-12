@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CardImage from "./CardImage";
+import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
-import PriceTag from "./PriceTag";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ComparisonPair, ClashPair, CompareFilters, VoteResponse, CardVoteResponse } from "@/lib/types";
@@ -160,8 +160,6 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
   const [filters, setFilters] = useState<CompareFilters>(initialFilters ?? {});
   const [showFilters, setShowFilters] = useState(hasActiveFilters(initialFilters ?? {}));
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [showingCard, setShowingCard] = useState<string | null>(null);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const sidesRef = useRef(sides);
@@ -182,7 +180,6 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
 
   // Update URL with current matchup IDs (skip initial to keep clean URLs)
   useEffect(() => {
-    setShowingCard(null);
     if (isFirstPair.current) {
       isFirstPair.current = false;
       return;
@@ -376,15 +373,6 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
 
     return (
       <div className="flex flex-col items-center">
-        {/* Card name — always show for VS, show for remix only if different cards */}
-        {(!sameCard || !isRemix) && (
-          <a
-            href={`/card/${side.slug}`}
-            className="text-xs font-bold text-amber-400 hover:text-amber-300 mb-1 transition-colors truncate max-w-full"
-          >
-            {side.name}
-          </a>
-        )}
         <div className="relative w-full">
           <CardImage
             key={`${side.illustration_id}-${viewMode}`}
@@ -394,35 +382,19 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
             onImageError={skip}
             className="w-full"
           />
-          {/* Card preview button — only in art mode */}
           {showArt && (
-            <button
-              type="button"
-              className="absolute bottom-2 left-2 z-30 w-8 h-10 rounded bg-black/40 backdrop-blur-sm flex items-center justify-center cursor-zoom-in hover:bg-black/60 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowingCard(side.illustration_id);
-              }}
-              onPointerEnter={(e) => {
-                if (window.innerWidth >= 768) {
-                  setShowingCard(side.illustration_id);
-                  setCursorPos({ x: e.clientX, y: e.clientY });
-                }
-              }}
-              onPointerMove={(e) => {
-                if (window.innerWidth >= 768) setCursorPos({ x: e.clientX, y: e.clientY });
-              }}
-              onPointerLeave={() => {
-                if (window.innerWidth >= 768) { setShowingCard(null); setCursorPos(null); }
-              }}
-            >
-              <svg width="16" height="20" viewBox="0 0 16 20" fill="none" className="text-white/70">
-                <rect x="1" y="1" width="14" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-                <rect x="3.5" y="3.5" width="9" height="6" rx="0.5" fill="currentColor" opacity="0.4" />
-                <line x1="3.5" y1="12" x2="12.5" y2="12" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-                <line x1="3.5" y1="14.5" x2="10" y2="14.5" stroke="currentColor" strokeWidth="1" opacity="0.3" />
-              </svg>
-            </button>
+            <CardPreviewOverlay
+              setCode={side.set_code}
+              collectorNumber={side.collector_number}
+              imageVersion={side.image_version}
+              alt={`${side.name} by ${side.artist}`}
+              illustrationId={side.illustration_id}
+              oracleId={side.oracle_id}
+              cardName={side.name}
+              cardSlug={side.slug}
+              isFavorited={favorites.has(side.illustration_id)}
+              onToggleFavorite={toggleFavorite}
+            />
           )}
           <div className="absolute top-2 right-2 z-10">
             <FavoriteButton
@@ -432,21 +404,16 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
               onToggle={toggleFavorite}
             />
           </div>
+          {showArt && (
+            <div className="absolute bottom-2 right-2 z-10 text-right">
+              {!sameCard && (
+                <a href={`/card/${side.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{side.name}</a>
+              )}
+              <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{side.artist}</p>
+              <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{side.set_code.toUpperCase()}</p>
+            </div>
+          )}
         </div>
-        {/* Metadata below art — only in art mode */}
-        {showArt && (
-          <div className="mt-2 text-center">
-            <p className="text-sm font-medium text-gray-200">{side.artist}</p>
-            <p className="text-xs text-gray-400">
-              {side.set_name} ({side.set_code.toUpperCase()})
-            </p>
-            {!isRemix && (
-              <div className="mt-1">
-                <PriceTag oracleId={side.oracle_id} />
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   }
@@ -717,45 +684,6 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
         Arrow keys to vote, S to skip
       </p>
 
-      {/* Mobile card preview modal */}
-      {showingCard && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fade-in md:hidden"
-          onClick={() => setShowingCard(null)}
-        >
-          <img
-            src={normalCardUrl(
-              (showingCard === a.illustration_id ? a : b).set_code,
-              (showingCard === a.illustration_id ? a : b).collector_number,
-              (showingCard === a.illustration_id ? a : b).image_version,
-            )}
-            alt="Card preview"
-            className="max-h-[85vh] max-w-full rounded-[3.8%]"
-          />
-        </div>
-      )}
-
-      {/* Desktop card preview — follows cursor */}
-      {showingCard && cursorPos && (
-        <div
-          className="fixed z-50 pointer-events-none hidden md:block"
-          style={{
-            left: cursorPos.x + 20,
-            top: Math.min(cursorPos.y - 200, window.innerHeight - 520),
-            width: 336,
-          }}
-        >
-          <img
-            src={normalCardUrl(
-              (showingCard === a.illustration_id ? a : b).set_code,
-              (showingCard === a.illustration_id ? a : b).collector_number,
-              (showingCard === a.illustration_id ? a : b).image_version,
-            )}
-            alt="Card preview"
-            className="w-full rounded-[3.8%] shadow-2xl shadow-black/80"
-          />
-        </div>
-      )}
     </div>
   );
 }

@@ -23,6 +23,7 @@ interface PrintingInfo {
   set_code: string;
   collector_number: string;
   image_version: string | null;
+  artist: string;
 }
 
 interface DailyVsClientProps {
@@ -106,40 +107,54 @@ export default function DailyVsClient({ challenge, cardA, cardB, printingA, prin
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2 md:gap-6">
-              <div className="flex flex-col items-center">
-                <a href={`/card/${cardA.slug}`} className="text-xs font-bold text-amber-400 hover:text-amber-300 mb-1 transition-colors truncate max-w-full">
-                  {cardA.name}
-                </a>
-                <div className="relative w-full">
-                  <CardImage src={imgA} alt={cardA.name} onClick={() => vote("a")} className="w-full" />
-                  <CardPreviewOverlay setCode={printingA.set_code} collectorNumber={printingA.collector_number} imageVersion={printingA.image_version} alt={cardA.name} />
+            <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
+              {[
+                { card: cardA, printing: printingA, img: imgA, side: "a" as const, illId: challenge.illustration_id_a },
+                { card: cardB, printing: printingB, img: imgB, side: "b" as const, illId: challenge.illustration_id_b },
+              ].map(({ card, printing, img, side, illId }) => (
+                <div key={side} className="flex flex-col items-center">
+                  <div className="relative w-full">
+                    <CardImage src={img} alt={card.name} onClick={() => vote(side)} className="w-full" />
+                    <CardPreviewOverlay
+                      setCode={printing.set_code}
+                      collectorNumber={printing.collector_number}
+                      imageVersion={printing.image_version}
+                      alt={card.name}
+                      illustrationId={illId ?? undefined}
+                      oracleId={card.oracle_id}
+                      cardName={card.name}
+                      cardSlug={card.slug}
+                    />
+                    <div className="absolute bottom-2 right-2 z-10 text-right">
+                      <a href={`/card/${card.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{card.name}</a>
+                      <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.artist}</p>
+                      <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.set_code.toUpperCase()}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col items-center">
-                <a href={`/card/${cardB.slug}`} className="text-xs font-bold text-amber-400 hover:text-amber-300 mb-1 transition-colors truncate max-w-full">
-                  {cardB.name}
-                </a>
-                <div className="relative w-full">
-                  <CardImage src={imgB} alt={cardB.name} onClick={() => vote("b")} className="w-full" />
-                  <CardPreviewOverlay setCode={printingB.set_code} collectorNumber={printingB.collector_number} imageVersion={printingB.image_version} alt={cardB.name} />
-                </div>
-              </div>
+              ))}
             </div>
           </div>
           <p className="text-center text-xs text-gray-600 mt-4">Click to pick your winner</p>
         </>
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-2 md:gap-6 opacity-60">
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-bold text-gray-400 mb-1">{cardA.name}</span>
-              <img src={imgA} alt={cardA.name} className="w-full rounded-[5%]" />
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-bold text-gray-400 mb-1">{cardB.name}</span>
-              <img src={imgB} alt={cardB.name} className="w-full rounded-[5%]" />
-            </div>
+          <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6 opacity-60">
+            {[
+              { card: cardA, printing: printingA, img: imgA },
+              { card: cardB, printing: printingB, img: imgB },
+            ].map(({ card, printing, img }) => (
+              <div key={card.oracle_id} className="flex flex-col items-center">
+                <div className="relative w-full">
+                  <img src={img} alt={card.name} className="w-full rounded-[5%]" />
+                  <div className="absolute bottom-2 right-2 text-right">
+                    <span className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.name}</span>
+                    <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.artist}</p>
+                    <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.set_code.toUpperCase()}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
           {stats && (
             <DailyResultsPanel

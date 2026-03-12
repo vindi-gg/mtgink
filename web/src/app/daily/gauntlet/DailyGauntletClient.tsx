@@ -65,17 +65,15 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
   }
 
   const cardName = mode === "remix" && pool.length > 0 ? pool[0].name : undefined;
+  const themeLabel = challenge.title !== "Daily Gauntlet" ? challenge.title : undefined;
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-xl font-bold text-center mb-4">
-        <span className="text-amber-400">Daily Gauntlet</span>
-      </h1>
-
       <GauntletView
         mode={mode}
         pool={pool}
         cardName={cardName}
+        themeName={themeLabel}
         dailyChallengeId={challenge.id}
         onComplete={handleComplete}
         hideControls

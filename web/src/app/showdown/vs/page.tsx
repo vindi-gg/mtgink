@@ -1,4 +1,4 @@
-import { getClashPair, getSpecificClashPair, resolvePrintingRef } from "@/lib/queries";
+import { getClashPair, getSpecificClashPair, resolvePrintingRef, getRandomVsTheme } from "@/lib/queries";
 import ShowdownView from "@/components/ShowdownView";
 import type { CompareFilters } from "@/lib/types";
 
@@ -17,7 +17,7 @@ export default async function VsPage({
 }) {
   const { colors, type, subtype, set_code, a, b } = await searchParams;
 
-  const filters: CompareFilters = {
+  let filters: CompareFilters = {
     ...(colors || type || subtype || set_code
       ? {
           colors: colors ? colors.split(",").filter(Boolean) : undefined,
@@ -28,12 +28,21 @@ export default async function VsPage({
       : {}),
   };
 
+  const hasExplicitFilters = Object.keys(filters).length > 0;
+
+  // When no explicit filters, pick a random VS theme (tribe) so there's always a topic
+  if (!hasExplicitFilters && !a && !b) {
+    const theme = await getRandomVsTheme();
+    if (theme?.tribe) {
+      filters = { subtype: theme.tribe };
+    }
+  }
+
   const hasFilters = Object.keys(filters).length > 0;
 
   let pair;
   try {
     if (a && b) {
-      // Resolve short refs (e.g. "ice-64") to oracle IDs
       const [refA, refB] = await Promise.all([resolvePrintingRef(a), resolvePrintingRef(b)]);
       if (refA && refB) {
         pair = await getSpecificClashPair(refA.oracle_id, refB.oracle_id);

@@ -6,7 +6,7 @@ import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
 import RecentActivity from "./RecentActivity";
-import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
+import { artCropUrl } from "@/lib/image-utils";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { GauntletEntry, CompareFilters } from "@/lib/types";
 
@@ -21,8 +21,6 @@ function getSessionId(): string {
   }
   return id;
 }
-
-type ViewMode = "art" | "card";
 
 interface GauntletResultEntry {
   oracle_id: string;
@@ -61,6 +59,7 @@ interface GauntletViewProps {
   dailyChallengeId?: number;
   onComplete?: (champion: GauntletEntry, championWins: number, results: GauntletResult[]) => void;
   hideControls?: boolean;
+  themeName?: string;
 }
 
 export default function GauntletView({
@@ -72,6 +71,7 @@ export default function GauntletView({
   dailyChallengeId,
   onComplete,
   hideControls,
+  themeName,
 }: GauntletViewProps) {
   const isRemix = mode === "remix";
 
@@ -85,7 +85,6 @@ export default function GauntletView({
   const [phase, setPhase] = useState<"playing" | "complete">(
     initialPool.length < 2 ? "complete" : "playing",
   );
-  const [viewMode, setViewMode] = useState<ViewMode>("art");
   const [extending, setExtending] = useState(false);
   const [showNewGame, setShowNewGame] = useState(false);
 
@@ -279,7 +278,6 @@ export default function GauntletView({
     setPhase(initialPool.length < 2 ? "complete" : "playing");
   }
 
-  const showArt = viewMode === "art";
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -327,32 +325,6 @@ export default function GauntletView({
     );
   }
 
-  function renderViewToggle() {
-    return (
-      <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
-        <button
-          onClick={() => setViewMode("art")}
-          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-            viewMode === "art"
-              ? "bg-amber-500 text-gray-900"
-              : "text-gray-400 hover:text-white hover:bg-gray-800"
-          }`}
-        >
-          Art
-        </button>
-        <button
-          onClick={() => setViewMode("card")}
-          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-            viewMode === "card"
-              ? "bg-amber-500 text-gray-900"
-              : "text-gray-400 hover:text-white hover:bg-gray-800"
-          }`}
-        >
-          Card
-        </button>
-      </div>
-    );
-  }
 
   function renderModeLinks() {
     return (
@@ -377,41 +349,41 @@ export default function GauntletView({
   }
 
   function renderEntry(entry: GauntletEntry, side: 0 | 1, label: string, wins?: number) {
-    const artUrl = artCropUrl(entry.set_code, entry.collector_number, entry.image_version);
-    const cardUrl = normalCardUrl(entry.set_code, entry.collector_number, entry.image_version);
-    const imgSrc = showArt ? artUrl : cardUrl;
+    const imgSrc = artCropUrl(entry.set_code, entry.collector_number, entry.image_version);
 
     return (
       <div className="flex flex-col items-center">
-        <div className="flex items-center gap-2 mb-1">
-          <span className={`text-xs font-bold uppercase ${label === "Champion" ? "text-amber-500" : "text-gray-500"}`}>
-            {label}
-          </span>
-          {wins !== undefined && wins > 0 && (
-            <span className="text-xs text-amber-400/70">
-              {wins} win{wins !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
-        {(!isRemix) && (
-          <a
-            href={`/card/${entry.slug}`}
-            className="text-xs font-bold text-amber-400 hover:text-amber-300 mb-1 transition-colors truncate max-w-full"
-          >
-            {entry.name}
-          </a>
-        )}
         <div className="relative w-full">
           <CardImage
-            key={`${entry.illustration_id}-${viewMode}`}
+            key={entry.illustration_id}
             src={imgSrc}
             alt={`${entry.name} by ${entry.artist}`}
             onClick={() => vote(side)}
             className="w-full"
           />
-          {showArt && (
-            <CardPreviewOverlay setCode={entry.set_code} collectorNumber={entry.collector_number} imageVersion={entry.image_version} alt={`${entry.name} by ${entry.artist}`} />
-          )}
+          <CardPreviewOverlay
+            setCode={entry.set_code}
+            collectorNumber={entry.collector_number}
+            imageVersion={entry.image_version}
+            alt={`${entry.name} by ${entry.artist}`}
+            illustrationId={entry.illustration_id}
+            oracleId={entry.oracle_id}
+            cardName={entry.name}
+            cardSlug={entry.slug}
+            isFavorited={favorites.has(entry.illustration_id)}
+            onToggleFavorite={toggleFavorite}
+          />
+          {/* Champion/Challenger label — top left */}
+          <div className="absolute top-1.5 left-1.5 z-10">
+            <span className={`text-[10px] font-bold uppercase drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] ${label === "Champion" ? "text-amber-400" : "text-gray-400"}`}>
+              {label}
+              {wins !== undefined && wins > 0 && (
+                <span className="text-amber-400/70 ml-1 font-medium">
+                  {wins}W
+                </span>
+              )}
+            </span>
+          </div>
           <div className="absolute top-2 right-2 z-10">
             <FavoriteButton
               illustrationId={entry.illustration_id}
@@ -420,24 +392,25 @@ export default function GauntletView({
               onToggle={toggleFavorite}
             />
           </div>
-        </div>
-        {showArt && (
-          <div className="mt-2 text-center">
-            <p className="text-sm font-medium text-gray-200">{entry.artist}</p>
-            <p className="text-xs text-gray-400">
-              {entry.set_name} ({entry.set_code.toUpperCase()})
-            </p>
+          <div className="absolute bottom-2 right-2 z-10 text-right">
+            {!isRemix && (
+              <a href={`/card/${entry.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{entry.name}</a>
+            )}
+            <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{entry.artist}</p>
+            <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{entry.set_code.toUpperCase()}</p>
           </div>
-        )}
+        </div>
       </div>
     );
   }
 
-  const title = cardName
-    ? `${cardName} Gauntlet`
-    : filterLabel
-      ? `${filterLabel} Gauntlet`
-      : "Gauntlet";
+  const title = themeName
+    ? themeName
+    : cardName
+      ? `${cardName} Gauntlet`
+      : filterLabel
+        ? `${filterLabel} Gauntlet`
+        : "Gauntlet";
 
   // "Another one" button — same type, different random pick
   const repeatUrl = cardName
@@ -453,26 +426,39 @@ export default function GauntletView({
 
   // --- Playing phase ---
 
+  function renderProgressTicks() {
+    return (
+      <div className="flex gap-[2px]">
+        {Array.from({ length: totalMatches }, (_, i) => (
+          <div
+            key={i}
+            className={`h-[3px] flex-1 rounded-[1px] transition-colors duration-200 ${
+              i < currentMatch - 1
+                ? "bg-amber-500"
+                : i === currentMatch - 1
+                  ? "bg-amber-500/60"
+                  : "bg-gray-800"
+            }`}
+          />
+        ))}
+      </div>
+    );
+  }
+
   if (phase === "playing" && champion && challenger) {
     return (
       <div>
-        <h2 className="font-bold text-center mb-1 md:mb-2 text-base md:text-lg">
-          <span className="text-amber-400">{title}</span>
-        </h2>
+        {/* Thin title bar with title + counter */}
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-bold text-amber-400 truncate">{title}</span>
+          <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
+            {currentMatch}/{totalMatches}
+          </span>
+        </div>
 
-        {/* Progress */}
-        <div className="text-center mb-3">
-          <div className="inline-flex items-center gap-3">
-            <span className="text-xs text-gray-500">
-              Match {currentMatch} of {totalMatches}
-            </span>
-            <div className="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-300"
-                style={{ width: `${(currentMatch / totalMatches) * 100}%` }}
-              />
-            </div>
-          </div>
+        {/* Segmented progress ticks */}
+        <div className="mb-2">
+          {renderProgressTicks()}
         </div>
 
         {/* Main grid */}
@@ -488,13 +474,8 @@ export default function GauntletView({
           <div className="flex justify-center gap-3 mt-4">
             {renderModeLinks()}
             {renderNewGameDropdown()}
-            {renderViewToggle()}
           </div>
         )}
-
-        <p className="text-center text-xs text-gray-600 mt-3">
-          Click or arrow keys to vote
-        </p>
       </div>
     );
   }
@@ -522,11 +503,7 @@ export default function GauntletView({
           </div>
           <div className="relative ring-2 ring-amber-500/50 rounded-[5%] overflow-hidden">
             <img
-              src={
-                showArt
-                  ? artCropUrl(finalChampion.set_code, finalChampion.collector_number, finalChampion.image_version)
-                  : normalCardUrl(finalChampion.set_code, finalChampion.collector_number, finalChampion.image_version)
-              }
+              src={artCropUrl(finalChampion.set_code, finalChampion.collector_number, finalChampion.image_version)}
               alt={finalChampion.name}
               className="w-full"
             />
@@ -614,7 +591,6 @@ export default function GauntletView({
       {/* Mode + view toggles */}
       <div className="flex justify-center gap-3 mt-4">
         {renderModeLinks()}
-        {renderViewToggle()}
       </div>
 
       {!hideControls && <RecentActivity />}

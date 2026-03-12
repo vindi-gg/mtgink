@@ -1,20 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { normalCardUrl } from "@/lib/image-utils";
+import FavoriteButton from "./FavoriteButton";
 
 interface CardPreviewOverlayProps {
   setCode: string;
   collectorNumber: string;
   imageVersion: string | null;
   alt?: string;
+  // Optional props for enhanced mobile modal
+  illustrationId?: string;
+  oracleId?: string;
+  cardName?: string;
+  cardSlug?: string;
+  isFavorited?: boolean;
+  onToggleFavorite?: (illustrationId: string, oracleId: string) => Promise<string | null>;
 }
 
-export default function CardPreviewOverlay({ setCode, collectorNumber, imageVersion, alt }: CardPreviewOverlayProps) {
+export default function CardPreviewOverlay({
+  setCode,
+  collectorNumber,
+  imageVersion,
+  alt,
+  illustrationId,
+  oracleId,
+  cardName,
+  cardSlug,
+  isFavorited,
+  onToggleFavorite,
+}: CardPreviewOverlayProps) {
   const [showing, setShowing] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [price, setPrice] = useState<string | null>(null);
+  const [priceLoaded, setPriceLoaded] = useState(false);
 
   const cardSrc = normalCardUrl(setCode, collectorNumber, imageVersion);
+
+  // Fetch price when mobile modal opens
+  useEffect(() => {
+    if (!showing || priceLoaded || !oracleId) return;
+    // Only fetch on mobile (desktop uses hover)
+    if (typeof window !== "undefined" && window.innerWidth >= 768) return;
+
+    fetch(`/api/prices?oracle_id=${oracleId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0 && data[0].market_price) {
+          setPrice(`$${Number(data[0].market_price).toFixed(2)}`);
+        }
+        setPriceLoaded(true);
+      })
+      .catch(() => setPriceLoaded(true));
+  }, [showing, priceLoaded, oracleId]);
 
   return (
     <>
@@ -46,13 +84,54 @@ export default function CardPreviewOverlay({ setCode, collectorNumber, imageVers
         </svg>
       </button>
 
-      {/* Mobile card preview modal */}
+      {/* Mobile card preview modal — enhanced with favorite + price */}
       {showing && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fade-in md:hidden"
           onClick={() => setShowing(false)}
         >
-          <img src={cardSrc} alt={alt ?? "Card preview"} className="max-h-[85vh] max-w-full rounded-[3.8%]" />
+          <div className="relative max-w-[320px] w-full">
+            <img src={cardSrc} alt={alt ?? "Card preview"} className="w-full rounded-[3.8%]" onClick={() => setShowing(false)} />
+
+            {/* Info bar below card */}
+            {(illustrationId || cardName || price) && (
+              <div className="flex items-center justify-between mt-3 px-1" onClick={(e) => e.stopPropagation()}>
+                <div className="min-w-0">
+                  {cardName && cardSlug ? (
+                    <a
+                      href={`/card/${cardSlug}`}
+                      className="text-sm font-bold text-amber-400 hover:text-amber-300 truncate block"
+                    >
+                      {cardName}
+                    </a>
+                  ) : cardName ? (
+                    <span className="text-sm font-bold text-gray-200 truncate block">{cardName}</span>
+                  ) : null}
+                  {price && (
+                    <span className="text-xs text-gray-400">from {price}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  {illustrationId && oracleId && onToggleFavorite && (
+                    <FavoriteButton
+                      illustrationId={illustrationId}
+                      oracleId={oracleId}
+                      isFavorited={isFavorited ?? false}
+                      onToggle={onToggleFavorite}
+                    />
+                  )}
+                  <button
+                    onClick={() => setShowing(false)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

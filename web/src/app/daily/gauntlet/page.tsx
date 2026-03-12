@@ -26,7 +26,7 @@ export default async function DailyGauntletPage() {
   const gauntletMode = challenge.gauntlet_mode ?? "vs";
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white px-4 pt-20 pb-8">
+    <main className="min-h-screen bg-gray-950 text-white px-4 py-2 md:py-8">
       <DailyGauntletClient
         challenge={challenge}
         pool={pool}

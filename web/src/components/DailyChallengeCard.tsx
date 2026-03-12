@@ -14,6 +14,11 @@ const TYPE_LABELS: Record<string, string> = {
   gauntlet: "Gauntlet",
 };
 
+const GAUNTLET_MODE_LABELS: Record<string, string> = {
+  remix: "Remix Gauntlet",
+  vs: "VS Gauntlet",
+};
+
 const TYPE_COLORS: Record<string, string> = {
   remix: "bg-amber-500 text-gray-900",
   vs: "bg-blue-500 text-white",
@@ -27,11 +32,11 @@ export default function DailyChallengeCard({ challenge }: DailyChallengeCardProp
   return (
     <Link
       href={href}
-      className="relative block border border-gray-700 rounded-xl overflow-hidden transition-all hover:border-amber-500 hover:bg-gray-900/50 group"
+      className="relative border border-gray-700 rounded-xl overflow-hidden transition-all hover:border-amber-500 hover:bg-gray-900/50 group flex sm:block"
     >
       {/* Preview image */}
       {hasPreview && (
-        <div className="aspect-[626/457] overflow-hidden bg-gray-800">
+        <div className="w-24 shrink-0 sm:w-full aspect-square sm:aspect-[626/457] overflow-hidden bg-gray-800">
           <img
             src={artCropUrl(
               challenge.preview_set_code!,
@@ -45,10 +50,12 @@ export default function DailyChallengeCard({ challenge }: DailyChallengeCardProp
       )}
 
       {/* Content */}
-      <div className="p-3">
+      <div className="p-3 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TYPE_COLORS[challenge.challenge_type]}`}>
-            {TYPE_LABELS[challenge.challenge_type]}
+            {challenge.challenge_type === "gauntlet" && challenge.gauntlet_mode
+              ? GAUNTLET_MODE_LABELS[challenge.gauntlet_mode] ?? "Gauntlet"
+              : TYPE_LABELS[challenge.challenge_type]}
           </span>
           {challenge.participated && (
             <span className="text-[10px] text-green-400 font-medium">Done</span>
