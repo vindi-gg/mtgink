@@ -5,7 +5,13 @@ const SECTION_PATTERNS = [
   /^(\w[\w\s]*):$/,      // SIDEBOARD:, Companion:
 ];
 
-const CARD_LINE = /^(\d+)x?\s+(.+?)(?:\s+\([A-Z0-9]+\)\s+\S+)?$/;
+// Matches: "4 Lightning Bolt", "1 Narset (MAT) 173 *F*", "2x Counterspell"
+const CARD_LINE = /^(\d+)x?\s+(.+?)(?:\s+\(([A-Z0-9]+)\)\s+(\S+)(.*))?$/;
+
+/** Normalize Moxfield single-slash split names to Scryfall double-slash */
+function normalizeName(name: string): string {
+  return name.replace(/\s+\/\s+/g, " // ");
+}
 
 export function parseDeckList(text: string): DecklistEntry[] {
   const entries: DecklistEntry[] = [];
@@ -30,22 +36,36 @@ export function parseDeckList(text: string): DecklistEntry[] {
     // Try to parse as a card line
     const cardMatch = line.match(CARD_LINE);
     if (cardMatch) {
-      entries.push({
+      const entry: DecklistEntry = {
         quantity: parseInt(cardMatch[1], 10),
-        name: cardMatch[2].trim(),
+        name: normalizeName(cardMatch[2].trim()),
         section: currentSection,
-      });
+      };
+      if (cardMatch[3]) {
+        entry.original_set_code = cardMatch[3].toLowerCase();
+        entry.original_collector_number = cardMatch[4];
+        entry.original_is_foil = cardMatch[5]?.includes("*F*") ?? false;
+      }
+      entries.push(entry);
     } else if (/^[A-Z]/.test(line) && !line.includes(":")) {
       // Bare card name (no quantity) — default to 1
-      const nameOnly = line.replace(/\s+\([A-Z0-9]+\)\s+\S+$/, "").trim();
+      const nameOnly = line.replace(/\s+\([A-Z0-9]+\)\s+.*$/, "").trim();
       if (nameOnly) {
         entries.push({
           quantity: 1,
-          name: nameOnly,
+          name: normalizeName(nameOnly),
           section: currentSection,
         });
       }
     }
+  }
+
+  // Moxfield format: if first card has set code and no explicit section headers
+  // were used, assume the first card is the commander
+  const hasSectionHeaders = entries.some((e) => e.section !== "Mainboard");
+  const isMoxfieldFormat = entries.length > 0 && entries[0].original_set_code;
+  if (isMoxfieldFormat && !hasSectionHeaders && entries[0].quantity === 1) {
+    entries[0].section = "Commander";
   }
 
   return entries;

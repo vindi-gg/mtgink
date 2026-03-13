@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseDeckList, extractMoxfieldDeckId, parseMoxfieldResponse } from "@/lib/deck";
 import { lookupDeckCards } from "@/lib/queries";
+import { createAnonymousDeck } from "@/lib/deck-queries";
 import type { DecklistEntry } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -23,7 +24,12 @@ export async function POST(request: NextRequest) {
 
     try {
       const res = await fetch(`https://api2.moxfield.com/v3/decks/all/${moxId}`, {
-        headers: { "User-Agent": "MTGInk/1.0" },
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept": "application/json",
+          "Origin": "https://www.moxfield.com",
+          "Referer": "https://www.moxfield.com/",
+        },
       });
 
       if (!res.ok) {
@@ -68,7 +74,31 @@ export async function POST(request: NextRequest) {
 
   const { matched, unmatched } = await lookupDeckCards(entries);
 
+  // Save the deck with top-rated art as default selections
+  const deckCards = matched.map((card) => {
+    const topIll = [...card.illustrations].sort(
+      (a, b) => (b.rating?.elo_rating ?? 0) - (a.rating?.elo_rating ?? 0)
+    )[0];
+    return {
+      oracleId: card.card.oracle_id,
+      quantity: card.quantity,
+      section: card.section || "Mainboard",
+      selectedIllustrationId: topIll?.illustration_id,
+      originalSetCode: card.original_set_code,
+      originalCollectorNumber: card.original_collector_number,
+      originalIsFoil: card.original_is_foil,
+    };
+  });
+
+  const deckId = await createAnonymousDeck({
+    name: deckName || "Imported Deck",
+    format: deckFormat ?? undefined,
+    sourceUrl: sourceUrl ?? undefined,
+    cards: deckCards,
+  });
+
   return NextResponse.json({
+    deckId,
     cards: matched,
     unmatched,
     stats: {

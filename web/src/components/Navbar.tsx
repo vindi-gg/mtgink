@@ -12,7 +12,7 @@ function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/showdown/vs" && pathname.startsWith("/showdown/vs")) return true;
   if (href === "/db" && (pathname === "/db" || pathname.startsWith("/db/"))) return true;
   if (href === "/deck" && (pathname === "/deck" || pathname.startsWith("/deck/"))) return true;
-  if (href === "/browse" && pathname.startsWith("/browse")) return true;
+  if (href === "/deck-import" && pathname.startsWith("/deck")) return true;
   if (href === "/artists" && pathname.startsWith("/artists")) return true;
   if (href === "/brew" && pathname.startsWith("/brew")) return true;
   if (href === "/favorites" && pathname.startsWith("/favorites")) return true;
@@ -26,6 +26,7 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [playMenuOpen, setPlayMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const supabase = createClient();
 
@@ -49,6 +50,7 @@ export default function Navbar() {
   useEffect(() => {
     setMenuOpen(false);
     setUserMenuOpen(false);
+    setPlayMenuOpen(false);
     setSearchOpen(false);
   }, [pathname]);
 
@@ -78,6 +80,7 @@ export default function Navbar() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+
   async function handleSignOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -95,6 +98,7 @@ export default function Navbar() {
   const secondaryLinks = [
     { href: "/artists", label: "Artists" },
     { href: "/brew", label: "Brew" },
+    { href: "/deck-import", label: "Decks" },
     { href: "/db", label: "DB" },
   ];
 
@@ -122,8 +126,11 @@ export default function Navbar() {
         .slice(0, 2)
     : "?";
 
+  const isShowdown = pathname.startsWith("/showdown") || pathname.startsWith("/daily/gauntlet") || pathname.endsWith("/remix");
+
   return (
-    <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm md:sticky md:top-0 z-50">
+    <>
+    <nav className={`relative border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm z-[60] ${isShowdown ? "md:sticky md:top-0" : "sticky top-0"}`}>
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex flex-col items-center font-bold pt-[5px]" style={{ lineHeight: 0.9, fontFamily: "'Futura', 'Futura Bold', 'Trebuchet MS', Arial, sans-serif" }}>
@@ -227,36 +234,60 @@ export default function Navbar() {
         </div>
 
         {/* Mobile nav */}
-        <div className="flex md:hidden items-center gap-4">
-          {/* Primary links always visible */}
-          {primaryLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`text-sm font-bold transition-colors ${
-                isActiveLink(pathname, link.href)
-                  ? "text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
+        <div className="flex md:hidden items-center gap-3">
+          {/* Play button */}
+          <button
+            data-play-btn
+            onClick={() => { setPlayMenuOpen(!playMenuOpen); setMenuOpen(false); }}
+            className={`text-sm font-bold transition-colors cursor-pointer ${
+              playMenuOpen || pathname.startsWith("/showdown") || pathname.startsWith("/daily")
+                ? "text-white"
+                : "text-gray-400"
+            }`}
+          >
+            Play
+          </button>
+
+          {/* DB link */}
+          <Link
+            href="/db"
+            className={`text-sm font-bold transition-colors ${
+              pathname.startsWith("/db") || pathname.startsWith("/artists")
+                ? "text-white"
+                : "text-gray-400"
+            }`}
+          >
+            DB
+          </Link>
+
+          {/* Deck import icon */}
+          <Link
+            href="/deck-import"
+            className={`transition-colors ${
+              pathname.startsWith("/deck") ? "text-white" : "text-gray-400"
+            }`}
+            title="Import Deck"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </Link>
 
           {/* Search (mobile) */}
           <button
             onClick={() => setSearchOpen(true)}
-            className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-900/50 text-gray-400 hover:border-gray-500 hover:text-white transition-colors cursor-pointer"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
+            <kbd className="text-[10px] text-gray-600">/</kbd>
           </button>
 
           {/* Avatar / Sign in (mobile) */}
           {user ? (
             <button
-              onClick={() => setMenuOpen(!menuOpen)}
+              onClick={() => { setMenuOpen(!menuOpen); setPlayMenuOpen(false); }}
               className="flex-shrink-0"
             >
               {avatarUrl ? (
@@ -291,9 +322,8 @@ export default function Navbar() {
               </svg>
             </Link>
           ) : (
-            /* Hamburger for non-auth setup */
             <button
-              onClick={() => setMenuOpen(!menuOpen)}
+              onClick={() => { setMenuOpen(!menuOpen); setPlayMenuOpen(false); }}
               className="flex-shrink-0 text-gray-400 hover:text-white"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -354,5 +384,38 @@ export default function Navbar() {
       )}
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </nav>
+    {/* Mobile Play panel — outside nav so backdrop-blur doesn't trap fixed overlay */}
+    {playMenuOpen && (
+      <>
+        <div className="fixed inset-0 z-[59] md:hidden" onClick={() => setPlayMenuOpen(false)} />
+        <div data-play-panel className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
+          <div className="px-4 py-4 space-y-2">
+            {[
+              { href: "/showdown/remix", label: "Remix", desc: "Same card, pick the best art" },
+              { href: "/showdown/vs", label: "VS", desc: "Different cards compared by theme" },
+              { href: "/showdown/gauntlet", label: "Gauntlet", desc: "Winner stays, faces the next challenger" },
+              { href: "/daily/gauntlet", label: "Daily Challenge", desc: "Today's community gauntlet" },
+              { href: "/brew", label: "Brew", desc: "Create custom matchups" },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`block px-4 py-3 rounded-lg transition-colors ${
+                  isActiveLink(pathname, item.href)
+                    ? "bg-amber-500/10 border border-amber-500/30"
+                    : "bg-gray-900 border border-gray-800 hover:border-gray-700"
+                }`}
+              >
+                <span className={`text-sm font-bold ${
+                  isActiveLink(pathname, item.href) ? "text-amber-400" : "text-white"
+                }`}>{item.label}</span>
+                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </>
+    )}
+    </>
   );
 }
