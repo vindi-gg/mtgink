@@ -387,7 +387,7 @@ export default function Navbar() {
     {/* Mobile Play panel — outside nav so backdrop-blur doesn't trap fixed overlay */}
     {playMenuOpen && (
       <>
-        <div className="fixed inset-0 z-[59] md:hidden" onClick={() => setPlayMenuOpen(false)} />
+        <div className="fixed inset-0 z-[59] md:hidden bg-black/50" onClick={() => setPlayMenuOpen(false)} />
         <div data-play-panel className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
           <div className="px-4 py-4 space-y-2">
             {[
