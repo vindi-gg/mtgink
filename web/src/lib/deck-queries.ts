@@ -161,7 +161,7 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
       .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
       .in("oracle_id", oracleIds),
     admin.from("printings")
-      .select("scryfall_id, illustration_id, oracle_id, artist, set_code, collector_number, released_at, image_version, has_image, sets(name, digital, set_type)")
+      .select("scryfall_id, illustration_id, oracle_id, artist, set_code, collector_number, released_at, image_version, has_image, sets!inner(name, digital, set_type)")
       .in("oracle_id", oracleIds)
       .not("illustration_id", "is", null),
     admin.from("art_ratings")
