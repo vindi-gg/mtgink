@@ -9,6 +9,9 @@ export interface OracleCard {
   cmc: number | null;
 }
 
+/** DFC layout types that have two card faces */
+export const DFC_LAYOUTS = ["modal_dfc", "transform", "reversible_card"] as const;
+
 export interface Printing {
   scryfall_id: string;
   set_code: string;
@@ -144,10 +147,28 @@ export interface BracketState {
   createdAt: string;
 }
 
+export interface CardFace {
+  face_index: number;
+  name: string;
+  mana_cost: string | null;
+  type_line: string | null;
+  oracle_text: string | null;
+  illustration_id: string | null;
+  image_uris: {
+    normal?: string;
+    art_crop?: string;
+    large?: string;
+    small?: string;
+  } | null;
+}
+
 export interface DecklistEntry {
   quantity: number;
   name: string;
   section: string;
+  original_set_code?: string;
+  original_collector_number?: string;
+  original_is_foil?: boolean;
 }
 
 export interface DeckCardWithArt {
@@ -155,6 +176,9 @@ export interface DeckCardWithArt {
   quantity: number;
   section: string;
   illustrations: (Illustration & { rating: ArtRating | null })[];
+  original_set_code?: string;
+  original_collector_number?: string;
+  original_is_foil?: boolean;
 }
 
 export interface DeckImportResponse {
@@ -190,7 +214,8 @@ export interface DeckCard {
 
 export interface DeckCardDetail extends DeckCard {
   card: OracleCard;
-  illustrations: (Illustration & { rating: ArtRating | null })[];
+  illustrations: (Illustration & { rating: ArtRating | null; cheapest_price?: number | null })[];
+  back_face_url?: string | null;
 }
 
 export interface DeckDetail extends Deck {

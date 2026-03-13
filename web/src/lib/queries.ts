@@ -29,6 +29,7 @@ import type {
   DailyChallengeStats,
   DailyChallengeWithStatus,
   GauntletTheme,
+  CardFace,
 } from "./types";
 
 /** Row shape returned by get_comparison_pair / get_cross_comparison_pair RPCs */
@@ -293,6 +294,51 @@ export async function getPrintingsForCard(oracleId: string): Promise<Map<string,
   return grouped;
 }
 
+/** Get card faces for a DFC (one representative printing) */
+export async function getCardFaces(oracleId: string): Promise<CardFace[]> {
+  // Get one printing for this card
+  const { data: printing } = await getAdminClient()
+    .from("printings")
+    .select("scryfall_id")
+    .eq("oracle_id", oracleId)
+    .order("released_at", { ascending: false })
+    .limit(1)
+    .single();
+  if (!printing) return [];
+
+  const { data } = await getAdminClient()
+    .from("card_faces")
+    .select("face_index, name, mana_cost, type_line, oracle_text, illustration_id, image_uris")
+    .eq("scryfall_id", printing.scryfall_id)
+    .order("face_index", { ascending: true });
+
+  return (data ?? []) as CardFace[];
+}
+
+/** Get back face image URLs for all printings of a DFC, keyed by scryfall_id */
+export async function getBackFaceUrls(oracleId: string): Promise<Map<string, string>> {
+  const { data: printings } = await getAdminClient()
+    .from("printings")
+    .select("scryfall_id")
+    .eq("oracle_id", oracleId);
+  if (!printings || printings.length === 0) return new Map();
+
+  const { data } = await getAdminClient()
+    .from("card_faces")
+    .select("scryfall_id, image_uris")
+    .in("scryfall_id", printings.map((p) => p.scryfall_id))
+    .eq("face_index", 1);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    const uris = row.image_uris as { normal?: string } | null;
+    if (uris?.normal) {
+      map.set(row.scryfall_id, uris.normal);
+    }
+  }
+  return map;
+}
+
 /** Record a vote and update ELO ratings */
 export async function recordVote(payload: VotePayload, kFactor?: number): Promise<{
   winnerRating: ArtRating;
@@ -344,7 +390,7 @@ export async function getRatingsForCard(oracleId: string): Promise<ArtRating[]> 
 }
 
 /** Search cards by name, limited to those with 2+ illustrations, sorted by popularity */
-export async function searchCards(query: string, limit = 20): Promise<(OracleCard & { illustration_count?: number })[]> {
+export async function searchCards(query: string, limit = 20): Promise<(OracleCard & { matched_flavor_name?: string | null })[]> {
   const { data, error } = await getAdminClient().rpc("search_cards_with_art", {
     p_query: query,
     p_limit: limit,
@@ -352,7 +398,7 @@ export async function searchCards(query: string, limit = 20): Promise<(OracleCar
 
   if (error) throw new Error(`Search failed: ${error.message}`);
 
-  return (data ?? []).map((row: { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: unknown; cmc: number | null; illustration_count?: number }) => ({
+  return (data ?? []).map((row: { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: unknown; cmc: number | null; matched_flavor_name?: string | null }) => ({
     ...row,
     colors: row.colors ? JSON.stringify(row.colors) : null,
   }));
@@ -668,6 +714,9 @@ export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
       quantity: entry.quantity,
       section: entry.section,
       illustrations: illustrationsWithRatings,
+      original_set_code: entry.original_set_code,
+      original_collector_number: entry.original_collector_number,
+      original_is_foil: entry.original_is_foil,
     });
   }
 

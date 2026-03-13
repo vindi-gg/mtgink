@@ -5,10 +5,13 @@ import {
   getIllustrationsForCard,
   getRatingsForCard,
   getPrintingsForCard,
+  getCardFaces,
+  getBackFaceUrls,
   slugify,
 } from "@/lib/queries";
 import { getAdminClient } from "@/lib/supabase/admin";
 import ArtGallery from "@/components/ArtGallery";
+import CardFaceToggle from "@/components/CardFaceToggle";
 import FavoriteCardButton from "@/components/FavoriteCardButton";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
@@ -63,7 +66,9 @@ export default async function CardPage({
 
   if (!card) notFound();
 
-  const [illustrations, ratings, printingsMap, { data: allPrices }] = await Promise.all([
+  const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
+
+  const [illustrations, ratings, printingsMap, { data: allPrices }, cardFaces] = await Promise.all([
     getIllustrationsForCard(card.oracle_id),
     getRatingsForCard(card.oracle_id),
     getPrintingsForCard(card.oracle_id),
@@ -78,7 +83,10 @@ export default async function CardPage({
           .select("scryfall_id")
           .eq("oracle_id", card.oracle_id)).data?.map((p) => p.scryfall_id) ?? []
       ),
+    isDFC ? getCardFaces(card.oracle_id) : Promise.resolve([]),
   ]);
+
+  const backFaceUrls = isDFC ? await getBackFaceUrls(card.oracle_id) : new Map<string, string>();
 
   // Map scryfall_id -> cheapest price
   const priceMap = new Map<string, { price: number; currency: string; url: string; marketplace: string }>();
@@ -170,17 +178,27 @@ export default async function CardPage({
                       {printings.length !== 1 ? "s" : ""}
                     </span>
                   </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     {printings.map((p) => {
                       const price = priceMap.get(p.scryfall_id);
+                      const backFaceUrl = backFaceUrls.get(p.scryfall_id);
                       return (
                         <div key={p.scryfall_id} className="group">
-                          <img
-                            src={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
-                            alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
-                            className="w-full rounded-lg"
-                            loading="lazy"
-                          />
+                          {backFaceUrl ? (
+                            <CardFaceToggle
+                              frontSrc={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
+                              backSrc={backFaceUrl}
+                              alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
+                              clickToFlip
+                            />
+                          ) : (
+                            <img
+                              src={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
+                              alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
+                              className="w-full rounded-lg"
+                              loading="lazy"
+                            />
+                          )}
                           <div className="mt-1.5 px-0.5">
                             <p className="text-xs text-gray-400 truncate">
                               {p.set_name}
