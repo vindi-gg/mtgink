@@ -9,6 +9,7 @@ interface SearchResult {
   slug: string;
   type_line: string | null;
   illustration_count?: number;
+  matched_flavor_name?: string | null;
 }
 
 export default function SearchModal({
@@ -32,7 +33,7 @@ export default function SearchModal({
       setQuery("");
       setResults([]);
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 0);
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
     }
   }, [open]);
 
@@ -113,7 +114,7 @@ export default function SearchModal({
 
       {/* Modal */}
       <div
-        className="relative max-w-lg mx-auto mt-[15vh] mx-4"
+        className="relative max-w-lg mx-auto mt-3 sm:mt-[15vh] mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
@@ -139,6 +140,8 @@ export default function SearchModal({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Search cards..."
+              autoFocus
+              enterKeyHint="search"
               className="flex-1 py-3.5 bg-transparent text-white placeholder-gray-500 focus:outline-none text-base"
             />
             <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-xs text-gray-500 bg-gray-800 border border-gray-700 rounded">
@@ -171,13 +174,26 @@ export default function SearchModal({
                   }`}
                 >
                   <div className="min-w-0">
-                    <span className="text-white text-sm font-medium">
-                      {card.name}
-                    </span>
-                    {card.type_line && (
-                      <span className="text-gray-500 text-xs ml-2 hidden sm:inline">
-                        {card.type_line}
-                      </span>
+                    {card.matched_flavor_name ? (
+                      <>
+                        <span className="text-white text-sm font-medium">
+                          {card.matched_flavor_name}
+                        </span>
+                        <span className="text-gray-500 text-xs ml-2">
+                          {card.name}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-white text-sm font-medium">
+                          {card.name}
+                        </span>
+                        {card.type_line && (
+                          <span className="text-gray-500 text-xs ml-2 hidden sm:inline">
+                            {card.type_line}
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   {card.illustration_count && card.illustration_count > 1 && (

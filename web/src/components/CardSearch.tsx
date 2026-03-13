@@ -4,9 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import type { OracleCard } from "@/lib/types";
 
+type SearchResult = OracleCard & { matched_flavor_name?: string | null };
+
 export default function CardSearch() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<OracleCard[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -62,11 +64,20 @@ export default function CardSearch() {
               className="flex items-center justify-between px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
             >
               <div>
-                <span className="text-white font-medium">{card.name}</span>
-                {card.type_line && (
-                  <span className="text-gray-500 text-sm ml-2">
-                    {card.type_line}
-                  </span>
+                {card.matched_flavor_name ? (
+                  <>
+                    <span className="text-white font-medium">{card.matched_flavor_name}</span>
+                    <span className="text-gray-500 text-sm ml-2">{card.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-white font-medium">{card.name}</span>
+                    {card.type_line && (
+                      <span className="text-gray-500 text-sm ml-2">
+                        {card.type_line}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </Link>
