@@ -155,130 +155,75 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
   const oracleIds = dcs.map((dc) => dc.oracle_id);
   const admin = getAdminClient();
 
-  // Round 1: 3 bulk queries in parallel
-  const [{ data: oracleRows }, { data: allPrintings }, { data: allRatings }] = await Promise.all([
+  // 3 parallel queries: oracle cards, illustrations (with prices), ratings
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const [{ data: oracleRows }, { data: illRows }, { data: allRatings }] = await Promise.all([
     admin.from("oracle_cards")
       .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
       .in("oracle_id", oracleIds),
-    admin.from("printings")
-      .select("scryfall_id, illustration_id, oracle_id, artist, set_code, collector_number, released_at, image_version, has_image, sets!inner(name, digital, set_type)")
-      .in("oracle_id", oracleIds)
-      .not("illustration_id", "is", null)
-      .limit(10000),
+    admin.rpc("get_illustrations_for_cards", { p_oracle_ids: oracleIds }),
     admin.from("art_ratings")
       .select("illustration_id, oracle_id, elo_rating, vote_count, win_count, loss_count, updated_at")
       .in("oracle_id", oracleIds),
   ]);
 
-  // Oracle card map
   const oracleMap = new Map<string, any>(
     (oracleRows ?? []).map((r: any) => [r.oracle_id, { ...r, colors: r.colors ? JSON.stringify(r.colors) : null }])
   );
 
-  // Rating map: illustration_id → ArtRating
   const ratingMap = new Map<string, ArtRating>(
     (allRatings ?? []).map((r: any) => [r.illustration_id, r as ArtRating])
   );
 
-  // Deduplicate printings into illustrations (replicates get_illustrations_for_card RPC logic)
-  const SET_TYPE_PRIORITY: Record<string, number> = {
-    expansion: 1, core: 2, masters: 3, draft_innovation: 4, commander: 5,
-  };
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  const displayPrintings = (allPrintings ?? [])
-    .filter((p: any) => p.has_image && p.sets && !p.sets.digital)
-    .sort((a: any, b: any) => {
-      const aPri = SET_TYPE_PRIORITY[a.sets.set_type] ?? 6;
-      const bPri = SET_TYPE_PRIORITY[b.sets.set_type] ?? 6;
-      if (aPri !== bPri) return aPri - bPri;
-      return (a.released_at ?? "").localeCompare(b.released_at ?? "");
+  // Group illustrations by oracle_id
+  const illustrationsByOracle = new Map<string, (Illustration & { cheapest_price: number | null })[]>();
+  for (const row of (illRows ?? []) as any[]) {
+    const oId = row.oracle_id as string;
+    if (!illustrationsByOracle.has(oId)) illustrationsByOracle.set(oId, []);
+    illustrationsByOracle.get(oId)!.push({
+      illustration_id: row.illustration_id,
+      oracle_id: oId,
+      artist: row.artist,
+      set_code: row.set_code,
+      set_name: row.set_name,
+      collector_number: row.collector_number,
+      released_at: row.released_at,
+      image_version: row.image_version,
+      cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null,
     });
-
-  const seenIll = new Set<string>();
-  const illustrationsByOracle = new Map<string, Illustration[]>();
-  for (const p of displayPrintings) {
-    const illId = p.illustration_id as string;
-    if (seenIll.has(illId)) continue;
-    seenIll.add(illId);
-    const ill: Illustration = {
-      illustration_id: illId,
-      oracle_id: p.oracle_id as string,
-      artist: p.artist as string,
-      set_code: p.set_code as string,
-      set_name: (p as any).sets.name as string,
-      collector_number: p.collector_number as string,
-      released_at: (p.released_at as string) ?? null,
-      image_version: (p.image_version as string) ?? null,
-    };
-    if (!illustrationsByOracle.has(p.oracle_id as string)) illustrationsByOracle.set(p.oracle_id as string, []);
-    illustrationsByOracle.get(p.oracle_id as string)!.push(ill);
   }
 
-  // Map scryfall_id → illustration_id for price lookups (all printings of valid illustrations)
-  const scryfallToIll = new Map<string, string>();
-  for (const p of (allPrintings ?? [])) {
-    if (seenIll.has(p.illustration_id as string)) {
-      scryfallToIll.set(p.scryfall_id as string, p.illustration_id as string);
-    }
-  }
-
-  // Identify DFC cards and their latest printing
-  const dfcLatest = new Map<string, { scryfall_id: string; released_at: string }>();
+  // DFC back faces: find latest printing per DFC card, then fetch back face
+  const dfcOracleIds: string[] = [];
   for (const dc of dcs) {
     const card = oracleMap.get(dc.oracle_id);
     if (!card) continue;
-    const layout = card.layout as string;
-    if (layout === "modal_dfc" || layout === "transform" || layout === "reversible_card") {
-      // Find latest printing for this oracle_id
-      for (const p of (allPrintings ?? [])) {
-        if ((p.oracle_id as string) !== dc.oracle_id) continue;
-        const existing = dfcLatest.get(dc.oracle_id);
-        if (!existing || ((p.released_at as string) ?? "") > existing.released_at) {
-          dfcLatest.set(dc.oracle_id, { scryfall_id: p.scryfall_id as string, released_at: (p.released_at as string) ?? "" });
-        }
-      }
+    if (card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card") {
+      dfcOracleIds.push(dc.oracle_id);
     }
   }
-
-  // Round 2: prices + DFC faces in parallel
-  const allScryfallIds = [...scryfallToIll.keys()];
-  const BATCH = 300;
-  const pricePromises: Promise<any>[] = [];
-  for (let i = 0; i < allScryfallIds.length; i += BATCH) {
-    pricePromises.push(
-      Promise.resolve(admin.from("best_prices").select("scryfall_id, market_price").in("scryfall_id", allScryfallIds.slice(i, i + BATCH)))
-    );
-  }
-  const dfcScryfallIds = [...dfcLatest.values()].map((v) => v.scryfall_id);
-  const [priceResults, dfcResult] = await Promise.all([
-    Promise.all(pricePromises),
-    dfcScryfallIds.length > 0
-      ? admin.from("card_faces").select("scryfall_id, image_uris").eq("face_index", 1).in("scryfall_id", dfcScryfallIds)
-      : Promise.resolve({ data: [] as any[] }),
-  ]);
-
-  // Cheapest price per illustration
-  const priceMap = new Map<string, number>();
-  for (const { data } of priceResults) {
-    for (const p of (data ?? [])) {
-      const illId = scryfallToIll.get(p.scryfall_id);
-      if (illId && p.market_price != null) {
-        const existing = priceMap.get(illId);
-        if (existing === undefined || p.market_price < existing) priceMap.set(illId, p.market_price);
-      }
-    }
-  }
-
-  // DFC back face URLs
   const dfcBackFaces = new Map<string, string>();
-  if (dfcResult.data) {
-    const scryfallToOracle = new Map<string, string>();
-    for (const [oid, info] of dfcLatest) scryfallToOracle.set(info.scryfall_id, oid);
-    for (const face of dfcResult.data as any[]) {
-      const oid = scryfallToOracle.get(face.scryfall_id);
-      if (oid && face.image_uris) {
-        const url = face.image_uris.normal;
-        if (url) dfcBackFaces.set(oid, url);
+  if (dfcOracleIds.length > 0) {
+    const { data: dfcPrintings } = await admin.from("printings")
+      .select("oracle_id, scryfall_id, released_at")
+      .in("oracle_id", dfcOracleIds)
+      .order("released_at", { ascending: false });
+    // Pick latest printing per oracle_id
+    const latestByOracle = new Map<string, string>();
+    for (const p of (dfcPrintings ?? []) as any[]) {
+      if (!latestByOracle.has(p.oracle_id)) latestByOracle.set(p.oracle_id, p.scryfall_id);
+    }
+    const dfcScryfallIds = [...latestByOracle.values()];
+    if (dfcScryfallIds.length > 0) {
+      const { data: faces } = await admin.from("card_faces")
+        .select("scryfall_id, image_uris")
+        .eq("face_index", 1)
+        .in("scryfall_id", dfcScryfallIds);
+      const scryfallToOracle = new Map<string, string>();
+      for (const [oid, sid] of latestByOracle) scryfallToOracle.set(sid, oid);
+      for (const face of (faces ?? []) as any[]) {
+        const oid = scryfallToOracle.get(face.scryfall_id);
+        if (oid && face.image_uris?.normal) dfcBackFaces.set(oid, face.image_uris.normal);
       }
     }
   }
@@ -294,7 +239,6 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
       .map((ill) => ({
         ...ill,
         rating: ratingMap.get(ill.illustration_id) ?? null,
-        cheapest_price: priceMap.get(ill.illustration_id) ?? null,
       }))
       .sort((a, b) => (b.rating?.elo_rating ?? 1500) - (a.rating?.elo_rating ?? 1500));
 
