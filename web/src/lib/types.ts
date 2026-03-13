@@ -215,6 +215,7 @@ export interface DeckCard {
 export interface DeckCardDetail extends DeckCard {
   card: OracleCard;
   illustrations: (Illustration & { rating: ArtRating | null; cheapest_price?: number | null })[];
+  illustration_count: number;
   back_face_url?: string | null;
 }
 

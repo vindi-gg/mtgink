@@ -44,7 +44,7 @@ function DeckCardRow({
 }) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = forceExpanded || localExpanded;
-  const artCount = entry.illustrations.length;
+  const artCount = (entry as DeckCardDetail).illustration_count ?? entry.illustrations.length;
 
   const [selectedIllId, setSelectedIllId] = useState<string | null>(
     (entry as DeckCardDetail).selected_illustration_id ?? null
@@ -296,7 +296,7 @@ export default function DeckView({
   );
 
   const totalArts = cards.reduce(
-    (sum, c) => sum + c.illustrations.length,
+    (sum, c) => sum + ((c as DeckCardDetail).illustration_count ?? c.illustrations.length),
     0
   );
 
@@ -405,7 +405,8 @@ export default function DeckView({
               const price = displayIll && "cheapest_price" in displayIll
                 ? (displayIll as Illustration & { rating: ArtRating | null; cheapest_price?: number | null }).cheapest_price
                 : null;
-              const cardHref = deckId && entry.illustrations.length >= 2
+              const entryArtCount = (entry as DeckCardDetail).illustration_count ?? entry.illustrations.length;
+              const cardHref = deckId && entryArtCount >= 2
                 ? `/deck/${deckId}/remix?card=${entry.card.oracle_id}`
                 : `/card/${entry.card.slug}`;
               return (
@@ -439,9 +440,9 @@ export default function DeckView({
                     </div>
                   )}
                   {/* Art count badge */}
-                  {entry.illustrations.length >= 2 && (
+                  {entryArtCount >= 2 && (
                     <div className="absolute top-1 right-1 bg-amber-500/90 text-black text-[10px] font-bold px-1 py-0.5 rounded">
-                      {entry.illustrations.length} arts
+                      {entryArtCount} arts
                     </div>
                   )}
                   {/* Price overlay */}

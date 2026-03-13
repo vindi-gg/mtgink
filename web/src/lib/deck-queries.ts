@@ -175,8 +175,9 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
     (allRatings ?? []).map((r: any) => [r.illustration_id, r as ArtRating])
   );
 
-  // Group illustrations by oracle_id
+  // Group illustrations by oracle_id, track total count
   const illustrationsByOracle = new Map<string, (Illustration & { cheapest_price: number | null })[]>();
+  const illustrationCountByOracle = new Map<string, number>();
   for (const row of (illRows ?? []) as any[]) {
     const oId = row.oracle_id as string;
     if (!illustrationsByOracle.has(oId)) illustrationsByOracle.set(oId, []);
@@ -191,6 +192,7 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
       image_version: row.image_version,
       cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null,
     });
+    if (row.total_for_card != null) illustrationCountByOracle.set(oId, Number(row.total_for_card));
   }
 
   // DFC back faces: find latest printing per DFC card, then fetch back face
@@ -246,6 +248,7 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
       ...dc,
       card,
       illustrations: ills,
+      illustration_count: illustrationCountByOracle.get(dc.oracle_id) ?? ills.length,
       back_face_url: dfcBackFaces.get(dc.oracle_id) ?? null,
     } as DeckCardDetail);
   }

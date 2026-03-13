@@ -1,8 +1,8 @@
 -- Bulk version of get_illustrations_for_card that accepts multiple oracle_ids
--- Returns one row per unique illustration with cheapest price included
--- Uses JOIN aggregation instead of correlated subquery (52ms vs 47s)
+-- Returns deduplicated illustrations with cheapest price, capped per card
+-- Includes total_for_card so UI can show real count even when capped
 
-CREATE OR REPLACE FUNCTION get_illustrations_for_cards(p_oracle_ids UUID[])
+CREATE OR REPLACE FUNCTION get_illustrations_for_cards(p_oracle_ids UUID[], p_max_per_card INTEGER DEFAULT 20)
 RETURNS TABLE(
   illustration_id UUID,
   oracle_id UUID,
@@ -12,7 +12,8 @@ RETURNS TABLE(
   collector_number TEXT,
   released_at TEXT,
   image_version TEXT,
-  cheapest_price NUMERIC
+  cheapest_price NUMERIC,
+  total_for_card INTEGER
 )
 LANGUAGE sql STABLE
 AS $func$
@@ -43,15 +44,30 @@ AS $func$
       END,
       p.released_at ASC
   ),
+  ranked AS (
+    SELECT b.*,
+      COUNT(*) OVER (PARTITION BY b.oracle_id) AS total_for_card,
+      ROW_NUMBER() OVER (
+        PARTITION BY b.oracle_id
+        ORDER BY COALESCE(ar.elo_rating, 1500) DESC
+      ) AS rn
+    FROM base b
+    LEFT JOIN art_ratings ar ON ar.illustration_id = b.illustration_id
+  ),
+  capped AS (
+    SELECT * FROM ranked WHERE rn <= p_max_per_card
+  ),
   prices AS (
     SELECT p2.illustration_id, MIN(bp.market_price) AS cheapest_price
     FROM printings p2
     JOIN best_prices bp ON bp.scryfall_id = p2.scryfall_id
-    WHERE p2.illustration_id IN (SELECT illustration_id FROM base)
+    WHERE p2.illustration_id IN (SELECT illustration_id FROM capped)
       AND bp.market_price IS NOT NULL
     GROUP BY p2.illustration_id
   )
-  SELECT b.*, pr.cheapest_price
-  FROM base b
-  LEFT JOIN prices pr ON pr.illustration_id = b.illustration_id;
+  SELECT c.illustration_id, c.oracle_id, c.artist, c.set_code, c.set_name,
+    c.collector_number, c.released_at, c.image_version,
+    pr.cheapest_price, c.total_for_card::INTEGER
+  FROM capped c
+  LEFT JOIN prices pr ON pr.illustration_id = c.illustration_id;
 $func$;
