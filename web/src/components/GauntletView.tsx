@@ -232,18 +232,26 @@ export default function GauntletView({
       .catch(() => {});
   }
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — use refs to avoid stale closures
+  const voteRef = useRef(vote);
+  const undoRef = useRef(undo);
+  const resetRef = useRef(resetGauntlet);
+  voteRef.current = vote;
+  undoRef.current = undo;
+  resetRef.current = resetGauntlet;
+
   useEffect(() => {
     if (phase !== "playing") return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement) return;
-      if (e.key === "ArrowLeft") vote(0);
-      else if (e.key === "ArrowRight") vote(1);
-      else if ((e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) undo();
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") voteRef.current(0);
+      else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") voteRef.current(1);
+      else if ((e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) undoRef.current();
+      else if (e.key === "Escape") resetRef.current();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   // On mobile, scroll past nav
   useEffect(() => {
@@ -580,23 +588,28 @@ export default function GauntletView({
           </div>
         </div>
 
-        {/* Undo + Reset */}
-        {undoStack.length > 0 && (
-          <div className="flex justify-center gap-3 mt-3">
-            <button
-              onClick={undo}
-              className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              Undo (Z)
-            </button>
-            <button
-              onClick={resetGauntlet}
-              className="px-3 py-1 text-xs text-gray-500 hover:text-red-400 transition-colors"
-            >
-              Reset
-            </button>
+
+        {/* Keyboard hints */}
+        <div className="hidden md:flex justify-center items-center gap-6 mt-3 text-xs text-gray-600">
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
+            <span>Vote Left</span>
           </div>
-        )}
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Z</kbd>
+            <span>Undo</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Esc</kbd>
+            <span>Reset</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span>Vote Right</span>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
+          </div>
+        </div>
 
         {/* Controls */}
         {!hideControls && (

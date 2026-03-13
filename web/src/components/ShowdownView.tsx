@@ -218,16 +218,21 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
   }
 
   // Keyboard shortcuts
+  const voteRef = useRef(vote);
+  const skipRef = useRef(skip);
+  voteRef.current = vote;
+  skipRef.current = skip;
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-      if (e.key === "ArrowLeft") vote(0);
-      else if (e.key === "ArrowRight") vote(1);
-      else if (e.key === "s" || e.key === "S") skip();
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") voteRef.current(0);
+      else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") voteRef.current(1);
+      else if (e.key === "s" || e.key === "S") skipRef.current();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Share ---
 
@@ -380,9 +385,22 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
         <p className="text-center text-sm text-red-400 mt-2">{filterError}</p>
       )}
 
-      <p className="text-center text-xs text-gray-600 mt-3">
-        Arrow keys to vote, S to skip
-      </p>
+      <div className="hidden md:flex justify-center items-center gap-6 mt-3 text-xs text-gray-600">
+        <div className="flex items-center gap-1.5">
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
+          <span>Vote Left</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">S</kbd>
+          <span>Skip</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span>Vote Right</span>
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
+        </div>
+      </div>
 
     </div>
   );
