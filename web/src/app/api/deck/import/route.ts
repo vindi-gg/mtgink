@@ -74,21 +74,14 @@ export async function POST(request: NextRequest) {
 
   const { matched, unmatched } = await lookupDeckCards(entries);
 
-  // Save the deck with top-rated art as default selections
-  const deckCards = matched.map((card) => {
-    const topIll = [...card.illustrations].sort(
-      (a, b) => (b.rating?.elo_rating ?? 0) - (a.rating?.elo_rating ?? 0)
-    )[0];
-    return {
-      oracleId: card.card.oracle_id,
-      quantity: card.quantity,
-      section: card.section || "Mainboard",
-      selectedIllustrationId: topIll?.illustration_id,
-      originalSetCode: card.original_set_code,
-      originalCollectorNumber: card.original_collector_number,
-      originalIsFoil: card.original_is_foil,
-    };
-  });
+  const deckCards = matched.map((card) => ({
+    oracleId: card.card.oracle_id,
+    quantity: card.quantity,
+    section: card.section || "Mainboard",
+    originalSetCode: card.original_set_code,
+    originalCollectorNumber: card.original_collector_number,
+    originalIsFoil: card.original_is_foil,
+  }));
 
   const deckId = await createAnonymousDeck({
     name: deckName || "Imported Deck",
