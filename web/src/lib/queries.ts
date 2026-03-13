@@ -669,6 +669,37 @@ export async function lookupCardByName(name: string): Promise<OracleCard | null>
   return null;
 }
 
+/** Batch lookup cards by name — single query for exact matches, then fallback for splits */
+export async function lookupCardsByNames(names: string[]): Promise<Map<string, OracleCard>> {
+  const result = new Map<string, OracleCard>();
+  if (names.length === 0) return result;
+
+  // Batch exact match (case-insensitive via lower())
+  const lowerNames = names.map((n) => n.toLowerCase());
+  const { data: exact } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .in("name", names);
+
+  for (const row of exact ?? []) {
+    const card = { ...row, colors: row.colors ? JSON.stringify(row.colors) : null };
+    result.set(row.name.toLowerCase(), card);
+  }
+
+  // Find unmatched names — try split card fallback in parallel
+  const unmatched = lowerNames.filter((n) => !result.has(n));
+  if (unmatched.length > 0) {
+    const splitPromises = unmatched.map(async (name) => {
+      const original = names.find((n) => n.toLowerCase() === name) ?? name;
+      const card = await lookupCardByName(original);
+      if (card) result.set(name, card);
+    });
+    await Promise.all(splitPromises);
+  }
+
+  return result;
+}
+
 /** Look up all cards from a decklist, returning matched cards with art and unmatched entries */
 export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
   matched: DeckCardWithArt[];

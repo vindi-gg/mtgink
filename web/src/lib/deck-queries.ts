@@ -5,6 +5,7 @@ import {
   getRatingsForCard,
   getCardByOracleId,
   lookupCardByName,
+  lookupCardsByNames,
 } from "./queries";
 import type {
   Deck,
@@ -150,15 +151,23 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
     .select("*")
     .eq("deck_id", deckId);
 
-  const cards: DeckCardDetail[] = [];
   const unmatched: string[] = [];
+  const dcs = (deckCards ?? []) as DeckCard[];
 
-  for (const dc of (deckCards ?? []) as DeckCard[]) {
-    const card = await getCardByOracleId(dc.oracle_id);
-    if (!card) {
-      unmatched.push(dc.oracle_id);
-      continue;
-    }
+  // Batch fetch all oracle cards
+  const oracleIds = dcs.map((dc) => dc.oracle_id);
+  const { data: oracleRows } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .in("oracle_id", oracleIds);
+  const oracleMap = new Map(
+    (oracleRows ?? []).map((r) => [r.oracle_id, { ...r, colors: r.colors ? JSON.stringify(r.colors) : null }])
+  );
+
+  // Process all cards in parallel
+  const cardPromises = dcs.map(async (dc) => {
+    const card = oracleMap.get(dc.oracle_id);
+    if (!card) return null;
 
     const [illustrations, ratings] = await Promise.all([
       getIllustrationsForCard(dc.oracle_id),
@@ -170,7 +179,6 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
     const illIds = illustrations.map((ill) => ill.illustration_id);
     const priceMap = new Map<string, number>();
     if (illIds.length > 0) {
-      // Get all printings for these illustrations
       const { data: printings } = await getAdminClient()
         .from("printings")
         .select("scryfall_id, illustration_id")
@@ -182,19 +190,13 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
           .select("scryfall_id, market_price")
           .in("scryfall_id", scryfallIds);
         if (prices) {
-          // Map scryfall_id -> illustration_id
           const scryfallToIll = new Map<string, string>();
-          for (const p of printings) {
-            scryfallToIll.set(p.scryfall_id, p.illustration_id);
-          }
-          // Find cheapest price per illustration
+          for (const p of printings) scryfallToIll.set(p.scryfall_id, p.illustration_id);
           for (const p of prices) {
             const illId = scryfallToIll.get(p.scryfall_id);
             if (illId && p.market_price != null) {
               const existing = priceMap.get(illId);
-              if (existing === undefined || p.market_price < existing) {
-                priceMap.set(illId, p.market_price);
-              }
+              if (existing === undefined || p.market_price < existing) priceMap.set(illId, p.market_price);
             }
           }
         }
@@ -207,40 +209,45 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
         rating: ratingMap.get(ill.illustration_id) ?? null,
         cheapest_price: priceMap.get(ill.illustration_id) ?? null,
       }))
-      .sort((a, b) => {
-        const aElo = a.rating?.elo_rating ?? 1500;
-        const bElo = b.rating?.elo_rating ?? 1500;
-        return bElo - aElo;
-      });
+      .sort((a, b) => (b.rating?.elo_rating ?? 1500) - (a.rating?.elo_rating ?? 1500));
 
     // Get back face URL for DFCs
     const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
     let backFaceUrl: string | null = null;
     if (isDFC && illustrations.length > 0) {
-      const { data: backFace } = await getAdminClient()
-        .from("card_faces")
-        .select("image_uris")
-        .eq("scryfall_id", (await getAdminClient()
-          .from("printings")
-          .select("scryfall_id")
-          .eq("oracle_id", dc.oracle_id)
-          .order("released_at", { ascending: false })
-          .limit(1)
-          .single()).data?.scryfall_id ?? "")
-        .eq("face_index", 1)
-        .maybeSingle();
-      if (backFace?.image_uris) {
-        const uris = backFace.image_uris as { normal?: string };
-        backFaceUrl = uris.normal ?? null;
+      const { data: printing } = await getAdminClient()
+        .from("printings")
+        .select("scryfall_id")
+        .eq("oracle_id", dc.oracle_id)
+        .order("released_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (printing) {
+        const { data: backFace } = await getAdminClient()
+          .from("card_faces")
+          .select("image_uris")
+          .eq("scryfall_id", printing.scryfall_id)
+          .eq("face_index", 1)
+          .maybeSingle();
+        if (backFace?.image_uris) {
+          backFaceUrl = (backFace.image_uris as { normal?: string }).normal ?? null;
+        }
       }
     }
 
-    cards.push({
+    return {
       ...dc,
       card,
       illustrations: illustrationsWithRatings,
       back_face_url: backFaceUrl,
-    });
+    } as DeckCardDetail;
+  });
+
+  const results = await Promise.all(cardPromises);
+  const cards: DeckCardDetail[] = [];
+  for (let i = 0; i < dcs.length; i++) {
+    if (results[i]) cards.push(results[i]);
+    else unmatched.push(dcs[i].oracle_id);
   }
 
   return { ...deck, cards, unmatched };
@@ -418,20 +425,24 @@ export async function lookupAndCreateDeck(
   entries: DecklistEntry[],
   options?: { format?: string; sourceUrl?: string; isPublic?: boolean }
 ): Promise<{ deckId: string; unmatched: string[] }> {
-  const deckId = await createDeck({
-    userId,
-    name,
-    format: options?.format,
-    sourceUrl: options?.sourceUrl,
-    isPublic: options?.isPublic,
-  });
+  // Batch lookup all card names in one query
+  const [deckId, cardMap] = await Promise.all([
+    createDeck({
+      userId,
+      name,
+      format: options?.format,
+      sourceUrl: options?.sourceUrl,
+      isPublic: options?.isPublic,
+    }),
+    lookupCardsByNames(entries.map((e) => e.name)),
+  ]);
 
   const cards: { oracleId: string; quantity: number; section: string }[] = [];
   const unmatched: string[] = [];
   const seen = new Set<string>();
 
   for (const entry of entries) {
-    const card = await lookupCardByName(entry.name);
+    const card = cardMap.get(entry.name.toLowerCase());
     if (!card) {
       unmatched.push(entry.name);
       continue;
