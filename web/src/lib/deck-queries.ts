@@ -163,7 +163,8 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
     admin.from("printings")
       .select("scryfall_id, illustration_id, oracle_id, artist, set_code, collector_number, released_at, image_version, has_image, sets!inner(name, digital, set_type)")
       .in("oracle_id", oracleIds)
-      .not("illustration_id", "is", null),
+      .not("illustration_id", "is", null)
+      .limit(10000),
     admin.from("art_ratings")
       .select("illustration_id, oracle_id, elo_rating, vote_count, win_count, loss_count, updated_at")
       .in("oracle_id", oracleIds),
