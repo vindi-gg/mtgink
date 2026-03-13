@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { artCropUrl } from "@/lib/image-utils";
+import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
+import CardFaceToggle from "./CardFaceToggle";
 import MiniCompare from "./MiniCompare";
 import type { DeckImportResponse, DeckCardWithArt, DeckCardDetail, Illustration, ArtRating } from "@/lib/types";
 
 type CardEntry = (DeckCardWithArt | DeckCardDetail) & {
   selected_illustration_id?: string | null;
   to_buy?: boolean;
+  back_face_url?: string | null;
 };
 
 interface DeckViewProps {
@@ -245,16 +247,53 @@ export default function DeckView({
   hasPurchases,
 }: DeckViewProps) {
   const [allExpanded, setAllExpanded] = useState(false);
+  const [filter, setFilter] = useState<"all" | "changed">("all");
 
   const cards = data.cards as CardEntry[];
+  const changedCount = cards.filter((c) => c.selected_illustration_id).length;
 
-  // Group cards by section
-  const sections = new Map<string, CardEntry[]>();
-  for (const card of cards) {
-    const section = card.section;
-    if (!sections.has(section)) sections.set(section, []);
-    sections.get(section)!.push(card);
+  const SECTION_ORDER: Record<string, number> = {
+    Commander: 0,
+    Companion: 1,
+    Creatures: 2,
+    Planeswalkers: 3,
+    Instants: 4,
+    Sorceries: 5,
+    Enchantments: 6,
+    Artifacts: 7,
+    Battles: 8,
+    Lands: 9,
+    Mainboard: 10,
+    Sideboard: 11,
+    Other: 12,
+  };
+
+  // Group cards by section, deriving type-based sections for Mainboard cards
+  const filteredCards = filter === "changed"
+    ? cards.filter((c) => c.selected_illustration_id)
+    : cards;
+  const sectionMap = new Map<string, CardEntry[]>();
+  for (const card of filteredCards) {
+    let section = card.section;
+    if (section === "Mainboard") {
+      const t = (card.card.type_line ?? "").toLowerCase();
+      if (t.includes("creature")) section = "Creatures";
+      else if (t.includes("planeswalker")) section = "Planeswalkers";
+      else if (t.includes("battle")) section = "Battles";
+      else if (t.includes("instant")) section = "Instants";
+      else if (t.includes("sorcery")) section = "Sorceries";
+      else if (t.includes("enchantment")) section = "Enchantments";
+      else if (t.includes("artifact")) section = "Artifacts";
+      else if (t.includes("land")) section = "Lands";
+    }
+    if (!sectionMap.has(section)) sectionMap.set(section, []);
+    sectionMap.get(section)!.push(card);
   }
+  const sections = new Map(
+    [...sectionMap.entries()].sort(
+      (a, b) => (SECTION_ORDER[a[0]] ?? 99) - (SECTION_ORDER[b[0]] ?? 99)
+    )
+  );
 
   const totalArts = cards.reduce(
     (sum, c) => sum + c.illustrations.length,
@@ -312,6 +351,30 @@ export default function DeckView({
         )}
       </div>
 
+      {/* Filter tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setFilter("all")}
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+            filter === "all"
+              ? "bg-gray-800 text-white"
+              : "text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          All
+        </button>
+        <button
+          onClick={() => setFilter("changed")}
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+            filter === "changed"
+              ? "bg-gray-800 text-white"
+              : "text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          Changed{changedCount > 0 && ` (${changedCount})`}
+        </button>
+      </div>
+
       {/* Unmatched warning */}
       {unmatchedNames.length > 0 && (
         <div className="bg-red-900/20 border border-red-800 rounded-lg p-3">
@@ -333,16 +396,63 @@ export default function DeckView({
               ({sectionCards.length})
             </span>
           </h3>
-          <div className="space-y-2">
-            {sectionCards.map((entry) => (
-              <DeckCardRow
-                key={entry.card.oracle_id}
-                entry={entry}
-                forceExpanded={allExpanded}
-                deckId={deckId}
-                isOwner={isOwner}
-              />
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {sectionCards.map((entry) => {
+              const ill = entry.selected_illustration_id
+                ? entry.illustrations.find((i) => i.illustration_id === entry.selected_illustration_id)
+                : entry.illustrations[0];
+              const displayIll = ill ?? entry.illustrations[0];
+              const price = displayIll && "cheapest_price" in displayIll
+                ? (displayIll as Illustration & { rating: ArtRating | null; cheapest_price?: number | null }).cheapest_price
+                : null;
+              const cardHref = deckId && entry.illustrations.length >= 2
+                ? `/deck/${deckId}/remix?card=${entry.card.oracle_id}`
+                : `/card/${entry.card.slug}`;
+              return (
+                <Link
+                  key={entry.card.oracle_id}
+                  href={cardHref}
+                  className="group relative rounded-lg overflow-hidden"
+                >
+                  {displayIll && entry.back_face_url ? (
+                    <CardFaceToggle
+                      frontSrc={normalCardUrl(displayIll.set_code, displayIll.collector_number, displayIll.image_version)}
+                      backSrc={entry.back_face_url}
+                      alt={entry.card.name}
+                    />
+                  ) : displayIll ? (
+                    <img
+                      src={normalCardUrl(displayIll.set_code, displayIll.collector_number, displayIll.image_version)}
+                      alt={entry.card.name}
+                      className="w-full rounded-lg"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full aspect-[488/680] bg-gray-800 rounded-lg flex items-center justify-center">
+                      <span className="text-xs text-gray-500">{entry.card.name}</span>
+                    </div>
+                  )}
+                  {/* Quantity badge */}
+                  {entry.quantity > 1 && (
+                    <div className="absolute top-1 left-1 bg-black/80 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                      {entry.quantity}x
+                    </div>
+                  )}
+                  {/* Art count badge */}
+                  {entry.illustrations.length >= 2 && (
+                    <div className="absolute top-1 right-1 bg-amber-500/90 text-black text-[10px] font-bold px-1 py-0.5 rounded">
+                      {entry.illustrations.length} arts
+                    </div>
+                  )}
+                  {/* Price overlay */}
+                  {price != null && (
+                    <div className="absolute bottom-1 right-1 bg-black/80 text-green-400 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      ${price.toFixed(2)}
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         </div>
       ))}

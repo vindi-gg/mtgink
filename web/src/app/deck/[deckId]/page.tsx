@@ -19,7 +19,7 @@ export default function DeckDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
 
-  useEffect(() => {
+  function loadDeck() {
     fetch(`/api/deck/${deckId}`)
       .then(async (res) => {
         if (!res.ok) {
@@ -34,6 +34,17 @@ export default function DeckDetailPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadDeck();
+  }, [deckId]);
+
+  // Refetch when returning from remix or other pages
+  useEffect(() => {
+    function onFocus() { loadDeck(); }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [deckId]);
 
   async function handleRename() {
@@ -147,6 +158,19 @@ export default function DeckDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Curate button */}
+      {deck.cards.some((c) => c.illustrations.length >= 2) && (
+        <Link
+          href={`/deck/${deckId}/remix`}
+          className="block mb-6 px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg hover:border-amber-500/50 transition-colors text-center"
+        >
+          <span className="text-amber-400 font-bold text-sm">Deck Remix</span>
+          <span className="text-gray-500 text-xs block mt-0.5">
+            Remix the art in your deck
+          </span>
+        </Link>
+      )}
 
       <DeckView
         data={deck}

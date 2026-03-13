@@ -20,14 +20,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  // Auth is optional — anon users can create decks too
+  let userId: string | null = null;
   const supabase = await createClient();
-  if (!supabase) {
-    return NextResponse.json({ error: "Auth not configured" }, { status: 500 });
-  }
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
   }
 
   const body = await request.json();
@@ -60,7 +58,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No cards provided" }, { status: 400 });
   }
 
-  const { deckId, unmatched } = await lookupAndCreateDeck(user.id, name, entries, {
+  const { deckId, unmatched } = await lookupAndCreateDeck(userId, name, entries, {
     format,
     sourceUrl: source_url,
     isPublic: is_public,

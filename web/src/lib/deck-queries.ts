@@ -17,16 +17,14 @@ import type {
 } from "./types";
 
 export async function createDeck(params: {
-  userId: string;
+  userId: string | null;
   name: string;
   format?: string;
   sourceUrl?: string;
   isPublic?: boolean;
 }): Promise<string> {
-  const supabase = await createClient();
-  if (!supabase) throw new Error("Supabase not configured");
-
-  const { data, error } = await supabase
+  // Use admin client so anon users can create decks too
+  const { data, error } = await getAdminClient()
     .from("decks")
     .insert({
       user_id: params.userId,
@@ -168,10 +166,46 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
     ]);
     const ratingMap = new Map(ratings.map((r) => [r.illustration_id, r]));
 
+    // Get cheapest price per illustration
+    const illIds = illustrations.map((ill) => ill.illustration_id);
+    const priceMap = new Map<string, number>();
+    if (illIds.length > 0) {
+      // Get all printings for these illustrations
+      const { data: printings } = await getAdminClient()
+        .from("printings")
+        .select("scryfall_id, illustration_id")
+        .in("illustration_id", illIds);
+      if (printings && printings.length > 0) {
+        const scryfallIds = printings.map((p) => p.scryfall_id);
+        const { data: prices } = await getAdminClient()
+          .from("best_prices")
+          .select("scryfall_id, market_price")
+          .in("scryfall_id", scryfallIds);
+        if (prices) {
+          // Map scryfall_id -> illustration_id
+          const scryfallToIll = new Map<string, string>();
+          for (const p of printings) {
+            scryfallToIll.set(p.scryfall_id, p.illustration_id);
+          }
+          // Find cheapest price per illustration
+          for (const p of prices) {
+            const illId = scryfallToIll.get(p.scryfall_id);
+            if (illId && p.market_price != null) {
+              const existing = priceMap.get(illId);
+              if (existing === undefined || p.market_price < existing) {
+                priceMap.set(illId, p.market_price);
+              }
+            }
+          }
+        }
+      }
+    }
+
     const illustrationsWithRatings = illustrations
       .map((ill) => ({
         ...ill,
         rating: ratingMap.get(ill.illustration_id) ?? null,
+        cheapest_price: priceMap.get(ill.illustration_id) ?? null,
       }))
       .sort((a, b) => {
         const aElo = a.rating?.elo_rating ?? 1500;
@@ -179,10 +213,33 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
         return bElo - aElo;
       });
 
+    // Get back face URL for DFCs
+    const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
+    let backFaceUrl: string | null = null;
+    if (isDFC && illustrations.length > 0) {
+      const { data: backFace } = await getAdminClient()
+        .from("card_faces")
+        .select("image_uris")
+        .eq("scryfall_id", (await getAdminClient()
+          .from("printings")
+          .select("scryfall_id")
+          .eq("oracle_id", dc.oracle_id)
+          .order("released_at", { ascending: false })
+          .limit(1)
+          .single()).data?.scryfall_id ?? "")
+        .eq("face_index", 1)
+        .maybeSingle();
+      if (backFace?.image_uris) {
+        const uris = backFace.image_uris as { normal?: string };
+        backFaceUrl = uris.normal ?? null;
+      }
+    }
+
     cards.push({
       ...dc,
       card,
       illustrations: illustrationsWithRatings,
+      back_face_url: backFaceUrl,
     });
   }
 
@@ -211,6 +268,30 @@ export async function updateDeckCard(
     .eq("oracle_id", oracleId);
 
   await supabase
+    .from("decks")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", deckId);
+}
+
+export async function updateDeckCardAdmin(
+  deckId: string,
+  oracleId: string,
+  updates: { selected_illustration_id?: string; to_buy?: boolean }
+): Promise<void> {
+  const updateData: Record<string, unknown> = {};
+  if (updates.selected_illustration_id !== undefined)
+    updateData.selected_illustration_id = updates.selected_illustration_id;
+  if (updates.to_buy !== undefined) updateData.to_buy = updates.to_buy;
+
+  if (Object.keys(updateData).length === 0) return;
+
+  await getAdminClient()
+    .from("deck_cards")
+    .update(updateData)
+    .eq("deck_id", deckId)
+    .eq("oracle_id", oracleId);
+
+  await getAdminClient()
     .from("decks")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", deckId);
@@ -290,8 +371,49 @@ export async function getUserPurchaseList(userId: string): Promise<PurchaseListI
   return items;
 }
 
+export async function createAnonymousDeck(params: {
+  name: string;
+  format?: string;
+  sourceUrl?: string;
+  cards: { oracleId: string; quantity: number; section: string; selectedIllustrationId?: string; originalSetCode?: string; originalCollectorNumber?: string; originalIsFoil?: boolean }[];
+}): Promise<string> {
+  const admin = getAdminClient();
+
+  const { data, error } = await admin
+    .from("decks")
+    .insert({
+      user_id: null,
+      name: params.name,
+      format: params.format ?? null,
+      source_url: params.sourceUrl ?? null,
+      is_public: true,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(`Failed to create deck: ${error.message}`);
+  const deckId = data.id;
+
+  if (params.cards.length > 0) {
+    await admin.from("deck_cards").insert(
+      params.cards.map((c) => ({
+        deck_id: deckId,
+        oracle_id: c.oracleId,
+        quantity: c.quantity,
+        section: c.section,
+        selected_illustration_id: c.selectedIllustrationId ?? null,
+        original_set_code: c.originalSetCode ?? null,
+        original_collector_number: c.originalCollectorNumber ?? null,
+        original_is_foil: c.originalIsFoil ?? false,
+      }))
+    );
+  }
+
+  return deckId;
+}
+
 export async function lookupAndCreateDeck(
-  userId: string,
+  userId: string | null,
   name: string,
   entries: DecklistEntry[],
   options?: { format?: string; sourceUrl?: string; isPublic?: boolean }

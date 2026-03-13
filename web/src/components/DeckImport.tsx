@@ -71,13 +71,9 @@ export default function DeckImport({ onImport, isAuthed }: DeckImportProps) {
 
       const result = data as DeckImportResponse & { meta?: { source_url?: string; name?: string; format?: string } };
 
-      if (isAuthed) {
-        setImportResult(result);
-        setDeckName(result.meta?.name || "");
-        setDeckFormat(result.meta?.format || "");
-      } else {
-        onImport(result);
-      }
+      setImportResult(result);
+      setDeckName(result.meta?.name || "");
+      setDeckFormat(result.meta?.format || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -112,6 +108,16 @@ export default function DeckImport({ onImport, isAuthed }: DeckImportProps) {
       }
 
       const { id } = await res.json();
+
+      // Store deck ID in localStorage for anon users
+      if (!isAuthed) {
+        try {
+          const stored = JSON.parse(localStorage.getItem("mtgink_anon_decks") || "[]") as { id: string; name: string }[];
+          stored.unshift({ id, name: deckName });
+          localStorage.setItem("mtgink_anon_decks", JSON.stringify(stored));
+        } catch { /* ignore */ }
+      }
+
       router.push(`/deck/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -123,8 +129,8 @@ export default function DeckImport({ onImport, isAuthed }: DeckImportProps) {
     if (importResult) onImport(importResult);
   }
 
-  // Show save form after successful import for authed users
-  if (importResult && isAuthed) {
+  // Show save form after successful import
+  if (importResult) {
     return (
       <div className="space-y-4">
         <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
