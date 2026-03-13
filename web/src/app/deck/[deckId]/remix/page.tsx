@@ -15,6 +15,18 @@ interface RemixCard {
 
 const INITIAL_SHOW = 16;
 
+/** Find the default illustration: user selection > original import printing > top-rated */
+function defaultIllId(card: RemixCard): string | null {
+  if (card.card.selected_illustration_id) return card.card.selected_illustration_id;
+  if (card.card.original_set_code) {
+    const match = card.illustrations.find(
+      (i) => i.set_code === card.card.original_set_code && i.collector_number === card.card.original_collector_number
+    );
+    if (match) return match.illustration_id;
+  }
+  return card.illustrations[0]?.illustration_id ?? null;
+}
+
 const SECTION_ORDER: Record<string, number> = {
   Commander: 0, Companion: 1, Creatures: 2, Planeswalkers: 3,
   Instants: 4, Sorceries: 5, Enchantments: 6, Artifacts: 7,
@@ -77,7 +89,7 @@ export default function DeckRemixPage() {
             if (idx >= 0) startIdx = idx;
           }
           setCardIndex(startIdx);
-          setSelected(cards[startIdx].illustrations[0]?.illustration_id ?? null);
+          setSelected(defaultIllId(cards[startIdx]));
         } else {
           setDone(true);
         }
@@ -93,10 +105,8 @@ export default function DeckRemixPage() {
   const saveSelection = useCallback(async () => {
     if (!selected || !remixCards[cardIndex]) return;
     const card = remixCards[cardIndex];
-    // Default is top-rated illustration (first in sorted list), treat as "no selection"
-    const originalId = card.card.selected_illustration_id ?? card.illustrations[0]?.illustration_id;
-    // Only save if the user actually changed the selection
-    if (selected === originalId) return;
+    // Only save if the user actually changed from the default
+    if (selected === defaultIllId(card)) return;
     await fetch(`/api/deck/${deckId}/card/${card.card.card.oracle_id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -107,9 +117,7 @@ export default function DeckRemixPage() {
   const saveAndAdvance = useCallback(async () => {
     if (!selected) return;
     const card = remixCards[cardIndex];
-    const originalId = card.card.selected_illustration_id ?? card.illustrations[0]?.illustration_id;
-
-    if (selected !== originalId) {
+    if (selected !== defaultIllId(card)) {
       setChangedCount((c) => c + 1);
     }
 
@@ -120,7 +128,7 @@ export default function DeckRemixPage() {
       setCardIndex(nextCard);
       setShowAll(false);
       const next = remixCards[nextCard];
-      setSelected(next.illustrations[0]?.illustration_id ?? null);
+      setSelected(defaultIllId(next));
     } else {
       setDone(true);
     }
@@ -132,7 +140,7 @@ export default function DeckRemixPage() {
       setCardIndex(nextCard);
       setShowAll(false);
       const next = remixCards[nextCard];
-      setSelected(next.illustrations[0]?.illustration_id ?? null);
+      setSelected(defaultIllId(next));
     } else {
       setDone(true);
     }
@@ -144,7 +152,7 @@ export default function DeckRemixPage() {
       setCardIndex(prev);
       setShowAll(false);
       const prevCard = remixCards[prev];
-      setSelected(prevCard.illustrations[0]?.illustration_id ?? null);
+      setSelected(defaultIllId(prevCard));
     }
   }, [cardIndex, remixCards]);
 

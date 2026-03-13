@@ -81,16 +81,25 @@ function DeckCardRow({
     });
   }
 
-  // Find TCGPlayer ID for selected illustration
-  const selectedIll = selectedIllId
+  // Find display illustration: user selection > original import > top-rated
+  let selectedIll = selectedIllId
     ? entry.illustrations.find((i) => i.illustration_id === selectedIllId)
-    : entry.illustrations[0];
+    : undefined;
+  if (!selectedIll && (entry as DeckCardDetail).original_set_code) {
+    const dc = entry as DeckCardDetail;
+    selectedIll = entry.illustrations.find(
+      (i) => i.set_code === dc.original_set_code && i.collector_number === dc.original_collector_number
+    );
+  }
+  if (!selectedIll) selectedIll = entry.illustrations[0];
 
   return (
-    <div className="border border-gray-800 rounded-lg overflow-hidden">
+    <div className={`border border-gray-800 rounded-lg overflow-hidden ${artCount < 2 ? "opacity-50" : ""}`}>
       <button
-        onClick={() => setLocalExpanded(!localExpanded)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-900/50 transition-colors"
+        onClick={() => artCount >= 2 && setLocalExpanded(!localExpanded)}
+        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+          artCount >= 2 ? "hover:bg-gray-900/50 cursor-pointer" : "cursor-default"
+        }`}
       >
         {entry.illustrations[0] && (
           <img
@@ -131,21 +140,23 @@ function DeckCardRow({
             {entry.card.type_line}
           </p>
         </div>
-        <svg
-          className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${
-            expanded ? "rotate-180" : ""
-          }`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
+        {artCount >= 2 && (
+          <svg
+            className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${
+              expanded ? "rotate-180" : ""
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        )}
       </button>
 
       {expanded && (
@@ -248,6 +259,14 @@ export default function DeckView({
 }: DeckViewProps) {
   const [allExpanded, setAllExpanded] = useState(false);
   const [filter, setFilter] = useState<"all" | "changed">("all");
+  const [gridCols, setGridCols] = useState(4);
+
+  const gridClass =
+    gridCols === 3
+      ? "grid grid-cols-2 sm:grid-cols-3 gap-3"
+      : gridCols === 5
+        ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3"
+        : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3";
 
   const cards = data.cards as CardEntry[];
   const changedCount = cards.filter((c) => c.selected_illustration_id).length;
@@ -355,28 +374,62 @@ export default function DeckView({
         )}
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setFilter("all")}
-          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-            filter === "all"
-              ? "bg-gray-800 text-white"
-              : "text-gray-500 hover:text-gray-300"
-          }`}
-        >
-          All
-        </button>
-        <button
-          onClick={() => setFilter("changed")}
-          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-            filter === "changed"
-              ? "bg-gray-800 text-white"
-              : "text-gray-500 hover:text-gray-300"
-          }`}
-        >
-          Changed{changedCount > 0 && ` (${changedCount})`}
-        </button>
+      {/* Filter tabs + grid selector */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFilter("all")}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
+              filter === "all"
+                ? "bg-gray-800 text-white"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter("changed")}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
+              filter === "changed"
+                ? "bg-gray-800 text-white"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            Changed{changedCount > 0 && ` (${changedCount})`}
+          </button>
+        </div>
+        {/* Grid size selector */}
+        <div className="hidden md:flex items-center gap-1">
+          {[3, 4, 5].map((n) => (
+            <button
+              key={n}
+              onClick={() => setGridCols(n)}
+              className={`p-1.5 rounded transition-colors cursor-pointer ${
+                gridCols === n ? "text-white" : "text-gray-600 hover:text-gray-400"
+              }`}
+              title={`${n} columns`}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                {Array.from({ length: n * n }, (_, i) => {
+                  const gap = 1;
+                  const cellSize = (16 - gap * (n - 1)) / n;
+                  const col = i % n;
+                  const row = Math.floor(i / n);
+                  return (
+                    <rect
+                      key={i}
+                      x={col * (cellSize + gap)}
+                      y={row * (cellSize + gap)}
+                      width={cellSize}
+                      height={cellSize}
+                      rx={1}
+                    />
+                  );
+                })}
+              </svg>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Unmatched warning */}
@@ -400,11 +453,17 @@ export default function DeckView({
               ({sectionCards.length})
             </span>
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div className={gridClass}>
             {sectionCards.map((entry) => {
-              const ill = entry.selected_illustration_id
+              // Priority: user selection > original import printing > top-rated
+              let ill = entry.selected_illustration_id
                 ? entry.illustrations.find((i) => i.illustration_id === entry.selected_illustration_id)
-                : entry.illustrations[0];
+                : undefined;
+              if (!ill && entry.original_set_code) {
+                ill = entry.illustrations.find(
+                  (i) => i.set_code === entry.original_set_code && i.collector_number === entry.original_collector_number
+                );
+              }
               const displayIll = ill ?? entry.illustrations[0];
               const price = displayIll && "cheapest_price" in displayIll
                 ? (displayIll as Illustration & { rating: ArtRating | null; cheapest_price?: number | null }).cheapest_price
@@ -417,7 +476,7 @@ export default function DeckView({
                 <Link
                   key={entry.card.oracle_id}
                   href={cardHref}
-                  className="group relative rounded-lg overflow-hidden"
+                  className={`group relative rounded-lg overflow-hidden ${entryArtCount < 2 ? "opacity-50" : ""}`}
                 >
                   {displayIll && entry.back_face_url ? (
                     <CardFaceToggle

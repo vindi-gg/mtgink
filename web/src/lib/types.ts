@@ -210,6 +210,8 @@ export interface DeckCard {
   section: string;
   selected_illustration_id: string | null;
   to_buy: boolean;
+  original_set_code: string | null;
+  original_collector_number: string | null;
 }
 
 export interface DeckCardDetail extends DeckCard {
