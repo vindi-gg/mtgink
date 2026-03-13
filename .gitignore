@@ -26,3 +26,7 @@ web/.next/
 # Environment
 .env
 .env.local
+.env*.local
+
+# Supabase seed data
+supabase/seed.sql.gz

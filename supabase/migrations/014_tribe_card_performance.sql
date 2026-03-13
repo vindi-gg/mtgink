@@ -93,6 +93,7 @@ RETURNS BIGINT LANGUAGE sql STABLE AS $$
 $$;
 
 -- 5. Replace get_creature_tribes to use materialized view
+DROP FUNCTION IF EXISTS get_creature_tribes();
 CREATE OR REPLACE FUNCTION get_creature_tribes()
 RETURNS TABLE (tribe TEXT, slug TEXT, card_count BIGINT) LANGUAGE sql STABLE AS $$
   SELECT
