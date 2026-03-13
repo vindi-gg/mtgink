@@ -93,7 +93,8 @@ export default function DeckRemixPage() {
   const saveSelection = useCallback(async () => {
     if (!selected || !remixCards[cardIndex]) return;
     const card = remixCards[cardIndex];
-    const originalId = card.card.selected_illustration_id;
+    // Default is top-rated illustration (first in sorted list), treat as "no selection"
+    const originalId = card.card.selected_illustration_id ?? card.illustrations[0]?.illustration_id;
     // Only save if the user actually changed the selection
     if (selected === originalId) return;
     await fetch(`/api/deck/${deckId}/card/${card.card.card.oracle_id}`, {
@@ -106,7 +107,7 @@ export default function DeckRemixPage() {
   const saveAndAdvance = useCallback(async () => {
     if (!selected) return;
     const card = remixCards[cardIndex];
-    const originalId = card.card.selected_illustration_id;
+    const originalId = card.card.selected_illustration_id ?? card.illustrations[0]?.illustration_id;
 
     if (selected !== originalId) {
       setChangedCount((c) => c + 1);
