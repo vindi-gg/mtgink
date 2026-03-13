@@ -1,6 +1,6 @@
 -- Bulk version of get_illustrations_for_card that accepts multiple oracle_ids
 -- Returns one row per unique illustration with cheapest price included
--- Replaces the per-card RPC + separate price lookups in getDeckDetail
+-- Uses JOIN aggregation instead of correlated subquery (52ms vs 47s)
 
 CREATE OR REPLACE FUNCTION get_illustrations_for_cards(p_oracle_ids UUID[])
 RETURNS TABLE(
@@ -42,13 +42,16 @@ AS $func$
         ELSE 6
       END,
       p.released_at ASC
+  ),
+  prices AS (
+    SELECT p2.illustration_id, MIN(bp.market_price) AS cheapest_price
+    FROM printings p2
+    JOIN best_prices bp ON bp.scryfall_id = p2.scryfall_id
+    WHERE p2.illustration_id IN (SELECT illustration_id FROM base)
+      AND bp.market_price IS NOT NULL
+    GROUP BY p2.illustration_id
   )
-  SELECT b.*,
-    (SELECT MIN(bp.market_price)
-     FROM printings p2
-     JOIN best_prices bp ON bp.scryfall_id = p2.scryfall_id
-     WHERE p2.illustration_id = b.illustration_id
-     AND bp.market_price IS NOT NULL
-    ) AS cheapest_price
-  FROM base b;
+  SELECT b.*, pr.cheapest_price
+  FROM base b
+  LEFT JOIN prices pr ON pr.illustration_id = b.illustration_id;
 $func$;
