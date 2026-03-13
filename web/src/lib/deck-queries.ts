@@ -1,10 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import {
-  getIllustrationsForCard,
-  getRatingsForCard,
-  getCardByOracleId,
-  lookupCardByName,
   lookupCardsByNames,
 } from "./queries";
 import type {
@@ -14,6 +10,8 @@ import type {
   DeckCardDetail,
   DeckDetail,
   DecklistEntry,
+  Illustration,
+  ArtRating,
   PurchaseListItem,
 } from "./types";
 
@@ -151,59 +149,147 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
     .select("*")
     .eq("deck_id", deckId);
 
-  const unmatched: string[] = [];
   const dcs = (deckCards ?? []) as DeckCard[];
+  if (dcs.length === 0) return { ...deck, cards: [], unmatched: [] };
 
-  // Batch fetch all oracle cards
   const oracleIds = dcs.map((dc) => dc.oracle_id);
-  const { data: oracleRows } = await getAdminClient()
-    .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
-    .in("oracle_id", oracleIds);
-  const oracleMap = new Map(
-    (oracleRows ?? []).map((r) => [r.oracle_id, { ...r, colors: r.colors ? JSON.stringify(r.colors) : null }])
+  const admin = getAdminClient();
+
+  // Round 1: 3 bulk queries in parallel
+  const [{ data: oracleRows }, { data: allPrintings }, { data: allRatings }] = await Promise.all([
+    admin.from("oracle_cards")
+      .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+      .in("oracle_id", oracleIds),
+    admin.from("printings")
+      .select("scryfall_id, illustration_id, oracle_id, artist, set_code, collector_number, released_at, image_version, has_image, sets(name, digital, set_type)")
+      .in("oracle_id", oracleIds)
+      .not("illustration_id", "is", null),
+    admin.from("art_ratings")
+      .select("illustration_id, oracle_id, elo_rating, vote_count, win_count, loss_count, updated_at")
+      .in("oracle_id", oracleIds),
+  ]);
+
+  // Oracle card map
+  const oracleMap = new Map<string, any>(
+    (oracleRows ?? []).map((r: any) => [r.oracle_id, { ...r, colors: r.colors ? JSON.stringify(r.colors) : null }])
   );
 
-  // Process all cards in parallel
-  const cardPromises = dcs.map(async (dc) => {
+  // Rating map: illustration_id → ArtRating
+  const ratingMap = new Map<string, ArtRating>(
+    (allRatings ?? []).map((r: any) => [r.illustration_id, r as ArtRating])
+  );
+
+  // Deduplicate printings into illustrations (replicates get_illustrations_for_card RPC logic)
+  const SET_TYPE_PRIORITY: Record<string, number> = {
+    expansion: 1, core: 2, masters: 3, draft_innovation: 4, commander: 5,
+  };
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const displayPrintings = (allPrintings ?? [])
+    .filter((p: any) => p.has_image && p.sets && !p.sets.digital)
+    .sort((a: any, b: any) => {
+      const aPri = SET_TYPE_PRIORITY[a.sets.set_type] ?? 6;
+      const bPri = SET_TYPE_PRIORITY[b.sets.set_type] ?? 6;
+      if (aPri !== bPri) return aPri - bPri;
+      return (a.released_at ?? "").localeCompare(b.released_at ?? "");
+    });
+
+  const seenIll = new Set<string>();
+  const illustrationsByOracle = new Map<string, Illustration[]>();
+  for (const p of displayPrintings) {
+    const illId = p.illustration_id as string;
+    if (seenIll.has(illId)) continue;
+    seenIll.add(illId);
+    const ill: Illustration = {
+      illustration_id: illId,
+      oracle_id: p.oracle_id as string,
+      artist: p.artist as string,
+      set_code: p.set_code as string,
+      set_name: (p as any).sets.name as string,
+      collector_number: p.collector_number as string,
+      released_at: (p.released_at as string) ?? null,
+      image_version: (p.image_version as string) ?? null,
+    };
+    if (!illustrationsByOracle.has(p.oracle_id as string)) illustrationsByOracle.set(p.oracle_id as string, []);
+    illustrationsByOracle.get(p.oracle_id as string)!.push(ill);
+  }
+
+  // Map scryfall_id → illustration_id for price lookups (all printings of valid illustrations)
+  const scryfallToIll = new Map<string, string>();
+  for (const p of (allPrintings ?? [])) {
+    if (seenIll.has(p.illustration_id as string)) {
+      scryfallToIll.set(p.scryfall_id as string, p.illustration_id as string);
+    }
+  }
+
+  // Identify DFC cards and their latest printing
+  const dfcLatest = new Map<string, { scryfall_id: string; released_at: string }>();
+  for (const dc of dcs) {
     const card = oracleMap.get(dc.oracle_id);
-    if (!card) return null;
-
-    const [illustrations, ratings] = await Promise.all([
-      getIllustrationsForCard(dc.oracle_id),
-      getRatingsForCard(dc.oracle_id),
-    ]);
-    const ratingMap = new Map(ratings.map((r) => [r.illustration_id, r]));
-
-    // Get cheapest price per illustration
-    const illIds = illustrations.map((ill) => ill.illustration_id);
-    const priceMap = new Map<string, number>();
-    if (illIds.length > 0) {
-      const { data: printings } = await getAdminClient()
-        .from("printings")
-        .select("scryfall_id, illustration_id")
-        .in("illustration_id", illIds);
-      if (printings && printings.length > 0) {
-        const scryfallIds = printings.map((p) => p.scryfall_id);
-        const { data: prices } = await getAdminClient()
-          .from("best_prices")
-          .select("scryfall_id, market_price")
-          .in("scryfall_id", scryfallIds);
-        if (prices) {
-          const scryfallToIll = new Map<string, string>();
-          for (const p of printings) scryfallToIll.set(p.scryfall_id, p.illustration_id);
-          for (const p of prices) {
-            const illId = scryfallToIll.get(p.scryfall_id);
-            if (illId && p.market_price != null) {
-              const existing = priceMap.get(illId);
-              if (existing === undefined || p.market_price < existing) priceMap.set(illId, p.market_price);
-            }
-          }
+    if (!card) continue;
+    const layout = card.layout as string;
+    if (layout === "modal_dfc" || layout === "transform" || layout === "reversible_card") {
+      // Find latest printing for this oracle_id
+      for (const p of (allPrintings ?? [])) {
+        if ((p.oracle_id as string) !== dc.oracle_id) continue;
+        const existing = dfcLatest.get(dc.oracle_id);
+        if (!existing || ((p.released_at as string) ?? "") > existing.released_at) {
+          dfcLatest.set(dc.oracle_id, { scryfall_id: p.scryfall_id as string, released_at: (p.released_at as string) ?? "" });
         }
       }
     }
+  }
 
-    const illustrationsWithRatings = illustrations
+  // Round 2: prices + DFC faces in parallel
+  const allScryfallIds = [...scryfallToIll.keys()];
+  const BATCH = 300;
+  const pricePromises: Promise<any>[] = [];
+  for (let i = 0; i < allScryfallIds.length; i += BATCH) {
+    pricePromises.push(
+      Promise.resolve(admin.from("best_prices").select("scryfall_id, market_price").in("scryfall_id", allScryfallIds.slice(i, i + BATCH)))
+    );
+  }
+  const dfcScryfallIds = [...dfcLatest.values()].map((v) => v.scryfall_id);
+  const [priceResults, dfcResult] = await Promise.all([
+    Promise.all(pricePromises),
+    dfcScryfallIds.length > 0
+      ? admin.from("card_faces").select("scryfall_id, image_uris").eq("face_index", 1).in("scryfall_id", dfcScryfallIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  // Cheapest price per illustration
+  const priceMap = new Map<string, number>();
+  for (const { data } of priceResults) {
+    for (const p of (data ?? [])) {
+      const illId = scryfallToIll.get(p.scryfall_id);
+      if (illId && p.market_price != null) {
+        const existing = priceMap.get(illId);
+        if (existing === undefined || p.market_price < existing) priceMap.set(illId, p.market_price);
+      }
+    }
+  }
+
+  // DFC back face URLs
+  const dfcBackFaces = new Map<string, string>();
+  if (dfcResult.data) {
+    const scryfallToOracle = new Map<string, string>();
+    for (const [oid, info] of dfcLatest) scryfallToOracle.set(info.scryfall_id, oid);
+    for (const face of dfcResult.data as any[]) {
+      const oid = scryfallToOracle.get(face.scryfall_id);
+      if (oid && face.image_uris) {
+        const url = face.image_uris.normal;
+        if (url) dfcBackFaces.set(oid, url);
+      }
+    }
+  }
+
+  // Assemble results
+  const cards: DeckCardDetail[] = [];
+  const unmatched: string[] = [];
+  for (const dc of dcs) {
+    const card = oracleMap.get(dc.oracle_id);
+    if (!card) { unmatched.push(dc.oracle_id); continue; }
+
+    const ills = (illustrationsByOracle.get(dc.oracle_id) ?? [])
       .map((ill) => ({
         ...ill,
         rating: ratingMap.get(ill.illustration_id) ?? null,
@@ -211,43 +297,12 @@ export async function getDeckDetail(deckId: string): Promise<DeckDetail | null> 
       }))
       .sort((a, b) => (b.rating?.elo_rating ?? 1500) - (a.rating?.elo_rating ?? 1500));
 
-    // Get back face URL for DFCs
-    const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
-    let backFaceUrl: string | null = null;
-    if (isDFC && illustrations.length > 0) {
-      const { data: printing } = await getAdminClient()
-        .from("printings")
-        .select("scryfall_id")
-        .eq("oracle_id", dc.oracle_id)
-        .order("released_at", { ascending: false })
-        .limit(1)
-        .single();
-      if (printing) {
-        const { data: backFace } = await getAdminClient()
-          .from("card_faces")
-          .select("image_uris")
-          .eq("scryfall_id", printing.scryfall_id)
-          .eq("face_index", 1)
-          .maybeSingle();
-        if (backFace?.image_uris) {
-          backFaceUrl = (backFace.image_uris as { normal?: string }).normal ?? null;
-        }
-      }
-    }
-
-    return {
+    cards.push({
       ...dc,
       card,
-      illustrations: illustrationsWithRatings,
-      back_face_url: backFaceUrl,
-    } as DeckCardDetail;
-  });
-
-  const results = await Promise.all(cardPromises);
-  const cards: DeckCardDetail[] = [];
-  for (let i = 0; i < dcs.length; i++) {
-    if (results[i]) cards.push(results[i]);
-    else unmatched.push(dcs[i].oracle_id);
+      illustrations: ills,
+      back_face_url: dfcBackFaces.get(dc.oracle_id) ?? null,
+    } as DeckCardDetail);
   }
 
   return { ...deck, cards, unmatched };
