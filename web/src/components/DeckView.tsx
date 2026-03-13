@@ -289,6 +289,10 @@ export default function DeckView({
     if (!sectionMap.has(section)) sectionMap.set(section, []);
     sectionMap.get(section)!.push(card);
   }
+  // Sort cards within each section alphabetically by name
+  for (const [, sectionCards] of sectionMap) {
+    sectionCards.sort((a, b) => a.card.name.localeCompare(b.card.name));
+  }
   const sections = new Map(
     [...sectionMap.entries()].sort(
       (a, b) => (SECTION_ORDER[a[0]] ?? 99) - (SECTION_ORDER[b[0]] ?? 99)
