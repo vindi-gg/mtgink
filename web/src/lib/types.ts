@@ -366,6 +366,7 @@ export interface Tribe {
 export interface Tag {
   tag_id: string;
   label: string;
+  slug: string;
   type: string;
   description: string | null;
   usage_count: number;

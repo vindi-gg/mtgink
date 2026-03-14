@@ -879,8 +879,10 @@ export async function getSpecificComparisonPair(illustrationIdA: string, illustr
   // Fetch both illustrations with their ratings
   const { data } = await admin
     .from("printings")
-    .select("illustration_id, oracle_id, artist, set_code, collector_number, image_version, sets!inner(name)")
+    .select("illustration_id, oracle_id, artist, set_code, collector_number, image_version, has_image, sets!inner(name, digital)")
     .in("illustration_id", [illustrationIdA, illustrationIdB])
+    .eq("has_image", true)
+    .eq("sets.digital", false)
     .order("released_at", { ascending: false });
 
   if (!data || data.length < 2) return null;
@@ -1151,7 +1153,7 @@ export async function getTags(
   const offset = (page - 1) * pageSize;
   let query = getAdminClient()
     .from("tags")
-    .select("tag_id, label, type, description, usage_count", { count: "exact" })
+    .select("tag_id, label, slug, type, description, usage_count", { count: "exact" })
     .order("usage_count", { ascending: false })
     .range(offset, offset + pageSize - 1);
 
@@ -1170,8 +1172,17 @@ export async function getTags(
 export async function getTagById(tagId: string): Promise<Tag | null> {
   const { data } = await getAdminClient()
     .from("tags")
-    .select("tag_id, label, type, description, usage_count")
+    .select("tag_id, label, slug, type, description, usage_count")
     .eq("tag_id", tagId)
+    .single();
+  return data as Tag | null;
+}
+
+export async function getTagBySlug(slug: string): Promise<Tag | null> {
+  const { data } = await getAdminClient()
+    .from("tags")
+    .select("tag_id, label, slug, type, description, usage_count")
+    .eq("slug", slug)
     .single();
   return data as Tag | null;
 }

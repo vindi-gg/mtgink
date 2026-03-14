@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { getTagById, getCardsByTag } from "@/lib/queries";
+import { getTagBySlug, getCardsByTag } from "@/lib/queries";
 import CardGrid from "@/components/CardGrid";
 import Pagination from "@/components/Pagination";
 
@@ -13,10 +13,10 @@ const PAGE_SIZE = 30;
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ tag_id: string }>;
+  params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
-  const { tag_id } = await params;
-  const tag = await getTagById(decodeURIComponent(tag_id));
+  const { slug } = await params;
+  const tag = await getTagBySlug(slug);
   if (!tag) return { title: "Tag Not Found — MTG Ink" };
   return {
     title: `${tag.label} — Tags — MTG Ink`,
@@ -28,18 +28,17 @@ export default async function TagDetailPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ tag_id: string }>;
+  params: Promise<{ slug: string }>;
   searchParams: Promise<{ page?: string }>;
 }) {
-  const { tag_id } = await params;
+  const { slug } = await params;
   const { page: pageStr } = await searchParams;
-  const tagId = decodeURIComponent(tag_id);
   const page = Math.max(1, parseInt(pageStr || "1", 10));
 
-  const tag = await getTagById(tagId);
+  const tag = await getTagBySlug(slug);
   if (!tag) notFound();
 
-  const { cards, total } = await getCardsByTag(tagId, page, PAGE_SIZE);
+  const { cards, total } = await getCardsByTag(tag.tag_id, page, PAGE_SIZE);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
@@ -69,7 +68,7 @@ export default async function TagDetailPage({
           </p>
           {total >= 3 && (
             <Link
-              href={`/showdown/gauntlet?tag=${encodeURIComponent(tagId)}`}
+              href={`/showdown/gauntlet?tag=${encodeURIComponent(tag.tag_id)}`}
               className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
             >
               Gauntlet

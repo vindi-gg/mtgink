@@ -421,22 +421,28 @@ export default function GauntletView({
         {showNewGame && (
           <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-xl z-40 min-w-[140px]">
             <a
-              href="/showdown/gauntlet?mode=card"
-              className="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-amber-400 transition-colors"
-            >
-              Random Card
-            </a>
-            <a
               href="/showdown/gauntlet"
               className="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-amber-400 transition-colors"
             >
               Random
             </a>
             <a
+              href="/showdown/gauntlet?mode=card"
+              className="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-amber-400 transition-colors"
+            >
+              Remix
+            </a>
+            <a
               href="/showdown/gauntlet?mode=group"
               className="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-amber-400 transition-colors"
             >
-              Random Group
+              Theme
+            </a>
+            <a
+              href="/browse/tags"
+              className="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-amber-400 transition-colors"
+            >
+              Tag
             </a>
           </div>
         )}
@@ -661,6 +667,13 @@ export default function GauntletView({
               {finalChampion.artist} &middot; {finalChampion.set_name}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* New gauntlet above results */}
+      {!dailyChallengeId && (
+        <div className="flex justify-center mb-6">
+          {renderNewGameDropdown()}
         </div>
       )}
 

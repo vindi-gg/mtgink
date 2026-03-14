@@ -133,6 +133,15 @@ export default async function CardPage({
               {" · "}
               {totalPrintings} printing{totalPrintings !== 1 ? "s" : ""}
               {card.type_line && ` · ${card.type_line}`}
+              {" · "}
+              <a
+                href={`https://scryfall.com/search?q=oracleid%3A${card.oracle_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Scryfall
+              </a>
             </p>
           </div>
           <div className="flex gap-2">

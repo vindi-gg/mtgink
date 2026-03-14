@@ -296,7 +296,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
         {isRemix ? (
           <>
             Which{" "}
-            <a href={`/card/${a.slug}`} className="text-amber-400 hover:text-amber-300">
+            <a href={`/card/${a.slug}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">
               {a.name}
             </a>{" "}
             art is best?
@@ -331,45 +331,6 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex justify-center gap-3 mt-4">
-        <button
-          onClick={skip}
-          disabled={voting}
-          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
-        >
-          Skip (S)
-        </button>
-        {isRemix && sameCard && (
-          <a
-            href={`/card/${a.slug}`}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
-          >
-            All arts
-          </a>
-        )}
-        <button
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(shareUrl());
-            } catch {
-              // Fallback for non-HTTPS contexts
-              const input = document.createElement("input");
-              input.value = shareUrl();
-              document.body.appendChild(input);
-              input.select();
-              document.execCommand("copy");
-              document.body.removeChild(input);
-            }
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
-          className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
-        >
-          {copied ? "Copied!" : "Share"}
-        </button>
-      </div>
-
       {!isRemix && hasActiveFilters(filters) && (
         <div className="text-center mt-3">
           <a
@@ -400,6 +361,39 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
           <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
           <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
         </div>
+      </div>
+
+      {/* Secondary actions — below vote controls */}
+      <div className="flex justify-center gap-2 mt-3">
+        <button
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(shareUrl());
+            } catch {
+              const input = document.createElement("input");
+              input.value = shareUrl();
+              document.body.appendChild(input);
+              input.select();
+              document.execCommand("copy");
+              document.body.removeChild(input);
+            }
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors cursor-pointer"
+        >
+          {copied ? "Copied!" : "Share"}
+        </button>
+        {isRemix && sameCard && (
+          <a
+            href={`/card/${a.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
+          >
+            All {a.name} prints
+          </a>
+        )}
       </div>
 
     </div>
