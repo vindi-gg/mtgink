@@ -27,12 +27,12 @@ const sections = [
     description: "Browse creatures by type — Goblins, Elves, Dragons, and more",
   },
   {
-    href: "/db/tags?type=oracle",
+    href: "/db/tags",
     title: "Card Tags",
     description: "Browse cards by community-curated card tags",
   },
   {
-    href: "/db/tags?type=illustration",
+    href: "/db/art-tags",
     title: "Art Tags",
     description: "Browse cards by community-curated art and illustration tags",
   },

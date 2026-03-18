@@ -10,8 +10,8 @@ export default function Sidebar({ children }: { children?: React.ReactNode }) {
             <a href="/db/cards" className="block text-gray-300 hover:text-white transition-colors">Cards</a>
             <a href="/artists" className="block text-gray-300 hover:text-white transition-colors">Artists</a>
             <a href="/db/tribes" className="block text-gray-300 hover:text-white transition-colors">Tribes</a>
-            <a href="/db/tags?type=oracle" className="block text-gray-300 hover:text-white transition-colors">Card Tags</a>
-            <a href="/db/tags?type=illustration" className="block text-gray-300 hover:text-white transition-colors">Art Tags</a>
+            <a href="/db/tags" className="block text-gray-300 hover:text-white transition-colors">Card Tags</a>
+            <a href="/db/art-tags" className="block text-gray-300 hover:text-white transition-colors">Art Tags</a>
           </nav>
         </div>
       </div>

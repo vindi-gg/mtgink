@@ -1685,12 +1685,20 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
 
   let oracleIds: string[];
   if (isIllustrationTag) {
-    const { data } = await getAdminClient()
+    // Two-step: get illustration_ids from tag, then find oracle_ids via printings
+    const { data: itRows } = await getAdminClient()
       .from("illustration_tags")
-      .select("printings!inner(oracle_id)")
+      .select("illustration_id")
       .eq("tag_id", tagId)
-      .limit(count * 5);
-    const ids = new Set((data ?? []).map((d) => (d.printings as unknown as { oracle_id: string }).oracle_id));
+      .limit(count * 10);
+    const illIds = [...new Set((itRows ?? []).map((r) => r.illustration_id))];
+    if (illIds.length === 0) return [];
+    const { data: pRows } = await getAdminClient()
+      .from("printings")
+      .select("oracle_id")
+      .in("illustration_id", illIds)
+      .not("oracle_id", "is", null);
+    const ids = new Set((pRows ?? []).map((r) => r.oracle_id));
     oracleIds = [...ids];
   } else {
     const { data } = await getAdminClient()

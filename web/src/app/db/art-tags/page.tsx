@@ -9,17 +9,17 @@ export const revalidate = 3600;
 const PAGE_SIZE = 50;
 
 export const metadata = {
-  title: "Card Tags — MTG Ink",
-  description: "Browse Magic: The Gathering cards by community-curated card tags.",
+  title: "Art Tags — MTG Ink",
+  description: "Browse Magic: The Gathering cards by community-curated art and illustration tags.",
 };
 
 async function TagsList({ query, page }: { query: string; page: number }) {
-  const { tags, total } = await getTags(query || undefined, "oracle", page, PAGE_SIZE, "scryfall");
+  const { tags, total } = await getTags(query || undefined, "illustration", page, PAGE_SIZE, "scryfall");
 
   if (tags.length === 0) {
     return (
       <p className="text-gray-500 py-8 text-center">
-        {query ? "No card tags found" : "No card tags imported yet."}
+        {query ? "No art tags found" : "No art tags imported yet."}
       </p>
     );
   }
@@ -27,7 +27,7 @@ async function TagsList({ query, page }: { query: string; page: number }) {
   return (
     <>
       <p className="text-gray-400 text-sm mb-4">
-        {total.toLocaleString()} card tags
+        {total.toLocaleString()} art tags
       </p>
       <div className="grid gap-1">
         {tags.map((tag) => (
@@ -50,7 +50,7 @@ async function TagsList({ query, page }: { query: string; page: number }) {
   );
 }
 
-export default async function CardTagsPage({
+export default async function ArtTagsPage({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; page?: string }>;
@@ -65,24 +65,20 @@ export default async function CardTagsPage({
           Database
         </Link>
         <span className="text-gray-600">/</span>
-        <h1 className="text-3xl font-bold">Card Tags</h1>
+        <h1 className="text-3xl font-bold">Art Tags</h1>
       </div>
-      <p className="text-sm text-gray-500 mb-2">
-        Community-curated tags maintained by volunteers on{" "}
+      <p className="text-sm text-gray-500 mb-4">
+        Community-curated illustration tags maintained by volunteers on{" "}
         <a href="https://tagger.scryfall.com" target="_blank" rel="noopener noreferrer" className="text-amber-500/70 hover:text-amber-400 transition-colors">
           Scryfall Tagger
         </a>
-        {" "}&middot;{" "}
-        <Link href="/db/art-tags" className="text-amber-500/70 hover:text-amber-400 transition-colors">
-          Art Tags
-        </Link>
       </p>
       <div className="mb-4">
         <Suspense>
-          <DbSearch placeholder="Search card tags..." />
+          <DbSearch placeholder="Search art tags..." />
         </Suspense>
       </div>
-      <Suspense fallback={<p className="text-gray-500">Loading card tags...</p>}>
+      <Suspense fallback={<p className="text-gray-500">Loading art tags...</p>}>
         <TagsList query={q} page={page} />
       </Suspense>
     </main>
