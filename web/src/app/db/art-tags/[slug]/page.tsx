@@ -17,14 +17,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const tag = await getTagBySlug(slug);
-  if (!tag) return { title: "Tag Not Found — MTG Ink" };
+  if (!tag) return { title: "Art Tag Not Found — MTG Ink" };
   return {
-    title: `${tag.label} — Tags — MTG Ink`,
+    title: `${tag.label} — Art Tags — MTG Ink`,
     description: `Browse all cards tagged "${tag.label}" in Magic: The Gathering.`,
   };
 }
 
-export default async function TagDetailPage({
+export default async function ArtTagDetailPage({
   params,
   searchParams,
 }: {
@@ -36,9 +36,9 @@ export default async function TagDetailPage({
   const page = Math.max(1, parseInt(pageStr || "1", 10));
 
   const tag = await getTagBySlug(slug);
-  if (!tag) notFound();
+  if (!tag || tag.type !== "illustration") notFound();
 
-  const { cards, total } = await getCardsByTag(tag.tag_id, page, PAGE_SIZE, tag.type);
+  const { cards, total } = await getCardsByTag(tag.tag_id, page, PAGE_SIZE, "illustration");
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
@@ -47,11 +47,8 @@ export default async function TagDetailPage({
             Database
           </Link>
           <span className="text-gray-600">/</span>
-          <Link
-            href={tag.type === "illustration" ? "/db/art-tags" : "/db/tags"}
-            className="text-gray-500 hover:text-gray-300"
-          >
-            {tag.type === "illustration" ? "Art Tags" : "Card Tags"}
+          <Link href="/db/art-tags" className="text-gray-500 hover:text-gray-300">
+            Art Tags
           </Link>
           <span className="text-gray-600">/</span>
         </div>
@@ -59,7 +56,7 @@ export default async function TagDetailPage({
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-3xl font-bold">{tag.label}</h1>
           <span className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400">
-            {tag.type === "illustration" ? "art tag" : "card tag"}
+            art tag
           </span>
         </div>
         {tag.description && (

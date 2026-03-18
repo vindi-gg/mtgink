@@ -33,7 +33,7 @@ async function TagsList({ query, page }: { query: string; page: number }) {
         {tags.map((tag) => (
           <Link
             key={tag.tag_id}
-            href={`/db/tags/${tag.slug}`}
+            href={`/db/art-tags/${tag.slug}`}
             className="flex items-center justify-between px-4 py-2.5 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
           >
             <span className="text-white font-medium truncate">{tag.label}</span>

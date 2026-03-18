@@ -1244,14 +1244,15 @@ export async function getTagBySlug(slug: string): Promise<Tag | null> {
 export async function getCardsByTag(
   tagId: string,
   page = 1,
-  pageSize = 60
+  pageSize = 60,
+  tagType?: string
 ): Promise<{ cards: BrowseCard[]; total: number }> {
   const offset = (page - 1) * pageSize;
   const [{ data, error }, { data: countData }] = await Promise.all([
     getAdminClient().rpc("get_cards_by_tag", {
-      p_tag_id: tagId, p_limit: pageSize, p_offset: offset,
+      p_tag_id: tagId, p_limit: pageSize, p_offset: offset, p_tag_type: tagType ?? null,
     }),
-    getAdminClient().rpc("count_cards_by_tag", { p_tag_id: tagId }),
+    getAdminClient().rpc("count_cards_by_tag", { p_tag_id: tagId, p_tag_type: tagType ?? null }),
   ]);
   if (error) throw new Error(`Failed to load tag cards: ${error.message}`);
   return { cards: (data ?? []) as BrowseCard[], total: countData ?? 0 };
