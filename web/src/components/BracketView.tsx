@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import CardImage from "./CardImage";
 import BracketDiagram from "./BracketDiagram";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import {
   createBracket,
   recordBracketVote,
@@ -28,6 +29,7 @@ interface BracketViewProps {
 }
 
 export default function BracketView({ initialCards }: BracketViewProps) {
+  const { cardUrl } = useImageMode();
   const [bracket, setBracket] = useState<BracketState | null>(null);
   const [resumePrompt, setResumePrompt] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
@@ -156,7 +158,7 @@ export default function BracketView({ initialCards }: BracketViewProps) {
 
   // Completed state
   if (bracket.completed && champion) {
-    const champArt = artCropUrl(champion.set_code, champion.collector_number, champion.image_version);
+    const champArt = cardUrl(champion.set_code, champion.collector_number, champion.image_version);
 
     return (
       <div>
@@ -193,8 +195,8 @@ export default function BracketView({ initialCards }: BracketViewProps) {
 
   const { cardA, cardB } = matchupCards;
   const matchup = bracket.rounds[bracket.currentRound][bracket.currentMatchup];
-  const aArt = artCropUrl(cardA.set_code, cardA.collector_number, cardA.image_version);
-  const bArt = artCropUrl(cardB.set_code, cardB.collector_number, cardB.image_version);
+  const aArt = cardUrl(cardA.set_code, cardA.collector_number, cardA.image_version);
+  const bArt = cardUrl(cardB.set_code, cardB.collector_number, cardB.image_version);
   const aCard = normalCardUrl(cardA.set_code, cardA.collector_number, cardA.image_version);
   const bCard = normalCardUrl(cardB.set_code, cardB.collector_number, cardB.image_version);
   const progressPct = (progress.completedMatchups / progress.totalMatchups) * 100;
@@ -203,7 +205,7 @@ export default function BracketView({ initialCards }: BracketViewProps) {
     card: BracketCard,
     seed: number,
     artUrl: string,
-    cardUrl: string
+    fullCardUrl: string
   ) {
     return (
       <div className="flex flex-col items-center">
@@ -221,7 +223,7 @@ export default function BracketView({ initialCards }: BracketViewProps) {
           {(viewMode === "card" || viewMode === "both") && (
             <CardImage
               key={`${card.illustration_id}-card`}
-              src={cardUrl}
+              src={fullCardUrl}
               alt={`${card.name} by ${card.artist}`}
               onClick={() => vote(seed)}
               className="w-full"

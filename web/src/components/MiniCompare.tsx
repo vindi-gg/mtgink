@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import type { Illustration, ArtRating } from "@/lib/types";
 
 type IllustrationWithRating = Illustration & { rating: ArtRating | null };
@@ -17,6 +18,7 @@ export default function MiniCompare({
   illustrations,
   sessionId,
 }: MiniCompareProps) {
+  const { cardUrl } = useImageMode();
   const [pairIndex, setPairIndex] = useState(0);
   const [voting, setVoting] = useState(false);
   const [done, setDone] = useState(false);
@@ -87,7 +89,7 @@ export default function MiniCompare({
               className="relative rounded-lg overflow-hidden border-2 border-transparent hover:border-amber-500 transition-colors disabled:opacity-60"
             >
               <img
-                src={artCropUrl(ill.set_code, ill.collector_number, ill.image_version)}
+                src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
                 alt={`Art by ${ill.artist}`}
                 className="w-full aspect-[4/3] object-cover"
               />

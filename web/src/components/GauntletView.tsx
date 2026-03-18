@@ -7,6 +7,7 @@ import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
 import RecentActivity from "./RecentActivity";
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { GauntletEntry, CompareFilters } from "@/lib/types";
 
@@ -61,6 +62,7 @@ interface GauntletViewProps {
   hideControls?: boolean;
   themeName?: string;
   fixedOrder?: boolean;
+  brewId?: string;
 }
 
 export default function GauntletView({
@@ -74,7 +76,9 @@ export default function GauntletView({
   hideControls,
   themeName,
   fixedOrder,
+  brewId,
 }: GauntletViewProps) {
+  const { imageMode, cardUrl } = useImageMode();
   const isRemix = mode === "remix";
 
   const [pool, setPool] = useState(() =>
@@ -186,7 +190,7 @@ export default function GauntletView({
     isRemix ? "ink" : "clash",
   );
 
-  function saveGauntletResult(champ: GauntletEntry, champWins: number, allResults: GauntletResult[]) {
+  async function saveGauntletResult(champ: GauntletEntry, champWins: number, allResults: GauntletResult[]): Promise<void> {
     const resultEntries: GauntletResultEntry[] = allResults.map((r) => ({
       oracle_id: r.entry.oracle_id,
       illustration_id: r.entry.illustration_id,
@@ -209,27 +213,33 @@ export default function GauntletView({
       position: allResults.length + 1,
     });
 
-    fetch("/api/gauntlet/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: getSessionId(),
-        mode: isRemix ? "remix" : "vs",
-        pool_size: pool.length,
-        champion_oracle_id: champ.oracle_id,
-        champion_illustration_id: champ.illustration_id,
-        champion_name: champ.name,
-        champion_wins: champWins,
-        results: resultEntries,
-        matchups: matchups.current,
-        daily_challenge_id: dailyChallengeId ?? null,
-        card_name: cardName ?? null,
-        filter_label: filterLabel ?? null,
-      }),
-    })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data?.id) setResultId(data.id); })
-      .catch(() => {});
+    try {
+      const r = await fetch("/api/gauntlet/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: getSessionId(),
+          mode: isRemix ? "remix" : "vs",
+          pool_size: pool.length,
+          champion_oracle_id: champ.oracle_id,
+          champion_illustration_id: champ.illustration_id,
+          champion_name: champ.name,
+          champion_wins: champWins,
+          results: resultEntries,
+          matchups: matchups.current,
+          daily_challenge_id: dailyChallengeId ?? null,
+          card_name: cardName ?? null,
+          filter_label: filterLabel ?? null,
+          brew_id: brewId ?? null,
+        }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data?.id) setResultId(data.id);
+      }
+    } catch {
+      // Don't block completion on save failure
+    }
   }
 
   // Keyboard shortcuts — use refs to avoid stale closures
@@ -328,12 +338,13 @@ export default function GauntletView({
         setChampionIdx(challengerIdx);
       }
       setPhase("complete");
-      // Save the full gauntlet result
+      // Save the full gauntlet result, then notify parent
       const finalChamp = pool[finalChampionIdx];
-      saveGauntletResult(finalChamp, finalWins, newResults);
-      if (onComplete) {
-        onComplete(finalChamp, finalWins, newResults);
-      }
+      saveGauntletResult(finalChamp, finalWins, newResults).then(() => {
+        if (onComplete) {
+          onComplete(finalChamp, finalWins, newResults);
+        }
+      });
     } else {
       if (winnerSide === 0) {
         setChampionWins(championWins + 1);
@@ -474,7 +485,7 @@ export default function GauntletView({
   }
 
   function renderEntry(entry: GauntletEntry, side: 0 | 1, label: string, wins?: number) {
-    const imgSrc = artCropUrl(entry.set_code, entry.collector_number, entry.image_version);
+    const imgSrc = cardUrl(entry.set_code, entry.collector_number, entry.image_version);
 
     return (
       <div className="flex flex-col items-center">
@@ -486,18 +497,20 @@ export default function GauntletView({
             onClick={() => vote(side)}
             className="w-full"
           />
-          <CardPreviewOverlay
-            setCode={entry.set_code}
-            collectorNumber={entry.collector_number}
-            imageVersion={entry.image_version}
-            alt={`${entry.name} by ${entry.artist}`}
-            illustrationId={entry.illustration_id}
-            oracleId={entry.oracle_id}
-            cardName={entry.name}
-            cardSlug={entry.slug}
-            isFavorited={favorites.has(entry.illustration_id)}
-            onToggleFavorite={toggleFavorite}
-          />
+          {imageMode !== "card" && (
+            <CardPreviewOverlay
+              setCode={entry.set_code}
+              collectorNumber={entry.collector_number}
+              imageVersion={entry.image_version}
+              alt={`${entry.name} by ${entry.artist}`}
+              illustrationId={entry.illustration_id}
+              oracleId={entry.oracle_id}
+              cardName={entry.name}
+              cardSlug={entry.slug}
+              isFavorited={favorites.has(entry.illustration_id)}
+              onToggleFavorite={toggleFavorite}
+            />
+          )}
           {/* Champion/Challenger label — top left */}
           <div className="absolute top-1.5 left-1.5 z-10">
             <span className={`text-[10px] font-bold uppercase drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] ${label === "Champion" ? "text-amber-400" : "text-gray-400"}`}>
@@ -517,13 +530,15 @@ export default function GauntletView({
               onToggle={toggleFavorite}
             />
           </div>
-          <div className="absolute bottom-2 right-2 z-10 text-right">
-            {!isRemix && (
-              <a href={`/card/${entry.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{entry.name}</a>
-            )}
-            <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{entry.artist}</p>
-            <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{entry.set_code.toUpperCase()}</p>
-          </div>
+          {imageMode !== "card" && (
+            <div className="absolute bottom-2 right-2 z-10 text-right">
+              {!isRemix && (
+                <a href={`/card/${entry.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{entry.name}</a>
+              )}
+              <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{entry.artist}</p>
+              <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{entry.set_code.toUpperCase()}</p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -651,7 +666,7 @@ export default function GauntletView({
           </div>
           <div className="relative ring-2 ring-amber-500/50 rounded-[5%] overflow-hidden">
             <img
-              src={artCropUrl(finalChampion.set_code, finalChampion.collector_number, finalChampion.image_version)}
+              src={cardUrl(finalChampion.set_code, finalChampion.collector_number, finalChampion.image_version)}
               alt={finalChampion.name}
               className="w-full"
             />
@@ -693,7 +708,7 @@ export default function GauntletView({
                   #{i + 2}
                 </span>
                 <img
-                  src={artCropUrl(r.entry.set_code, r.entry.collector_number, r.entry.image_version)}
+                  src={cardUrl(r.entry.set_code, r.entry.collector_number, r.entry.image_version)}
                   alt={r.entry.name}
                   className="w-10 h-10 object-cover rounded"
                 />

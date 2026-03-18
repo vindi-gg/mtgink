@@ -35,15 +35,28 @@ export default function CardPreviewOverlay({
   const [price, setPrice] = useState<string | null>(null);
   const [priceLoaded, setPriceLoaded] = useState(false);
 
+  // Reset price when the illustration changes
+  useEffect(() => {
+    setPrice(null);
+    setPriceLoaded(false);
+  }, [illustrationId]);
+
   const cardSrc = normalCardUrl(setCode, collectorNumber, imageVersion);
 
-  // Fetch price when mobile modal opens
+  // Fetch cheapest price for this illustration when overlay opens
   useEffect(() => {
-    if (!showing || priceLoaded || !oracleId) return;
-    // Only fetch on mobile (desktop uses hover)
-    if (typeof window !== "undefined" && window.innerWidth >= 768) return;
+    if (!showing || priceLoaded) return;
 
-    fetch(`/api/prices?oracle_id=${oracleId}`)
+    const params = new URLSearchParams();
+    if (illustrationId) {
+      params.set("illustration_id", illustrationId);
+    } else if (oracleId) {
+      params.set("oracle_id", oracleId);
+    } else {
+      return;
+    }
+
+    fetch(`/api/prices?${params}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (Array.isArray(data) && data.length > 0 && data[0].market_price) {
@@ -52,7 +65,7 @@ export default function CardPreviewOverlay({
         setPriceLoaded(true);
       })
       .catch(() => setPriceLoaded(true));
-  }, [showing, priceLoaded, oracleId]);
+  }, [showing, priceLoaded, illustrationId, oracleId]);
 
   return (
     <>
@@ -61,7 +74,11 @@ export default function CardPreviewOverlay({
         className="absolute bottom-2 left-2 z-30 w-8 h-10 rounded bg-black/40 backdrop-blur-sm flex items-center justify-center cursor-zoom-in hover:bg-black/60 transition-colors"
         onClick={(e) => {
           e.stopPropagation();
-          setShowing(true);
+          if (window.innerWidth >= 768 && cardSlug) {
+            window.open(`/card/${cardSlug}`, "_blank");
+          } else {
+            setShowing(true);
+          }
         }}
         onPointerEnter={(e) => {
           if (window.innerWidth >= 768) {
@@ -146,6 +163,13 @@ export default function CardPreviewOverlay({
           }}
         >
           <img src={cardSrc} alt={alt ?? "Card preview"} className="w-full rounded-[3.8%] shadow-2xl shadow-black/80" />
+          {price && (
+            <div className="mt-1.5 text-center">
+              <span className="text-sm font-medium text-gray-200 bg-gray-900/90 px-2.5 py-1 rounded-lg">
+                {price}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </>

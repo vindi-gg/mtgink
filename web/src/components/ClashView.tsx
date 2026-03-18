@@ -7,6 +7,7 @@ import CardImage from "./CardImage";
 import FavoriteButton from "./FavoriteButton";
 import PriceTag from "./PriceTag";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ClashPair, ClashCard, CardRating, CompareFilters, CardVoteResponse } from "@/lib/types";
 
@@ -117,6 +118,7 @@ interface ClashViewProps {
 }
 
 export default function ClashView({ initialPair, initialFilters }: ClashViewProps) {
+  const { cardUrl } = useImageMode();
   const router = useRouter();
   const [pair, setPair] = useState<ClashPair>(initialPair);
   const [voting, setVoting] = useState(false);
@@ -307,8 +309,8 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
 
   function renderSide(card: ClashCard, otherCard: ClashCard, _rating: CardRating | null) {
     const handleClick = () => vote(card.oracle_id, otherCard.oracle_id);
-    const artUrl = artCropUrl(card.set_code, card.collector_number, card.image_version);
-    const cardUrl = normalCardUrl(card.set_code, card.collector_number, card.image_version);
+    const artUrl = cardUrl(card.set_code, card.collector_number, card.image_version);
+    const fullCardUrl = normalCardUrl(card.set_code, card.collector_number, card.image_version);
     const showArt = viewMode === "art" || viewMode === "both";
     const showCard = viewMode === "card" || viewMode === "both";
     const showBothSpacer = viewMode === "both";
@@ -336,7 +338,7 @@ export default function ClashView({ initialPair, initialFilters }: ClashViewProp
           {showCard && (
             <CardImage
               key={`${card.oracle_id}-card`}
-              src={cardUrl}
+              src={fullCardUrl}
               alt={`${card.name} by ${card.artist}`}
               onClick={handleClick}
               onImageError={skip}

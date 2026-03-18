@@ -1,0 +1,701 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import type { OracleCard, MtgSet, Tribe, Tag, Artist, GauntletEntry } from "@/lib/types";
+import { artCropUrl } from "@/lib/image-utils";
+
+type Mode = "remix" | "vs" | "gauntlet";
+type Source = "card" | "expansion" | "tribe" | "tag" | "art_tag" | "artist" | "all";
+
+const MODE_LABELS: Record<Mode, string> = { remix: "Remix", vs: "VS", gauntlet: "Gauntlet" };
+
+const SOURCE_LABELS: Record<Source, string> = {
+  all: "All Cards",
+  card: "Card",
+  expansion: "Expansion",
+  tribe: "Tribe",
+  tag: "Card Tag",
+  art_tag: "Art Tag",
+  artist: "Artist",
+};
+
+/** Which sources are available per mode */
+const MODE_SOURCES: Record<Mode, Source[]> = {
+  remix: ["card", "artist"],
+  vs: ["all", "expansion", "tribe"],
+  gauntlet: ["all", "card", "expansion", "tribe", "tag", "art_tag", "artist"],
+};
+
+const COLORS = ["W", "U", "B", "R", "G"] as const;
+const COLOR_LABELS: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green" };
+const COLOR_SYMBOLS: Record<string, string> = { W: "W", U: "U", B: "B", R: "R", G: "G" };
+
+const CARD_TYPES = ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Land"];
+
+const COMMON_SUBTYPES = [
+  "Elf", "Goblin", "Human", "Wizard", "Soldier", "Zombie", "Dragon", "Angel",
+  "Merfolk", "Vampire", "Knight", "Elemental", "Beast", "Warrior", "Cleric",
+  "Rogue", "Shaman", "Spirit", "Demon", "Bird", "Cat", "Dog", "Dinosaur",
+  "Faerie", "Giant", "Phyrexian", "Sliver", "Treefolk",
+];
+
+interface SelectedItem {
+  id: string;
+  label: string;
+}
+
+export default function BrewCreateForm() {
+  const router = useRouter();
+
+  // Core state
+  const [mode, setMode] = useState<Mode>("gauntlet");
+  const [source, setSource] = useState<Source>("all");
+  const [selected, setSelected] = useState<SelectedItem | null>(null);
+
+  // Filters
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedType, setSelectedType] = useState("");
+  const [selectedSubtype, setSelectedSubtype] = useState("");
+  const [rulesText, setRulesText] = useState("");
+  const [showSubtypeDropdown, setShowSubtypeDropdown] = useState(false);
+  const subtypeRef = useRef<HTMLDivElement>(null);
+
+  // Gauntlet pool size
+  const [poolSize, setPoolSize] = useState(10);
+
+  // Live count
+  const [count, setCount] = useState<number | null>(null);
+  const [countLoading, setCountLoading] = useState(false);
+
+  // Search state
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SelectedItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Cached lists
+  const [sets, setSets] = useState<MtgSet[] | null>(null);
+  const [tribes, setTribes] = useState<Tribe[] | null>(null);
+
+  // Preview state
+  const [previewPool, setPreviewPool] = useState<GauntletEntry[] | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+
+  // Submit state
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Whether source requires an entity selection
+  const needsSelection = source !== "all";
+
+  const clearPreview = () => setPreviewPool(null);
+
+  const handleModeChange = (m: Mode) => {
+    setMode(m);
+    clearPreview();
+    const available = MODE_SOURCES[m];
+    if (!available.includes(source)) {
+      setSource(available[0]);
+      setSelected(null);
+      setQuery("");
+    }
+    if (m === "remix") {
+      setSelectedColors([]);
+      setSelectedType("");
+      setSelectedSubtype("");
+    }
+  };
+
+  const handleSourceChange = (s: Source) => {
+    setSource(s);
+    setSelected(null);
+    setQuery("");
+    setSearchResults([]);
+    clearPreview();
+  };
+
+  // Fetch cached lists
+  useEffect(() => {
+    if (source === "expansion" && !sets) {
+      fetch("/api/sets")
+        .then((r) => r.json())
+        .then((data) => setSets(data.sets ?? data))
+        .catch(() => {});
+    }
+    if ((source === "tribe") && !tribes) {
+      fetch("/api/tribes")
+        .then((r) => r.json())
+        .then((data) => setTribes(data.tribes ?? data))
+        .catch(() => {});
+    }
+  }, [source, sets, tribes]);
+
+  // Debounced search (only for sources that need entity selection)
+  useEffect(() => {
+    if (!needsSelection || !query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        let results: SelectedItem[] = [];
+
+        if (source === "card") {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+          results = (data.results ?? []).map((c: OracleCard & { illustration_count?: number }) => ({
+            id: c.oracle_id,
+            label: c.name + (c.illustration_count ? ` (${c.illustration_count} illustrations)` : ""),
+          }));
+        } else if (source === "expansion") {
+          const q = query.toLowerCase();
+          results = (sets ?? [])
+            .filter((s) => s.name.toLowerCase().includes(q) || s.set_code.toLowerCase().includes(q))
+            .slice(0, 20)
+            .map((s) => ({ id: s.set_code, label: `${s.name} (${s.set_code.toUpperCase()})` }));
+        } else if (source === "tribe") {
+          const q = query.toLowerCase();
+          results = (tribes ?? [])
+            .filter((t) => t.tribe.toLowerCase().includes(q))
+            .slice(0, 20)
+            .map((t) => ({ id: t.tribe, label: `${t.tribe} (${t.card_count} cards)` }));
+        } else if (source === "tag" || source === "art_tag") {
+          const tagType = source === "art_tag" ? "illustration" : "oracle";
+          const res = await fetch(`/api/tags?q=${encodeURIComponent(query)}&type=${tagType}`);
+          const data = await res.json();
+          results = (data.tags ?? []).map((t: Tag) => ({
+            id: t.tag_id,
+            label: `${t.label} (${t.usage_count} cards)`,
+          }));
+        } else if (source === "artist") {
+          const res = await fetch(`/api/artists/search?q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+          results = (data.artists ?? []).map((a: Artist) => ({
+            id: a.name,
+            label: `${a.name} (${a.illustration_count} illustrations)`,
+          }));
+        }
+
+        setSearchResults(results);
+        setShowDropdown(results.length > 0);
+      } catch {
+        setSearchResults([]);
+      }
+      setSearching(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query, source, sets, tribes, needsSelection]);
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node))
+        setShowDropdown(false);
+      if (subtypeRef.current && !subtypeRef.current.contains(e.target as Node))
+        setShowSubtypeDropdown(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Fetch live count
+  const fetchCount = useCallback(async () => {
+    // For sources that need selection, require it
+    if (needsSelection && !selected) {
+      setCount(null);
+      return;
+    }
+    // For "all", require at least one filter
+    if (source === "all" && !selectedColors.length && !selectedType && !selectedSubtype && !rulesText) {
+      setCount(null);
+      return;
+    }
+
+    setCountLoading(true);
+    try {
+      const params = new URLSearchParams({
+        source: source === "art_tag" ? "tag" : source,
+        source_id: selected?.id ?? "_all",
+      });
+      if (selectedColors.length > 0) params.set("colors", selectedColors.join(","));
+      if (selectedType) params.set("type", selectedType);
+      if (selectedSubtype) params.set("subtype", selectedSubtype);
+      if (rulesText) params.set("rules_text", rulesText);
+
+      const res = await fetch(`/api/brew/count?${params}`);
+      const data = await res.json();
+      setCount(data.count ?? 0);
+    } catch {
+      setCount(null);
+    }
+    setCountLoading(false);
+  }, [selected, source, selectedColors, selectedType, selectedSubtype, rulesText, needsSelection]);
+
+  useEffect(() => {
+    fetchCount();
+  }, [fetchCount]);
+
+  const toggleColor = (c: string) => {
+    setSelectedColors((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    clearPreview();
+  };
+
+  // Show filters for all non-remix modes (and remix artist)
+  const showFilters = mode !== "remix" || source === "artist";
+  // Show pool size for gauntlet and remix-artist
+  const showPoolSize = mode === "gauntlet" || (mode === "remix" && source === "artist");
+
+  // Auto-generated title: "Lorwyn Eclipsed Red Creature Gauntlet"
+  const generatedName = (() => {
+    const parts: string[] = [];
+
+    // Source label (e.g., "Lorwyn Eclipsed", "Counterspell", "Mark Poole")
+    if (selected) {
+      parts.push(selected.label.split(" (")[0]);
+    }
+
+    // Filters
+    if (selectedColors.length > 0) {
+      parts.push(selectedColors.map((c) => COLOR_LABELS[c]).join(" "));
+    }
+    if (selectedType) parts.push(selectedType);
+    if (selectedSubtype) parts.push(selectedSubtype);
+    if (rulesText) parts.push(`"${rulesText}"`);
+
+    // Mode last
+    parts.push(MODE_LABELS[mode]);
+
+    // Need at least a source or filter beyond just the mode
+    return parts.length > 1 ? parts.join(" ") : "";
+  })();
+
+  const hasFiltersOrSelection =
+    (needsSelection && selected !== null) ||
+    (!needsSelection && (selectedColors.length > 0 || selectedType || selectedSubtype || rulesText));
+
+  const canCreate = hasFiltersOrSelection && generatedName.length > 0 && (count === null || count >= 2);
+
+  const buildBrewPayload = () => ({
+    mode,
+    source: source === "art_tag" ? "tag" : source,
+    source_id: selected?.id ?? "_all",
+    colors: selectedColors.length > 0 ? selectedColors : null,
+    card_type: selectedType || null,
+    subtype: selectedSubtype || null,
+    rules_text: rulesText || null,
+    pool_size: showPoolSize ? poolSize : null,
+  });
+
+  const buildSourceLabel = () => {
+    if (source === "all") {
+      const parts: string[] = [];
+      if (selectedColors.length > 0) parts.push(selectedColors.map(c => COLOR_LABELS[c]).join(", "));
+      if (selectedType) parts.push(selectedType);
+      if (selectedSubtype) parts.push(selectedSubtype);
+      return parts.join(" ") || "All Cards";
+    }
+    return selected!.label.split(" (")[0];
+  };
+
+  const handlePreview = async () => {
+    setPreviewing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/brew/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildBrewPayload()),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to preview");
+      }
+      const { pool } = await res.json();
+      setPreviewPool(pool);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to preview");
+    }
+    setPreviewing(false);
+  };
+
+  const handleCreate = async () => {
+    if (!canCreate || !previewPool) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/brew", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...buildBrewPayload(),
+          name: generatedName,
+          source_label: buildSourceLabel(),
+          is_public: true,
+          pool: previewPool,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create brew");
+      }
+
+      const { slug } = await res.json();
+      router.push(`/brew/${slug}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create brew");
+    }
+    setSubmitting(false);
+  };
+
+  // Filtered subtypes for dropdown
+  const filteredSubtypes = selectedSubtype.trim()
+    ? COMMON_SUBTYPES.filter((s) => s.toLowerCase().includes(selectedSubtype.toLowerCase()))
+    : COMMON_SUBTYPES;
+
+  return (
+    <div className="space-y-6">
+      {/* Live title preview */}
+      {generatedName && (
+        <div className="text-center py-2">
+          <p className="text-lg font-bold text-white">{generatedName}</p>
+        </div>
+      )}
+
+      {/* Mode toggle */}
+      <div>
+        <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Mode</label>
+        <div className="flex gap-2">
+          {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => handleModeChange(m)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                mode === m
+                  ? "bg-amber-500 text-gray-900"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Source tabs */}
+      <div>
+        <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Source</label>
+        <div className="flex flex-wrap gap-2">
+          {MODE_SOURCES[mode].map((s) => (
+            <button
+              key={s}
+              onClick={() => handleSourceChange(s)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                source === s
+                  ? "bg-gray-700 text-white"
+                  : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-300"
+              }`}
+            >
+              {SOURCE_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Source search (hidden for "all") */}
+      {needsSelection && (
+        <div ref={searchRef} className="relative">
+          <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">
+            {SOURCE_LABELS[source]}
+          </label>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setShowDropdown(true);
+            }}
+            onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+            placeholder={`Search ${SOURCE_LABELS[source].toLowerCase()}s...`}
+            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50"
+          />
+          {searching && (
+            <div className="absolute right-3 top-[38px] text-gray-500 text-sm">...</div>
+          )}
+
+          {showDropdown && searchResults.length > 0 && (
+            <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+              {searchResults.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setSelected(item);
+                    setQuery(item.label);
+                    setShowDropdown(false);
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-700 transition-colors text-gray-200 first:rounded-t-lg last:rounded-b-lg"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {selected && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-400 text-sm">
+                {selected.label.split(" (")[0]}
+                <button
+                  onClick={() => {
+                    setSelected(null);
+                    setQuery("");
+                  }}
+                  className="hover:text-amber-200 ml-1"
+                >
+                  &times;
+                </button>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filters section */}
+      {showFilters && (
+        <div className="space-y-4 p-4 bg-gray-900/50 rounded-xl border border-gray-800">
+          <label className="text-xs uppercase tracking-wider text-gray-500 block">Filters</label>
+
+          {/* Colors */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Colors</label>
+              {selectedColors.length > 0 && (
+                <button onClick={() => { setSelectedColors([]); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => toggleColor(c)}
+                  title={COLOR_LABELS[c]}
+                  className={`w-10 h-10 rounded-lg text-sm font-bold transition-colors ${
+                    selectedColors.includes(c)
+                      ? "bg-amber-500 text-gray-900"
+                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                  }`}
+                >
+                  {COLOR_SYMBOLS[c]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Type */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Type</label>
+              {selectedType && (
+                <button onClick={() => { setSelectedType(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+              )}
+            </div>
+            <select
+              value={selectedType}
+              onChange={(e) => { setSelectedType(e.target.value); clearPreview(); }}
+              className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500/50"
+            >
+              <option value="">Any type</option>
+              {CARD_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Subtype */}
+          <div ref={subtypeRef} className="relative">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Subtype</label>
+              {selectedSubtype && (
+                <button onClick={() => { setSelectedSubtype(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={selectedSubtype}
+              onChange={(e) => {
+                setSelectedSubtype(e.target.value);
+                setShowSubtypeDropdown(true);
+                clearPreview();
+              }}
+              onFocus={() => setShowSubtypeDropdown(true)}
+              placeholder="e.g. Elf, Dragon, Wizard..."
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-amber-500/50"
+            />
+            {showSubtypeDropdown && filteredSubtypes.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                {filteredSubtypes.map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => {
+                      setSelectedSubtype(st);
+                      setShowSubtypeDropdown(false);
+                      clearPreview();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 transition-colors text-gray-200 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Rules text */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Rules text contains</label>
+              {rulesText && (
+                <button onClick={() => { setRulesText(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={rulesText}
+              onChange={(e) => { setRulesText(e.target.value); clearPreview(); }}
+              placeholder='e.g. "first strike", "Add {", "destroy target"...'
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-amber-500/50"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Pool size */}
+      {showPoolSize && (
+        <div>
+          {(() => {
+            const maxPool = count !== null && count > 0 ? Math.min(count, 50) : 50;
+            const clampedSize = Math.min(poolSize, maxPool);
+            if (clampedSize !== poolSize) setPoolSize(clampedSize);
+            return (
+              <>
+                <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">
+                  Pool size: {clampedSize}{count !== null && count <= 50 ? ` / ${count}` : ""}
+                </label>
+                <input
+                  type="range"
+                  min={3}
+                  max={maxPool}
+                  value={clampedSize}
+                  onChange={(e) => setPoolSize(parseInt(e.target.value))}
+                  className="w-full accent-amber-500"
+                />
+                <div className="flex justify-between text-xs text-gray-600 mt-1">
+                  <span>3</span>
+                  <span>{maxPool}</span>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Count + Preview button */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="text-sm text-gray-400">
+          {hasFiltersOrSelection ? (
+            countLoading ? (
+              <span className="text-gray-500">Counting...</span>
+            ) : count !== null ? (
+              <span>
+                <span className="text-white font-medium">{count.toLocaleString()}</span>{" "}
+                {source === "card" || source === "artist" || source === "expansion" || source === "art_tag" ? "illustrations" : "cards"} match
+              </span>
+            ) : null
+          ) : (
+            <span className="text-gray-600">
+              {needsSelection
+                ? `Select a ${SOURCE_LABELS[source].toLowerCase()} to start`
+                : "Add filters to narrow the pool"}
+            </span>
+          )}
+        </div>
+
+        {!previewPool && (
+          <button
+            onClick={handlePreview}
+            disabled={!canCreate || previewing}
+            className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
+              canCreate && !previewing
+                ? "bg-amber-500 text-gray-900 hover:bg-amber-400"
+                : "bg-gray-800 text-gray-600 cursor-not-allowed"
+            }`}
+          >
+            {previewing ? "Loading..." : "Preview Pool"}
+          </button>
+        )}
+      </div>
+
+      {/* Preview grid */}
+      {previewPool && previewPool.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-300">
+              {previewPool.length} cards in pool
+            </h3>
+            <button
+              onClick={handlePreview}
+              disabled={previewing}
+              className="text-sm text-amber-400 hover:text-amber-300 transition-colors disabled:text-gray-600"
+            >
+              {previewing ? "Rolling..." : "Re-roll"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            {previewPool.map((entry) => (
+              <div key={`${entry.set_code}-${entry.collector_number}`} className="relative group">
+                <img
+                  src={artCropUrl(entry.set_code, entry.collector_number, entry.image_version)}
+                  alt={entry.name}
+                  className="w-full rounded-lg"
+                  style={{ aspectRatio: "626 / 457" }}
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent rounded-b-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <p className="text-[10px] text-white truncate">{entry.name}</p>
+                  <p className="text-[9px] text-gray-400 truncate">{entry.artist}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Create button */}
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={handleCreate}
+              disabled={submitting}
+              className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
+                !submitting
+                  ? "bg-amber-500 text-gray-900 hover:bg-amber-400"
+                  : "bg-gray-800 text-gray-600 cursor-not-allowed"
+              }`}
+            >
+              {submitting ? "Creating..." : "Create Brew"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p className="text-red-400 text-sm">{error}</p>
+      )}
+    </div>
+  );
+}

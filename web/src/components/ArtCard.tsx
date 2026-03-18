@@ -1,6 +1,7 @@
 "use client";
 
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import FavoriteButton from "./FavoriteButton";
 import type { Illustration, ArtRating } from "@/lib/types";
 
@@ -21,7 +22,8 @@ export default function ArtCard({
   isFavorited,
   onFavoriteToggle,
 }: ArtCardProps) {
-  const src = artCropUrl(illustration.set_code, illustration.collector_number, illustration.image_version);
+  const { cardUrl } = useImageMode();
+  const src = cardUrl(illustration.set_code, illustration.collector_number, illustration.image_version);
 
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-800">

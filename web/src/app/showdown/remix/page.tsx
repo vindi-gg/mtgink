@@ -1,4 +1,5 @@
 import { getComparisonPair, getSpecificComparisonPair, resolvePrintingRef } from "@/lib/queries";
+import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import ShowdownView from "@/components/ShowdownView";
 import type { CompareFilters } from "@/lib/types";
 
@@ -13,34 +14,40 @@ export const metadata = {
 export default async function RemixPage({
   searchParams,
 }: {
-  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; set_code?: string; a?: string; b?: string }>;
+  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; set_code?: string; a?: string; b?: string; brew?: string }>;
 }) {
-  const { oracle_id, colors, type, subtype, set_code, a, b } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, a, b, brew: brewSlug } = await searchParams;
 
-  const filters: CompareFilters = {
-    ...(colors || type || subtype || set_code
-      ? {
-          colors: colors ? colors.split(",").filter(Boolean) : undefined,
-          type: type || undefined,
-          subtype: subtype || undefined,
-          set_code: set_code || undefined,
-        }
-      : {}),
-  };
+  let resolvedOracleId = oracle_id;
+  let filters: CompareFilters = {};
+
+  if (brewSlug) {
+    const brew = await getBrewBySlug(brewSlug);
+    if (brew) {
+      incrementPlayCount(brew.id).catch(() => {});
+      if (brew.source === "card") resolvedOracleId = brew.source_id;
+    }
+  } else if (colors || type || subtype || set_code) {
+    filters = {
+      colors: colors ? colors.split(",").filter(Boolean) : undefined,
+      type: type || undefined,
+      subtype: subtype || undefined,
+      set_code: set_code || undefined,
+    };
+  }
 
   const hasFilters = Object.keys(filters).length > 0;
 
   let pair;
   try {
     if (a && b) {
-      // Resolve short refs (e.g. "ice-64") to illustration IDs
       const [refA, refB] = await Promise.all([resolvePrintingRef(a), resolvePrintingRef(b)]);
       if (refA && refB) {
         pair = await getSpecificComparisonPair(refA.illustration_id, refB.illustration_id);
       }
     }
     if (!pair) {
-      pair = await getComparisonPair(oracle_id, hasFilters ? filters : undefined);
+      pair = await getComparisonPair(resolvedOracleId, hasFilters ? filters : undefined);
     }
   } catch {
     pair = await getComparisonPair();

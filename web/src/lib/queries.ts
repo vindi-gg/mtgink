@@ -89,6 +89,7 @@ function filterParams(filters?: CompareFilters) {
     p_type: filters?.type || null,
     p_subtype: filters?.subtype || null,
     p_set_code: filters?.set_code || null,
+    p_rules_text: filters?.rules_text || null,
   };
 }
 
@@ -265,6 +266,9 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
 }
 
 /** Get all printings for a card, grouped by illustration_id (excludes digital-only sets) */
+/** Non-English reprint sets to exclude from printings display */
+const NON_ENGLISH_SETS = ["psal", "ps11", "ren", "rin", "fbb", "4bb", "bchr"];
+
 export async function getPrintingsForCard(oracleId: string): Promise<Map<string, Printing[]>> {
   const { data, error } = await getAdminClient()
     .from("printings")
@@ -272,6 +276,7 @@ export async function getPrintingsForCard(oracleId: string): Promise<Map<string,
     .eq("oracle_id", oracleId)
     .not("illustration_id", "is", null)
     .eq("sets.digital", false)
+    .not("set_code", "in", `(${NON_ENGLISH_SETS.join(",")})`)
     .order("released_at", { ascending: true });
 
   if (error) throw new Error(`Failed to get printings: ${error.message}`);
@@ -1142,18 +1147,64 @@ export async function getCardsByTribe(
   return { cards: (data ?? []) as BrowseCard[], total: countData ?? 0 };
 }
 
-// --- Tags (Scryfall Tagger) ---
+// --- Tags (Scryfall Tagger + Ink mechanical tags) ---
+
+const TAG_COLUMNS = "tag_id, label, slug, type, description, usage_count, source, rule_definition, category";
+
+/** Get all tags for a card (oracle tags + illustration tags) */
+export async function getTagsForCard(oracleId: string): Promise<Tag[]> {
+  const admin = getAdminClient();
+
+  // Get oracle tags
+  const { data: oracleTags } = await admin
+    .from("oracle_tags")
+    .select(`tag_id, tags!inner(${TAG_COLUMNS})`)
+    .eq("oracle_id", oracleId);
+
+  // Get illustration_ids for this card, then their tags
+  const { data: printingRows } = await admin
+    .from("printings")
+    .select("illustration_id")
+    .eq("oracle_id", oracleId)
+    .not("illustration_id", "is", null);
+
+  const illIds = [...new Set((printingRows ?? []).map((r) => r.illustration_id))];
+
+  let illTags: typeof oracleTags = [];
+  if (illIds.length > 0) {
+    const { data } = await admin
+      .from("illustration_tags")
+      .select(`tag_id, tags!inner(${TAG_COLUMNS})`)
+      .in("illustration_id", illIds);
+    illTags = data ?? [];
+  }
+
+  // Dedupe by tag_id
+  const seen = new Set<string>();
+  const tags: Tag[] = [];
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  for (const row of [...(oracleTags ?? []), ...illTags]) {
+    const t = (row as any).tags as Tag;
+    if (t && !seen.has(t.tag_id)) {
+      seen.add(t.tag_id);
+      tags.push(t);
+    }
+  }
+
+  return tags.sort((a, b) => a.label.localeCompare(b.label));
+}
 
 export async function getTags(
   search?: string,
   type?: string,
   page = 1,
-  pageSize = 50
+  pageSize = 50,
+  source?: string
 ): Promise<{ tags: Tag[]; total: number }> {
   const offset = (page - 1) * pageSize;
   let query = getAdminClient()
     .from("tags")
-    .select("tag_id, label, slug, type, description, usage_count", { count: "exact" })
+    .select(TAG_COLUMNS, { count: "exact" })
     .order("usage_count", { ascending: false })
     .range(offset, offset + pageSize - 1);
 
@@ -1162,6 +1213,9 @@ export async function getTags(
   }
   if (type) {
     query = query.eq("type", type);
+  }
+  if (source) {
+    query = query.eq("source", source);
   }
 
   const { data, count, error } = await query;
@@ -1172,7 +1226,7 @@ export async function getTags(
 export async function getTagById(tagId: string): Promise<Tag | null> {
   const { data } = await getAdminClient()
     .from("tags")
-    .select("tag_id, label, slug, type, description, usage_count")
+    .select(TAG_COLUMNS)
     .eq("tag_id", tagId)
     .single();
   return data as Tag | null;
@@ -1181,7 +1235,7 @@ export async function getTagById(tagId: string): Promise<Tag | null> {
 export async function getTagBySlug(slug: string): Promise<Tag | null> {
   const { data } = await getAdminClient()
     .from("tags")
-    .select("tag_id, label, slug, type, description, usage_count")
+    .select(TAG_COLUMNS)
     .eq("slug", slug)
     .single();
   return data as Tag | null;
@@ -1562,6 +1616,62 @@ export async function getGauntletIllustrationsByArtist(artistName: string, count
   return entries;
 }
 
+/** Get all unique illustrations in a set as gauntlet entries */
+export async function getGauntletIllustrationsBySet(
+  setCode: string,
+  count = 20,
+  filters?: { colors?: string[]; type?: string; subtype?: string; rulesText?: string },
+): Promise<GauntletEntry[]> {
+  let query = getAdminClient()
+    .from("printings")
+    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, released_at, sets!inner(name, digital), oracle_cards!inner(name, slug, type_line, mana_cost, colors, oracle_text)")
+    .eq("set_code", setCode)
+    .not("illustration_id", "is", null)
+    .eq("sets.digital", false);
+
+  if (filters?.type) {
+    query = query.ilike("oracle_cards.type_line", `%${filters.type}%`);
+  }
+  if (filters?.subtype) {
+    query = query.ilike("oracle_cards.type_line", `%${filters.subtype}%`);
+  }
+  if (filters?.rulesText) {
+    query = query.ilike("oracle_cards.oracle_text", `%${filters.rulesText}%`);
+  }
+  if (filters?.colors && filters.colors.length > 0) {
+    query = query.filter("oracle_cards.colors", "cs", JSON.stringify(filters.colors));
+  }
+
+  const { data } = await query.order("released_at", { ascending: false });
+
+  if (!data || data.length === 0) return [];
+
+  // Deduplicate by illustration_id
+  const seen = new Set<string>();
+  const all: GauntletEntry[] = [];
+  for (const p of data) {
+    if (seen.has(p.illustration_id)) continue;
+    seen.add(p.illustration_id);
+    const card = p.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null };
+    all.push({
+      name: card.name,
+      slug: card.slug,
+      oracle_id: p.oracle_id,
+      illustration_id: p.illustration_id,
+      artist: p.artist,
+      set_code: p.set_code,
+      set_name: (p.sets as unknown as { name: string }).name,
+      collector_number: p.collector_number,
+      image_version: p.image_version,
+      type_line: card.type_line,
+      mana_cost: card.mana_cost,
+    });
+  }
+
+  // Shuffle and trim
+  return all.sort(() => Math.random() - 0.5).slice(0, count);
+}
+
 /** Get cards by tag as gauntlet entries */
 export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<GauntletEntry[]> {
   // Get oracle_ids for this tag (could be illustration_tags or oracle_tags)
@@ -1638,4 +1748,129 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
       };
     })
     .filter((e): e is GauntletEntry => e !== null);
+}
+
+// =============================================================================
+// Brew — live count for custom game builder
+// =============================================================================
+
+export async function getBrewCount(
+  source: string,
+  sourceId: string,
+  colors?: string[],
+  type?: string,
+  subtype?: string,
+  rulesText?: string,
+): Promise<number> {
+  const admin = getAdminClient();
+
+  if (source === "card") {
+    // Count distinct illustrations for this card
+    const { data } = await admin
+      .from("printings")
+      .select("illustration_id")
+      .eq("oracle_id", sourceId)
+      .not("illustration_id", "is", null);
+    const unique = new Set((data ?? []).map((d) => d.illustration_id));
+    return unique.size;
+  }
+
+  if (source === "artist") {
+    // Count distinct illustrations by this artist
+    const { data } = await admin
+      .from("printings")
+      .select("illustration_id, sets!inner(digital)")
+      .eq("artist", sourceId)
+      .not("illustration_id", "is", null)
+      .eq("sets.digital", false);
+    const unique = new Set((data ?? []).map((d) => d.illustration_id));
+    return unique.size;
+  }
+
+  if (source === "expansion") {
+    // Count distinct illustrations in this set, with optional color/type filters
+    let query = admin
+      .from("printings")
+      .select("illustration_id, oracle_cards!inner(type_line, colors, oracle_text)")
+      .eq("set_code", sourceId)
+      .not("illustration_id", "is", null);
+
+    if (type) {
+      query = query.ilike("oracle_cards.type_line", `%${type}%`);
+    }
+    if (subtype) {
+      query = query.ilike("oracle_cards.type_line", `%${subtype}%`);
+    }
+    if (rulesText) {
+      query = query.ilike("oracle_cards.oracle_text", `%${rulesText}%`);
+    }
+    if (colors && colors.length > 0) {
+      query = query.filter("oracle_cards.colors", "cs", JSON.stringify(colors));
+    }
+
+    const { data } = await query;
+    const unique = new Set((data ?? []).map((d) => d.illustration_id));
+    return unique.size;
+  }
+
+  if (source === "tribe") {
+    // Count oracle_cards matching this creature subtype
+    let query = admin
+      .from("oracle_cards")
+      .select("oracle_id", { count: "exact", head: true })
+      .ilike("type_line", `%${sourceId}%`);
+
+    if (type) {
+      query = query.ilike("type_line", `%${type}%`);
+    }
+    if (subtype) {
+      query = query.ilike("type_line", `%${subtype}%`);
+    }
+    if (rulesText) {
+      query = query.ilike("oracle_text", `%${rulesText}%`);
+    }
+    if (colors && colors.length > 0) {
+      query = query.contains("colors", colors);
+    }
+
+    const { count } = await query;
+    return count ?? 0;
+  }
+
+  if (source === "tag") {
+    const { data } = await admin.rpc("count_cards_by_tag_filtered", {
+      p_tag_id: sourceId,
+      p_colors: colors?.length ? colors : null,
+      p_type: type || null,
+      p_subtype: subtype || null,
+      p_rules_text: rulesText || null,
+    });
+    return data ?? 0;
+  }
+
+  if (source === "all") {
+    // Count all matching oracle_cards with filters
+    let query = admin
+      .from("oracle_cards")
+      .select("oracle_id", { count: "exact", head: true })
+      .eq("digital_only", false);
+
+    if (type) {
+      query = query.ilike("type_line", `%${type}%`);
+    }
+    if (subtype) {
+      query = query.ilike("type_line", `%${subtype}%`);
+    }
+    if (rulesText) {
+      query = query.ilike("oracle_text", `%${rulesText}%`);
+    }
+    if (colors && colors.length > 0) {
+      query = query.filter("colors", "cs", JSON.stringify(colors));
+    }
+
+    const { count } = await query;
+    return count ?? 0;
+  }
+
+  return 0;
 }

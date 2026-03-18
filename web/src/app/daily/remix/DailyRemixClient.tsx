@@ -6,6 +6,7 @@ import CardPreviewOverlay from "@/components/CardPreviewOverlay";
 import FavoriteButton from "@/components/FavoriteButton";
 import DailyResultsPanel from "@/components/DailyResultsPanel";
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { DailyChallenge, DailyChallengeStats } from "@/lib/types";
 
@@ -50,6 +51,7 @@ export default function DailyRemixClient({
   const [voting, setVoting] = useState(false);
   const [stats, setStats] = useState<DailyChallengeStats | null>(null);
 
+  const { imageMode, cardUrl } = useImageMode();
   const { favorites, toggle: toggleFavorite } = useFavorites(
     [illustrationA.illustration_id, illustrationB.illustration_id],
     "ink",
@@ -150,23 +152,25 @@ export default function DailyRemixClient({
                   <div className="relative w-full">
                     <CardImage
                       key={ill.illustration_id}
-                      src={artCropUrl(ill.set_code, ill.collector_number, ill.image_version)}
+                      src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
                       alt={`${cardName} by ${ill.artist}`}
                       onClick={() => vote(side)}
                       className="w-full"
                     />
-                    <CardPreviewOverlay
-                      setCode={ill.set_code}
-                      collectorNumber={ill.collector_number}
-                      imageVersion={ill.image_version}
-                      alt={`${cardName} by ${ill.artist}`}
-                      illustrationId={ill.illustration_id}
-                      oracleId={oracleId}
-                      cardName={cardName}
-                      cardSlug={cardSlug}
-                      isFavorited={favorites.has(ill.illustration_id)}
-                      onToggleFavorite={toggleFavorite}
-                    />
+                    {imageMode !== "card" && (
+                      <CardPreviewOverlay
+                        setCode={ill.set_code}
+                        collectorNumber={ill.collector_number}
+                        imageVersion={ill.image_version}
+                        alt={`${cardName} by ${ill.artist}`}
+                        illustrationId={ill.illustration_id}
+                        oracleId={oracleId}
+                        cardName={cardName}
+                        cardSlug={cardSlug}
+                        isFavorited={favorites.has(ill.illustration_id)}
+                        onToggleFavorite={toggleFavorite}
+                      />
+                    )}
                     <div className="absolute top-2 right-2 z-10">
                       <FavoriteButton
                         illustrationId={ill.illustration_id}
@@ -175,10 +179,12 @@ export default function DailyRemixClient({
                         onToggle={toggleFavorite}
                       />
                     </div>
-                    <div className="absolute bottom-2 right-2 z-10 text-right">
-                      <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{ill.artist}</p>
-                      <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{ill.set_code.toUpperCase()}</p>
-                    </div>
+                    {imageMode !== "card" && (
+                      <div className="absolute bottom-2 right-2 z-10 text-right">
+                        <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{ill.artist}</p>
+                        <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{ill.set_code.toUpperCase()}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

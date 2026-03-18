@@ -5,9 +5,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const scryfallId = searchParams.get("scryfall_id");
   const oracleId = searchParams.get("oracle_id");
+  const illustrationId = searchParams.get("illustration_id");
 
-  if (!scryfallId && !oracleId) {
-    return NextResponse.json({ error: "Provide scryfall_id or oracle_id" }, { status: 400 });
+  if (!scryfallId && !oracleId && !illustrationId) {
+    return NextResponse.json({ error: "Provide scryfall_id, oracle_id, or illustration_id" }, { status: 400 });
   }
 
   try {
@@ -16,6 +17,24 @@ export async function GET(request: NextRequest) {
         .from("best_prices")
         .select("*")
         .eq("scryfall_id", scryfallId);
+      return NextResponse.json(data ?? []);
+    }
+
+    // Cheapest printing with this illustration (same art)
+    if (illustrationId) {
+      const { data: printings } = await getAdminClient()
+        .from("printings")
+        .select("scryfall_id")
+        .eq("illustration_id", illustrationId);
+
+      if (!printings || printings.length === 0) return NextResponse.json([]);
+
+      const { data } = await getAdminClient()
+        .from("best_prices")
+        .select("*")
+        .in("scryfall_id", printings.map((p) => p.scryfall_id))
+        .order("market_price", { ascending: true })
+        .limit(1);
       return NextResponse.json(data ?? []);
     }
 

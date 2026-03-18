@@ -4,11 +4,13 @@ import {
   getGauntletIllustrationsByArtist,
   getGauntletCardsByTag,
   getGauntletCards,
+  getGauntletIllustrationsBySet,
   getRandomGauntletCard,
   getRandomGauntletGroup,
   getRandomTheme,
   getTheme,
 } from "@/lib/queries";
+import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import GauntletView from "@/components/GauntletView";
 import type { CompareFilters, GauntletEntry } from "@/lib/types";
 
@@ -36,9 +38,11 @@ export default async function GauntletPage({
     artist?: string;
     tag?: string;
     theme?: string;
+    rules_text?: string;
+    brew?: string;
   }>;
 }) {
-  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag, theme: themeId } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag, theme: themeId, rules_text, brew: brewSlug } = await searchParams;
 
   const poolSize = Math.min(parseInt(count ?? String(DEFAULT_POOL_SIZE)), 50);
 
@@ -48,9 +52,65 @@ export default async function GauntletPage({
   let gauntletMode: "remix" | "vs" = "vs";
   let filters: CompareFilters | undefined;
   let themeName: string | undefined;
+  let brewId: string | undefined;
 
   try {
-    if (oracle_id) {
+    if (brewSlug) {
+      // Brew — use snapshotted pool (frozen at creation time)
+      const brew = await getBrewBySlug(brewSlug);
+      if (brew) {
+        brewId = brew.id;
+        incrementPlayCount(brew.id).catch(() => {}); // fire and forget
+        filterLabel = brew.source_label;
+        gauntletMode = brew.source === "card" || brew.source === "artist" ? "remix" : "vs";
+
+        if (brew.source === "card") {
+          const card = await getCardByOracleId(brew.source_id);
+          cardName = card?.name;
+        }
+
+        if (brew.pool?.length) {
+          // Use the snapshotted pool — consistent across plays
+          pool = brew.pool;
+        } else {
+          // Legacy brews without a snapshot — resolve dynamically
+          const ps = brew.pool_size ?? DEFAULT_POOL_SIZE;
+          const brewFilters: CompareFilters = {
+            colors: brew.colors ?? undefined,
+            type: brew.card_type ?? undefined,
+            subtype: brew.subtype ?? undefined,
+            rules_text: brew.rules_text ?? undefined,
+          };
+
+          if (brew.source === "card") {
+            pool = await getGauntletIllustrations(brew.source_id);
+          } else if (brew.source === "artist") {
+            pool = await getGauntletIllustrationsByArtist(brew.source_id, ps);
+          } else if (brew.source === "tag") {
+            pool = await getGauntletCardsByTag(brew.source_id, ps * 5);
+            if (brew.colors?.length || brew.card_type || brew.subtype || brew.rules_text) {
+              pool = pool.filter((entry) => {
+                if (brew.colors?.length && entry.mana_cost) {
+                  if (!brew.colors.every((c) => entry.mana_cost?.includes(`{${c}}`))) return false;
+                }
+                if (brew.card_type && entry.type_line && !entry.type_line.includes(brew.card_type)) return false;
+                if (brew.subtype && entry.type_line && !entry.type_line.includes(brew.subtype)) return false;
+                return true;
+              });
+            }
+            pool = pool.sort(() => Math.random() - 0.5).slice(0, ps);
+          } else {
+            if (brew.source === "expansion") brewFilters.set_code = brew.source_id;
+            if (brew.source === "tribe") {
+              brewFilters.type = "Creature";
+              brewFilters.subtype = brew.source_id;
+            }
+            filters = brewFilters;
+            pool = await getGauntletCards(ps, brewFilters);
+          }
+        }
+      }
+    } else if (oracle_id) {
       // Specific card — remix gauntlet
       const card = await getCardByOracleId(oracle_id);
       cardName = card?.name;
@@ -77,7 +137,7 @@ export default async function GauntletPage({
           pool = await getGauntletIllustrationsByArtist(t.artist, poolSize);
         } else if (t.theme_type === "set" && t.set_code) {
           filterLabel = t.set_code.toUpperCase();
-          pool = await getGauntletCards(poolSize, { set_code: t.set_code });
+          pool = await getGauntletIllustrationsBySet(t.set_code, poolSize);
         }
       }
     } else if (mode === "card") {
@@ -105,11 +165,16 @@ export default async function GauntletPage({
         filterLabel = group.label;
         pool = await getGauntletCards(poolSize, filters);
       }
-    } else if (colors || type || subtype || set_code) {
-      // Explicit filters
+    } else if (set_code && !colors && !type && !subtype && !rules_text) {
+      // Set-only filter — use illustration-based query (includes alt art)
+      filterLabel = set_code.toUpperCase();
+      pool = await getGauntletIllustrationsBySet(set_code, poolSize);
+    } else if (colors || type || subtype || set_code || rules_text) {
+      // Explicit filters (mixed)
       const explicitFilters: CompareFilters = {
         colors: colors ? colors.split(",").filter(Boolean) : undefined,
         type: type || undefined,
+        rules_text: rules_text || undefined,
         subtype: subtype || undefined,
         set_code: set_code || undefined,
       };
@@ -177,6 +242,7 @@ export default async function GauntletPage({
         filterLabel={filterLabel}
         filters={filters}
         themeName={themeName}
+        brewId={brewId}
       />
     </main>
   );

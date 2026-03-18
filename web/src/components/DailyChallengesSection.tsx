@@ -20,21 +20,29 @@ function getSessionId(): string {
   return id;
 }
 
-export default function DailyChallengesSection({ challenges }: DailyChallengesSectionProps) {
+export default function DailyChallengesSection({ challenges: serverChallenges }: DailyChallengesSectionProps) {
+  const [challenges, setChallenges] = useState(serverChallenges);
   const [participated, setParticipated] = useState<Set<number>>(new Set());
 
+  // Fetch fresh challenges client-side to avoid ISR staleness
   useEffect(() => {
     const sessionId = getSessionId();
-    if (!sessionId || challenges.length === 0) return;
+    if (!sessionId) return;
 
-    const ids = challenges.map((c) => c.id).join(",");
-    fetch(`/api/daily/participated?session_id=${sessionId}&ids=${ids}`)
+    fetch(`/api/daily?session_id=${sessionId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (Array.isArray(data)) setParticipated(new Set(data));
+        if (Array.isArray(data) && data.length > 0) {
+          setChallenges(data);
+          // Participation is embedded in the response from getDailyChallenges
+          const done = new Set<number>(
+            data.filter((c: DailyChallenge & { participated?: boolean }) => c.participated).map((c: DailyChallenge) => c.id)
+          );
+          setParticipated(done);
+        }
       })
       .catch(() => {});
-  }, [challenges]);
+  }, []);
 
   if (challenges.length === 0) return null;
 

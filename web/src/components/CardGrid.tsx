@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { normalCardUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import type { BrowseCard } from "@/lib/types";
 
 type GridMode = "grid" | "single";
 
 export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
+  const { cardUrl } = useImageMode();
   const [mode, setMode] = useState<GridMode>("grid");
 
   return (
@@ -52,7 +54,7 @@ export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={normalCardUrl(card.set_code, card.collector_number, card.image_version)}
+              src={cardUrl(card.set_code, card.collector_number, card.image_version)}
               alt={card.name}
               className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
               loading="lazy"

@@ -11,10 +11,11 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type") || undefined;
   const subtype = searchParams.get("subtype") || undefined;
   const set_code = searchParams.get("set_code") || undefined;
+  const rules_text = searchParams.get("rules_text") || undefined;
 
   const filters: CompareFilters | undefined =
-    colors?.length || type || subtype || set_code
-      ? { colors, type, subtype, set_code }
+    colors?.length || type || subtype || set_code || rules_text
+      ? { colors, type, subtype, set_code, rules_text }
       : undefined;
 
   try {

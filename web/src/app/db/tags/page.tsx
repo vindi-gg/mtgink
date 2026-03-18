@@ -14,7 +14,8 @@ export const metadata = {
 };
 
 async function TagsList({ query, type, page }: { query: string; type: string; page: number }) {
-  const { tags, total } = await getTags(query || undefined, type || undefined, page, PAGE_SIZE);
+  // Exclude ink tags from browse for now — will be powered by MTG School
+  const { tags, total } = await getTags(query || undefined, type || undefined, page, PAGE_SIZE, "scryfall");
 
   if (tags.length === 0) {
     return (
@@ -70,8 +71,16 @@ export default async function TagsPage({
             Database
           </Link>
           <span className="text-gray-600">/</span>
-          <h1 className="text-3xl font-bold">Tags</h1>
+          <h1 className="text-3xl font-bold">
+            {type === "illustration" ? "Art Tags" : type === "oracle" ? "Card Tags" : "Tags"}
+          </h1>
         </div>
+        <p className="text-sm text-gray-500 mb-2">
+          Community-curated tags maintained by volunteers on{" "}
+          <a href="https://tagger.scryfall.com" target="_blank" rel="noopener noreferrer" className="text-amber-500/70 hover:text-amber-400 transition-colors">
+            Scryfall Tagger
+          </a>
+        </p>
         <div className="flex items-center gap-3 mt-4 mb-4">
           <div className="flex-1">
             <Suspense>

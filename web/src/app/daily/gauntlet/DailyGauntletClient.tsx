@@ -20,6 +20,22 @@ function getSessionId(): string {
   return id;
 }
 
+const IRREGULAR_PLURALS: Record<string, string> = {
+  Elf: "Elves", Dwarf: "Dwarves", Wolf: "Wolves", Ox: "Oxen",
+  Mouse: "Mice", Goose: "Geese", Fungus: "Fungi", Cyclops: "Cyclopes",
+  Fish: "Fish", Sheep: "Sheep", Moose: "Moose", Homunculus: "Homunculi",
+  Octopus: "Octopi", Locus: "Loci", Hippopotamus: "Hippopotami",
+};
+
+function pluralize(word: string): string {
+  if (IRREGULAR_PLURALS[word]) return IRREGULAR_PLURALS[word];
+  if (/(?:s|x|z|ch|sh)$/i.test(word)) return word + "es";
+  if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + "ies";
+  if (/f$/i.test(word)) return word.slice(0, -1) + "ves";
+  if (/fe$/i.test(word)) return word.slice(0, -2) + "ves";
+  return word + "s";
+}
+
 interface DailyGauntletClientProps {
   challenge: DailyChallenge;
   pool: GauntletEntry[];
@@ -109,7 +125,10 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
   }
 
   const cardName = mode === "remix" && pool.length > 0 ? pool[0].name : undefined;
-  const themeLabel = challenge.title !== "Daily Gauntlet" ? challenge.title : undefined;
+  const rawLabel = challenge.title !== "Daily Gauntlet" ? challenge.title : undefined;
+  const themeLabel = rawLabel
+    ? `Daily Gauntlet: ${pluralize(rawLabel)}`
+    : "Daily Gauntlet";
 
   return (
     <div className="max-w-4xl mx-auto">

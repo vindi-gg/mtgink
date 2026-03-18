@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     daily_challenge_id,
     card_name,
     filter_label,
+    brew_id,
   } = body;
 
   if (!session_id || !mode || !results || !champion_oracle_id) {
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
     daily_challenge_id: daily_challenge_id ?? null,
     card_name: card_name ?? null,
     filter_label: filter_label ?? null,
+    brew_id: brew_id ?? null,
   }).select("id").single();
 
   if (error) {
@@ -71,25 +73,24 @@ export async function POST(req: NextRequest) {
   }
 
   // Update daily challenge stats + record participation if this is a daily gauntlet
+  // Awaited so stats are committed before the client navigates to results
   if (daily_challenge_id) {
     const champId = mode === "remix" ? champion_illustration_id : champion_oracle_id;
-    admin.rpc("increment_daily_gauntlet_stats", {
-      p_challenge_id: daily_challenge_id,
-      p_champion_id: champId,
-      p_champion_wins: champion_wins,
-    }).then(({ error: statsErr }) => {
-      if (statsErr) console.error("Failed to update daily stats:", statsErr);
-    });
-
-    // Record participation so homepage shows "Done" and revisits show stats
-    admin.from("daily_participations").upsert({
-      challenge_id: daily_challenge_id,
-      session_id,
-      user_id: userId,
-      result: { champion_id: champId, champion_wins },
-    }, { onConflict: "challenge_id,session_id" }).then(({ error: partErr }) => {
-      if (partErr) console.error("Failed to record participation:", partErr);
-    });
+    const [{ error: statsErr }, { error: partErr }] = await Promise.all([
+      admin.rpc("increment_daily_gauntlet_stats", {
+        p_challenge_id: daily_challenge_id,
+        p_champion_id: champId,
+        p_champion_wins: champion_wins,
+      }),
+      admin.from("daily_participations").upsert({
+        challenge_id: daily_challenge_id,
+        session_id,
+        user_id: userId,
+        result: { champion_id: champId, champion_wins },
+      }, { onConflict: "challenge_id,session_id" }),
+    ]);
+    if (statsErr) console.error("Failed to update daily stats:", statsErr);
+    if (partErr) console.error("Failed to record participation:", partErr);
   }
 
   // Apply ELO updates from matchups (fire-and-forget, don't block response)

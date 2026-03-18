@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AdBanner from "@/components/AdBanner";
+import { ImageModeProvider } from "@/lib/image-mode";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
@@ -50,12 +51,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Navbar />
-        <div className={adsEnabled ? "pb-[58px] md:pb-[98px]" : ""}>
-          {children}
-          <Footer />
-        </div>
-        {adsEnabled && <AdBanner />}
+        <ImageModeProvider>
+          <Navbar />
+          <div className={adsEnabled ? "pb-[58px] md:pb-[98px]" : ""}>
+            {children}
+            <Footer />
+          </div>
+          {adsEnabled && <AdBanner />}
+        </ImageModeProvider>
         <SpeedInsights />
       </body>
     </html>

@@ -7,12 +7,14 @@ import {
   getPrintingsForCard,
   getCardFaces,
   getBackFaceUrls,
+  getTagsForCard,
   slugify,
 } from "@/lib/queries";
 import { getAdminClient } from "@/lib/supabase/admin";
 import ArtGallery from "@/components/ArtGallery";
 import CardFaceToggle from "@/components/CardFaceToggle";
 import FavoriteCardButton from "@/components/FavoriteCardButton";
+import Sidebar from "@/components/Sidebar";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { notFound } from "next/navigation";
 
@@ -68,7 +70,7 @@ export default async function CardPage({
 
   const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
 
-  const [illustrations, ratings, printingsMap, { data: allPrices }, cardFaces] = await Promise.all([
+  const [illustrations, ratings, printingsMap, { data: allPrices }, cardFaces, tags] = await Promise.all([
     getIllustrationsForCard(card.oracle_id),
     getRatingsForCard(card.oracle_id),
     getPrintingsForCard(card.oracle_id),
@@ -84,6 +86,7 @@ export default async function CardPage({
           .eq("oracle_id", card.oracle_id)).data?.map((p) => p.scryfall_id) ?? []
       ),
     isDFC ? getCardFaces(card.oracle_id) : Promise.resolve([]),
+    getTagsForCard(card.oracle_id),
   ]);
 
   const backFaceUrls = isDFC ? await getBackFaceUrls(card.oracle_id) : new Map<string, string>();
@@ -122,8 +125,14 @@ export default async function CardPage({
     0
   );
 
+  // Ink tags hidden for now — will be powered by MTG School
+  // const inkTags = tags.filter((t) => t.source === "ink");
+  const oracleTags = tags.filter((t) => t.source !== "ink" && t.type === "oracle");
+  const artTags = tags.filter((t) => t.source !== "ink" && t.type !== "oracle");
+
   return (
-    <main className="min-h-screen bg-gray-950 text-white py-8">
+    <div className="flex gap-8">
+      <main className="flex-1 min-w-0 min-h-screen bg-gray-950 text-white py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">{card.name}</h1>
@@ -259,6 +268,45 @@ export default async function CardPage({
             })}
           </div>
         </section>
-    </main>
+      </main>
+      <Sidebar>
+        {tags.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+            {oracleTags.length > 0 && (
+              <div>
+                <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2">Card Tags</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {oracleTags.map((t) => (
+                    <Link
+                      key={t.tag_id}
+                      href={`/db/tags/${t.slug}`}
+                      className="px-2 py-1 text-xs rounded-md bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-amber-400 transition-colors"
+                    >
+                      {t.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            {artTags.length > 0 && (
+              <div>
+                <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2">Art Tags</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {artTags.map((t) => (
+                    <Link
+                      key={t.tag_id}
+                      href={`/db/tags/${t.slug}`}
+                      className="px-2 py-1 text-xs rounded-md bg-gray-800/60 text-gray-400 hover:bg-gray-700 hover:text-amber-400 transition-colors"
+                    >
+                      {t.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Sidebar>
+    </div>
   );
 }

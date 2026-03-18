@@ -7,14 +7,16 @@ function parseFilters(searchParams: URLSearchParams): CompareFilters | undefined
   const type = searchParams.get("type");
   const subtype = searchParams.get("subtype");
   const set_code = searchParams.get("set_code");
+  const rules_text = searchParams.get("rules_text");
 
-  if (!colors && !type && !subtype && !set_code) return undefined;
+  if (!colors && !type && !subtype && !set_code && !rules_text) return undefined;
 
   return {
     colors: colors ? colors.split(",").filter(Boolean) : undefined,
     type: type || undefined,
     subtype: subtype || undefined,
     set_code: set_code || undefined,
+    rules_text: rules_text || undefined,
   };
 }
 

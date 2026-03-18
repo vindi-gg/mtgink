@@ -7,6 +7,7 @@ import CardImage from "./CardImage";
 import FavoriteButton from "./FavoriteButton";
 import PriceTag from "./PriceTag";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ComparisonPair, CompareFilters, VoteResponse } from "@/lib/types";
 
@@ -145,6 +146,7 @@ interface ComparisonViewProps {
 }
 
 export default function ComparisonView({ initialPair, initialFilters, baseUrl = "/ink", initialSubMode = "mirror" }: ComparisonViewProps) {
+  const { cardUrl } = useImageMode();
   const router = useRouter();
   const [pair, setPair] = useState<ComparisonPair>(initialPair);
   const [voting, setVoting] = useState(false);
@@ -379,8 +381,8 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     }
   }
 
-  const aArt = artCropUrl(pair.a.set_code, pair.a.collector_number, pair.a.image_version);
-  const bArt = artCropUrl(pair.b.set_code, pair.b.collector_number, pair.b.image_version);
+  const aArt = cardUrl(pair.a.set_code, pair.a.collector_number, pair.a.image_version);
+  const bArt = cardUrl(pair.b.set_code, pair.b.collector_number, pair.b.image_version);
   const aCard = normalCardUrl(pair.a.set_code, pair.a.collector_number, pair.a.image_version);
   const bCard = normalCardUrl(pair.b.set_code, pair.b.collector_number, pair.b.image_version);
 
@@ -399,7 +401,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     side: typeof pair.a,
     otherSide: typeof pair.b,
     artUrl: string,
-    cardUrl: string,
+    fullCardUrl: string,
     sideCard: typeof pair.card
   ) {
     const handleClick = () => {
@@ -473,7 +475,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
           {showCard && (
             <CardImage
               key={`${side.illustration_id}-card`}
-              src={cardUrl}
+              src={fullCardUrl}
               alt={`${sideCard.name} by ${side.artist}`}
               onClick={handleClick}
               onImageError={skip}

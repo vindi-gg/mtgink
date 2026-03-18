@@ -27,9 +27,14 @@ const sections = [
     description: "Browse creatures by type — Goblins, Elves, Dragons, and more",
   },
   {
-    href: "/db/tags",
-    title: "Tags",
-    description: "Browse cards by Scryfall community tags",
+    href: "/db/tags?type=oracle",
+    title: "Card Tags",
+    description: "Browse cards by community-curated card tags",
+  },
+  {
+    href: "/db/tags?type=illustration",
+    title: "Art Tags",
+    description: "Browse cards by community-curated art and illustration tags",
   },
 ];
 

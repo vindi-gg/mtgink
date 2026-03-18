@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import type { ArtistIllustration } from "@/lib/types";
 
 const PAGE_SIZE = 24;
@@ -12,6 +13,7 @@ export default function ArtistGallery({
 }: {
   illustrations: ArtistIllustration[];
 }) {
+  const { cardUrl } = useImageMode();
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   const hasMore = visible < illustrations.length;
@@ -28,7 +30,7 @@ export default function ArtistGallery({
             <div className="aspect-[4/3] bg-gray-800 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={artCropUrl(ill.set_code, ill.collector_number, ill.image_version)}
+                src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
                 alt={ill.card_name}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 loading="lazy"

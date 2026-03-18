@@ -5,6 +5,7 @@ import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ComparisonPair, ClashPair, CompareFilters, VoteResponse, CardVoteResponse } from "@/lib/types";
 
@@ -93,6 +94,7 @@ interface ShowdownViewProps {
 }
 
 export default function ShowdownView({ mode, initialPair, initialFilters }: ShowdownViewProps) {
+  const { imageMode, cardUrl } = useImageMode();
   const isRemix = mode === "remix";
 
   const [sides, setSides] = useState(() => normalizePair(initialPair, mode));
@@ -243,7 +245,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
   // --- Render side ---
 
   function renderSide(side: ShowdownSide, sideIdx: 0 | 1) {
-    const artUrl = artCropUrl(side.set_code, side.collector_number, side.image_version);
+    const artUrl = cardUrl(side.set_code, side.collector_number, side.image_version);
     const handleClick = () => vote(sideIdx);
 
     return (
@@ -257,7 +259,8 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
             onImageError={skip}
             className="w-full"
           />
-          <CardPreviewOverlay
+          {imageMode !== "card" && (
+            <CardPreviewOverlay
               setCode={side.set_code}
               collectorNumber={side.collector_number}
               imageVersion={side.image_version}
@@ -269,6 +272,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
               isFavorited={favorites.has(side.illustration_id)}
               onToggleFavorite={toggleFavorite}
             />
+          )}
           <div className="absolute top-2 right-2 z-10">
             <FavoriteButton
               illustrationId={side.illustration_id}
@@ -277,13 +281,15 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
               onToggle={toggleFavorite}
             />
           </div>
-          <div className="absolute bottom-2 right-2 z-10 text-right">
-            {!sameCard && (
-              <a href={`/card/${side.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{side.name}</a>
-            )}
-            <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{side.artist}</p>
-            <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{side.set_code.toUpperCase()}</p>
-          </div>
+          {imageMode !== "card" && (
+            <div className="absolute bottom-2 right-2 z-10 text-right">
+              {!sameCard && (
+                <a href={`/card/${side.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{side.name}</a>
+              )}
+              <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{side.artist}</p>
+              <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{side.set_code.toUpperCase()}</p>
+            </div>
+          )}
         </div>
       </div>
     );

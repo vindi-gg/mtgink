@@ -4,7 +4,7 @@ import { useState } from "react";
 import CardImage from "@/components/CardImage";
 import CardPreviewOverlay from "@/components/CardPreviewOverlay";
 import DailyResultsPanel from "@/components/DailyResultsPanel";
-import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import type { DailyChallenge, DailyChallengeStats, OracleCard } from "@/lib/types";
 
 function getSessionId(): string {
@@ -35,6 +35,7 @@ interface DailyVsClientProps {
 }
 
 export default function DailyVsClient({ challenge, cardA, cardB, printingA, printingB }: DailyVsClientProps) {
+  const { imageMode, cardUrl } = useImageMode();
   const [voted, setVoted] = useState(false);
   const [voting, setVoting] = useState(false);
   const [stats, setStats] = useState<DailyChallengeStats | null>(null);
@@ -84,8 +85,8 @@ export default function DailyVsClient({ challenge, cardA, cardB, printingA, prin
     setVoting(false);
   }
 
-  const imgA = artCropUrl(printingA.set_code, printingA.collector_number, printingA.image_version);
-  const imgB = artCropUrl(printingB.set_code, printingB.collector_number, printingB.image_version);
+  const imgA = cardUrl(printingA.set_code, printingA.collector_number, printingA.image_version);
+  const imgB = cardUrl(printingB.set_code, printingB.collector_number, printingB.image_version);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -115,21 +116,25 @@ export default function DailyVsClient({ challenge, cardA, cardB, printingA, prin
                 <div key={side} className="flex flex-col items-center">
                   <div className="relative w-full">
                     <CardImage src={img} alt={card.name} onClick={() => vote(side)} className="w-full" />
-                    <CardPreviewOverlay
-                      setCode={printing.set_code}
-                      collectorNumber={printing.collector_number}
-                      imageVersion={printing.image_version}
-                      alt={card.name}
-                      illustrationId={illId ?? undefined}
-                      oracleId={card.oracle_id}
-                      cardName={card.name}
-                      cardSlug={card.slug}
-                    />
-                    <div className="absolute bottom-2 right-2 z-10 text-right">
-                      <a href={`/card/${card.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{card.name}</a>
-                      <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.artist}</p>
-                      <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.set_code.toUpperCase()}</p>
-                    </div>
+                    {imageMode !== "card" && (
+                      <CardPreviewOverlay
+                        setCode={printing.set_code}
+                        collectorNumber={printing.collector_number}
+                        imageVersion={printing.image_version}
+                        alt={card.name}
+                        illustrationId={illId ?? undefined}
+                        oracleId={card.oracle_id}
+                        cardName={card.name}
+                        cardSlug={card.slug}
+                      />
+                    )}
+                    {imageMode !== "card" && (
+                      <div className="absolute bottom-2 right-2 z-10 text-right">
+                        <a href={`/card/${card.slug}`} className="text-xs font-bold text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:text-amber-200 transition-colors">{card.name}</a>
+                        <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.artist}</p>
+                        <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{printing.set_code.toUpperCase()}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

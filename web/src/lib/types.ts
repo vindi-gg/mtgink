@@ -58,6 +58,7 @@ export interface CompareFilters {
   type?: string;
   subtype?: string;
   set_code?: string;
+  rules_text?: string;
   mode?: "same" | "cross";
 }
 
@@ -370,6 +371,9 @@ export interface Tag {
   type: string;
   description: string | null;
   usage_count: number;
+  source: string;
+  rule_definition: string | null;
+  category: string | null;
 }
 
 export interface BrowseCard {
@@ -454,6 +458,33 @@ export interface DailyChallengeStats {
 export interface DailyChallengeWithStatus extends DailyChallenge {
   stats: DailyChallengeStats;
   participated: boolean;
+}
+
+// --- Brew types ---
+
+export interface Brew {
+  id: string;
+  user_id: string | null;
+  name: string;
+  description: string | null;
+  mode: "remix" | "vs" | "gauntlet";
+  source: "card" | "expansion" | "tribe" | "tag" | "artist" | "all";
+  source_id: string;
+  source_label: string;
+  colors: string[] | null;
+  card_type: string | null;
+  subtype: string | null;
+  rules_text: string | null;
+  pool_size: number | null;
+  pool: GauntletEntry[] | null;
+  is_public: boolean;
+  play_count: number;
+  slug: string;
+  preview_set_code: string | null;
+  preview_collector_number: string | null;
+  preview_image_version: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // --- Pricing types ---
