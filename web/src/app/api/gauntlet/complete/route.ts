@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { recordVote, recordCardVote } from "@/lib/queries";
 
 interface Matchup {
   mode: "remix" | "vs";
@@ -12,9 +11,9 @@ interface Matchup {
   loser_oracle_id?: string;
 }
 
-// Lower K-factor for gauntlet votes — each matchup is less deliberate
-// than a dedicated head-to-head comparison
-const GAUNTLET_K_FACTOR = 16;
+// Anonymous gauntlet votes use lower K-factor (less deliberate than head-to-head)
+// Authenticated users get full K=32 (stored proc default when no override passed)
+const ANON_GAUNTLET_K_FACTOR = 16;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -93,45 +92,18 @@ export async function POST(req: NextRequest) {
     if (partErr) console.error("Failed to record participation:", partErr);
   }
 
-  // Apply ELO updates from matchups (fire-and-forget, don't block response)
+  // Apply ELO updates from matchups in a single DB call (fire-and-forget)
   if (Array.isArray(matchups) && matchups.length > 0) {
-    processMatchups(matchups, session_id, userId).catch((err) => {
-      console.error("Failed to process gauntlet ELO updates:", err);
+    const kFactor = userId ? undefined : ANON_GAUNTLET_K_FACTOR;
+    admin.rpc("process_gauntlet_matchups", {
+      p_matchups: JSON.stringify(matchups),
+      p_session_id: session_id,
+      p_user_id: userId ?? null,
+      p_k_factor: kFactor ?? null,
+    }).then(({ error: eloErr }) => {
+      if (eloErr) console.error("Failed to process gauntlet ELO updates:", eloErr);
     });
   }
 
   return NextResponse.json({ ok: true, id: inserted?.id ?? null });
-}
-
-async function processMatchups(
-  matchups: Matchup[],
-  sessionId: string,
-  userId: string | null,
-) {
-  // Process sequentially to avoid race conditions on the same illustration's ELO
-  for (const m of matchups) {
-    try {
-      if (m.mode === "remix" && m.oracle_id && m.winner_illustration_id && m.loser_illustration_id) {
-        await recordVote({
-          oracle_id: m.oracle_id,
-          winner_illustration_id: m.winner_illustration_id,
-          loser_illustration_id: m.loser_illustration_id,
-          session_id: sessionId,
-          user_id: userId ?? undefined,
-          vote_source: "gauntlet_remix",
-        }, GAUNTLET_K_FACTOR);
-      } else if (m.mode === "vs" && m.winner_oracle_id && m.loser_oracle_id) {
-        await recordCardVote({
-          winner_oracle_id: m.winner_oracle_id,
-          loser_oracle_id: m.loser_oracle_id,
-          session_id: sessionId,
-          user_id: userId ?? undefined,
-          vote_source: "gauntlet_vs",
-        }, GAUNTLET_K_FACTOR);
-      }
-    } catch (err) {
-      // Log but continue — don't let one failed vote block the rest
-      console.error("Gauntlet ELO update failed for matchup:", err);
-    }
-  }
 }
