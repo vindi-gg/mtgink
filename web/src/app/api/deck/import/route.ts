@@ -3,7 +3,6 @@ import { parseDeckList, extractMoxfieldDeckId } from "@/lib/deck";
 import { lookupDeckCards } from "@/lib/queries";
 import { createAnonymousDeck } from "@/lib/deck-queries";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { tryProcessQueue } from "@/lib/moxfield-queue";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -38,9 +37,6 @@ export async function POST(request: NextRequest) {
     if (insertErr || !queueEntry) {
       return NextResponse.json({ error: "Failed to queue import" }, { status: 500 });
     }
-
-    // Fire-and-forget: process queue in background (drains abandoned jobs too)
-    tryProcessQueue().catch(() => {});
 
     return NextResponse.json({
       queued: true,

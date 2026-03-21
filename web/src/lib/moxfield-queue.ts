@@ -6,6 +6,13 @@ import { getAdminClient } from "@/lib/supabase/admin";
 export async function tryProcessQueue() {
   const admin = getAdminClient();
 
+  // Recover stuck jobs (processing > 30s = crashed)
+  await admin
+    .from("moxfield_queue")
+    .update({ status: "pending" })
+    .eq("status", "processing")
+    .lt("created_at", new Date(Date.now() - 30000).toISOString());
+
   // Try to acquire lock (only if last lock was > 1s ago)
   const { data: lock } = await admin
     .from("moxfield_lock")
