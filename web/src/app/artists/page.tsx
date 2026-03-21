@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     "Browse Magic: The Gathering artists ranked by popularity and illustration count.",
 };
 
-type SortOption = "illustrations" | "popular";
+type SortOption = "illustrations" | "popular" | "trending";
 type PeriodOption = "week" | "month" | "all";
 
 export default async function ArtistsPage({
@@ -21,7 +21,9 @@ export default async function ArtistsPage({
 }) {
   const params = await searchParams;
   const sort: SortOption =
-    params.sort === "popular" ? "popular" : "illustrations";
+    params.sort === "popular" ? "popular"
+    : params.sort === "trending" ? "trending"
+    : "illustrations";
   const period: PeriodOption =
     params.period === "week"
       ? "week"
@@ -40,10 +42,12 @@ export default async function ArtistsPage({
 
   const totalPages = Math.ceil(total / perPage);
 
+  const hasPeriod = sort === "popular" || sort === "trending";
+
   function sortUrl(s: SortOption, p?: PeriodOption) {
     const sp = new URLSearchParams();
     sp.set("sort", s);
-    if (s === "popular" && p) sp.set("period", p);
+    if ((s === "popular" || s === "trending") && p) sp.set("period", p);
     return `/artists?${sp.toString()}`;
   }
 
@@ -74,15 +78,25 @@ export default async function ArtistsPage({
                 : "bg-gray-800 text-gray-400 hover:text-white"
             }`}
           >
-            Most Popular
+            Popular
+          </Link>
+          <Link
+            href={sortUrl("trending", period)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              sort === "trending"
+                ? "bg-amber-500 text-gray-900"
+                : "bg-gray-800 text-gray-400 hover:text-white"
+            }`}
+          >
+            Trending
           </Link>
 
-          {sort === "popular" && (
+          {hasPeriod && (
             <div className="flex items-center gap-1 ml-2">
               {(["week", "month", "all"] as PeriodOption[]).map((p) => (
                 <Link
                   key={p}
-                  href={sortUrl("popular", p)}
+                  href={sortUrl(sort, p)}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                     period === p
                       ? "bg-gray-700 text-white"
@@ -146,9 +160,14 @@ export default async function ArtistsPage({
                   <span className="text-xs text-gray-500">
                     {artist.illustration_count} illustrations
                   </span>
-                  {sort === "popular" && artist.total_votes != null && artist.total_votes > 0 && (
+                  {sort === "trending" && artist.total_votes != null && artist.total_votes > 0 && (
                     <span className="text-xs text-amber-400">
                       {artist.total_votes.toLocaleString()} votes
+                    </span>
+                  )}
+                  {sort === "popular" && artist.avg_elo != null && (
+                    <span className="text-xs text-amber-400">
+                      {Math.round(artist.avg_elo)} avg ELO
                     </span>
                   )}
                 </div>
@@ -162,7 +181,7 @@ export default async function ArtistsPage({
           <div className="flex items-center justify-center gap-2 mt-8">
             {page > 1 && (
               <Link
-                href={`/artists?sort=${sort}${sort === "popular" ? `&period=${period}` : ""}&page=${page - 1}`}
+                href={`/artists?sort=${sort}${hasPeriod ? `&period=${period}` : ""}&page=${page - 1}`}
                 className="px-3 py-1.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg text-sm transition-colors"
               >
                 Previous
@@ -173,7 +192,7 @@ export default async function ArtistsPage({
             </span>
             {page < totalPages && (
               <Link
-                href={`/artists?sort=${sort}${sort === "popular" ? `&period=${period}` : ""}&page=${page + 1}`}
+                href={`/artists?sort=${sort}${hasPeriod ? `&period=${period}` : ""}&page=${page + 1}`}
                 className="px-3 py-1.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg text-sm transition-colors"
               >
                 Next

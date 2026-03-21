@@ -1004,16 +1004,17 @@ export async function recordCardVote(payload: CardVotePayload, kFactor?: number)
 
 /** Get all artists, sorted by illustration count or popularity */
 export async function getAllArtists(
-  sort: "illustrations" | "popular" = "illustrations",
+  sort: "illustrations" | "popular" | "trending" = "illustrations",
   period: "week" | "month" | "all" = "all",
   limit = 100,
   offset = 0
-): Promise<{ artists: (Artist & { total_votes?: number })[]; total: number }> {
-  if (sort === "popular") {
+): Promise<{ artists: (Artist & { total_votes?: number; avg_elo?: number | null })[]; total: number }> {
+  if (sort === "trending") {
     const { data, count, error } = await getAdminClient()
       .from("artist_stats")
       .select("artist_id, total_votes, artists!inner(id, name, slug, illustration_count, hero_set_code, hero_collector_number, hero_image_version)", { count: "exact" })
       .eq("period", period)
+      .gt("total_votes", 0)
       .order("total_votes", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -1030,6 +1031,36 @@ export async function getAllArtists(
         hero_collector_number: a.hero_collector_number as string | null,
         hero_image_version: a.hero_image_version as string | null,
         total_votes: row.total_votes as number,
+      };
+    });
+    return { artists, total: count ?? 0 };
+  }
+
+  if (sort === "popular") {
+    // Popular = highest avg ELO, requires minimum votes to filter noise
+    const { data, count, error } = await getAdminClient()
+      .from("artist_stats")
+      .select("artist_id, total_votes, avg_elo, artists!inner(id, name, slug, illustration_count, hero_set_code, hero_collector_number, hero_image_version)", { count: "exact" })
+      .eq("period", "all")
+      .gt("total_votes", 9)
+      .not("avg_elo", "is", null)
+      .order("avg_elo", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw new Error(`Failed to get artists: ${error.message}`);
+
+    const artists = (data ?? []).map((row: Record<string, unknown>) => {
+      const a = row.artists as Record<string, unknown>;
+      return {
+        id: a.id as number,
+        name: a.name as string,
+        slug: a.slug as string,
+        illustration_count: a.illustration_count as number,
+        hero_set_code: a.hero_set_code as string | null,
+        hero_collector_number: a.hero_collector_number as string | null,
+        hero_image_version: a.hero_image_version as string | null,
+        total_votes: row.total_votes as number,
+        avg_elo: row.avg_elo as number | null,
       };
     });
     return { artists, total: count ?? 0 };
@@ -1382,17 +1413,17 @@ export async function getDailyChallenge(type: string): Promise<DailyChallenge | 
 
   if (data) return data as DailyChallenge;
 
-  // Generate if missing, then re-query
-  await admin.rpc("generate_daily_challenges", { p_date: today });
+  // Generate if missing — use RPC results directly (avoids read-replica lag)
+  const { data: rpcData, error } = await admin.rpc("generate_daily_challenges", { p_date: today });
 
-  const { data: generated } = await admin
-    .from("daily_challenges")
-    .select("*")
-    .eq("challenge_date", today)
-    .eq("challenge_type", type)
-    .maybeSingle();
+  if (error) {
+    console.error("Failed to generate daily challenges:", error);
+    return null;
+  }
 
-  return generated as DailyChallenge | null;
+  // RPC returns all challenge types for the date — find the one we need
+  const match = (rpcData as DailyChallenge[])?.find(c => c.challenge_type === type);
+  return match ?? null;
 }
 
 /** Get a daily challenge by date and type (no generation for past dates) */

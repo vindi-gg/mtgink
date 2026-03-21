@@ -125,9 +125,15 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
   }
 
   const cardName = mode === "remix" && pool.length > 0 ? pool[0].name : undefined;
-  const rawLabel = challenge.title !== "Daily Gauntlet" ? challenge.title : undefined;
+  // Strip " Gauntlet" / " Remix" suffix from theme label (stored as "Wolf Gauntlet" etc.)
+  const cleanTitle = challenge.title
+    ?.replace(/\s+(Gauntlet|Remix)$/i, "")
+    ?.trim();
+  const rawLabel = cleanTitle && cleanTitle !== "Daily" ? cleanTitle : undefined;
   const themeLabel = rawLabel
-    ? `Daily Gauntlet: ${pluralize(rawLabel)}`
+    ? mode === "remix"
+      ? `Daily Gauntlet: ${rawLabel}`
+      : `Daily Gauntlet: ${pluralize(rawLabel)}`
     : "Daily Gauntlet";
 
   return (
