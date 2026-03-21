@@ -62,7 +62,10 @@ export default function DeckImportClient() {
     setLoading(true);
     setError(null);
     setShowFallback(false);
-    setQueuePosition(null);
+
+    const isMoxfield = trimmed.includes("moxfield.com");
+    // Show queue UI immediately for Moxfield URLs (POST can be slow on cold start)
+    setQueuePosition(isMoxfield ? 1 : null);
 
     try {
       const isUrl = trimmed.startsWith("http");
