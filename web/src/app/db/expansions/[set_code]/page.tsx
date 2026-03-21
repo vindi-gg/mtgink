@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSetByCode, getCardsForSet } from "@/lib/queries";
-import { normalCardUrl } from "@/lib/image-utils";
+import SetCardGrid from "@/components/SetCardGrid";
 
 export const revalidate = 3600;
 
@@ -80,24 +80,7 @@ export default async function SetDetailPage({
           </Link>
         </div>
 
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-          {cards.map((card) => (
-            <Link
-              key={card.scryfall_id}
-              href={`/card/${card.slug}`}
-              className="group relative"
-              title={`${card.name} (#${card.collector_number})`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={normalCardUrl(set_code, card.collector_number, card.image_version)}
-                alt={card.name}
-                className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
-                loading="lazy"
-              />
-            </Link>
-          ))}
-        </div>
+        <SetCardGrid cards={cards} setCode={set_code} />
     </main>
   );
 }

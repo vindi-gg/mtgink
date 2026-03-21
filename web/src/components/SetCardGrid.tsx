@@ -4,9 +4,22 @@ import Link from "next/link";
 import { useImageMode } from "@/lib/image-mode";
 import { useGridDensity, GRID_CLASSES } from "@/lib/grid-density";
 import GridDensitySelector from "./GridDensitySelector";
-import type { BrowseCard } from "@/lib/types";
 
-export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
+interface SetCard {
+  scryfall_id: string;
+  slug: string;
+  name: string;
+  collector_number: string;
+  image_version: string | null;
+}
+
+export default function SetCardGrid({
+  cards,
+  setCode,
+}: {
+  cards: SetCard[];
+  setCode: string;
+}) {
   const { cardUrl } = useImageMode();
   const { density, setDensity } = useGridDensity();
 
@@ -19,18 +32,18 @@ export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
       <div className={GRID_CLASSES[density]} suppressHydrationWarning>
         {cards.map((card) => (
           <Link
-            key={card.oracle_id}
+            key={card.scryfall_id}
             href={`/card/${card.slug}`}
             className="group relative"
+            title={`${card.name} (#${card.collector_number})`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={cardUrl(card.set_code, card.collector_number, card.image_version)}
+              src={cardUrl(setCode, card.collector_number, card.image_version)}
               alt={card.name}
               className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
               loading="lazy"
             />
-            <p className="text-xs text-gray-400 mt-1 truncate text-center">{card.name}</p>
           </Link>
         ))}
       </div>
