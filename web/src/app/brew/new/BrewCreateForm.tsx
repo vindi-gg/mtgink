@@ -45,11 +45,11 @@ interface SelectedItem {
   label: string;
 }
 
-export default function BrewCreateForm() {
+export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) {
   const router = useRouter();
 
   // Core state
-  const [mode, setMode] = useState<Mode>("gauntlet");
+  const [mode, setMode] = useState<Mode>(initialMode ?? "gauntlet");
   const [source, setSource] = useState<Source>("all");
   const [selected, setSelected] = useState<SelectedItem | null>(null);
 

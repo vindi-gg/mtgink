@@ -5,16 +5,19 @@ const MODES = [
     name: "Remix",
     description: "Same card, pick the best art version",
     href: "/showdown/remix",
+    createHref: "/brew/new?mode=remix",
   },
   {
     name: "VS",
     description: "Different cards compared by theme",
     href: "/showdown/vs",
+    createHref: "/brew/new?mode=vs",
   },
   {
     name: "Gauntlet",
     description: "Winner stays, faces the next challenger",
     href: "/showdown/gauntlet",
+    createHref: "/brew/new?mode=gauntlet",
   },
 ];
 
@@ -52,7 +55,7 @@ export default function ModeCards({ images = [] }: ModeCardsProps) {
                     Random Play
                   </Link>
                   <Link
-                    href="/showdown/create"
+                    href={mode.createHref}
                     className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-600 text-gray-300 hover:border-gray-400 hover:text-white transition-colors whitespace-nowrap"
                   >
                     Create
