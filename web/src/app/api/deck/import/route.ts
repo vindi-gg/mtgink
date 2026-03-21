@@ -39,20 +39,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to queue import" }, { status: 500 });
     }
 
-    // Try to process queue (drains abandoned jobs too)
-    await tryProcessQueue();
-
-    // Get position in queue
-    const { count } = await admin
-      .from("moxfield_queue")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["pending", "processing"])
-      .lte("created_at", new Date().toISOString());
+    // Fire-and-forget: process queue in background (drains abandoned jobs too)
+    tryProcessQueue().catch(() => {});
 
     return NextResponse.json({
       queued: true,
       queueId: queueEntry.id,
-      position: count ?? 1,
+      position: 1,
     });
   }
 
