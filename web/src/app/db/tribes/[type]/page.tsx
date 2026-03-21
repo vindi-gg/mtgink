@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense } from "react";
+import { Suspense, cache } from "react";
 import { notFound } from "next/navigation";
 import { getCardsByTribe, getCreatureTribes } from "@/lib/queries";
 import CardGrid from "@/components/CardGrid";
@@ -10,8 +10,11 @@ export const revalidate = 3600;
 
 const PAGE_SIZE = 30;
 
+// cache() deduplicates across generateMetadata + page render in the same request
+const getCachedTribes = cache(() => getCreatureTribes());
+
 async function getTribeBySlug(slug: string) {
-  const tribes = await getCreatureTribes();
+  const tribes = await getCachedTribes();
   return tribes.find((t) => t.slug === slug) ?? null;
 }
 
