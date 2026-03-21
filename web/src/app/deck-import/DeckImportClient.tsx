@@ -19,8 +19,10 @@ export default function DeckImportClient() {
       pollingRef.current = true;
 
       try {
+        let delay = 500; // First poll fast, then back off
         while (true) {
-          await new Promise((r) => setTimeout(r, 1200));
+          await new Promise((r) => setTimeout(r, delay));
+          delay = Math.min(delay + 300, 1500); // 500 → 800 → 1100 → 1400 → 1500
 
           const res = await fetch(`/api/deck/import/status?id=${queueId}`);
           const data = await res.json();
