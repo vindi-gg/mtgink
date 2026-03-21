@@ -241,19 +241,31 @@ export interface PurchaseListItem {
   tcgplayer_id: number | null;
 }
 
+export interface MoxfieldBoard {
+  cards: Record<string, MoxfieldCard>;
+}
+
 export interface MoxfieldDeck {
   id: string;
   name: string;
   format: string;
-  mainboard: Record<string, MoxfieldCard>;
-  sideboard: Record<string, MoxfieldCard>;
-  commanders: Record<string, MoxfieldCard>;
-  companions: Record<string, MoxfieldCard>;
+  boards: {
+    mainboard?: MoxfieldBoard;
+    sideboard?: MoxfieldBoard;
+    commanders?: MoxfieldBoard;
+    companions?: MoxfieldBoard;
+  };
+  /** Legacy flat format (v2 API) */
+  mainboard?: Record<string, MoxfieldCard>;
+  sideboard?: Record<string, MoxfieldCard>;
+  commanders?: Record<string, MoxfieldCard>;
+  companions?: Record<string, MoxfieldCard>;
 }
 
 export interface MoxfieldCard {
   quantity: number;
-  card: { name: string; oracle_id?: string };
+  isFoil?: boolean;
+  card: { name: string; oracle_id?: string; set?: string; cn?: string; scryfall_id?: string };
 }
 
 export type FavoriteSource = "ink" | "clash";

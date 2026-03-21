@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseDeckList, extractMoxfieldDeckId, parseMoxfieldResponse } from "@/lib/deck";
+import { parseDeckList, extractMoxfieldDeckId } from "@/lib/deck";
 import { lookupDeckCards } from "@/lib/queries";
 import { createAnonymousDeck } from "@/lib/deck-queries";
-import type { DecklistEntry } from "@/lib/types";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { tryProcessQueue } from "@/lib/moxfield-queue";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { decklist, url } = body as { decklist?: string; url?: string };
 
-  let entries: DecklistEntry[] = [];
-  let sourceUrl: string | null = null;
-  let deckName: string | null = null;
-  let deckFormat: string | null = null;
-
+  // Moxfield URL → queue for rate-limited processing
   if (url && typeof url === "string") {
     const moxId = extractMoxfieldDeckId(url);
     if (!moxId) {
@@ -22,87 +19,79 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    try {
-      const res = await fetch(`https://api2.moxfield.com/v3/decks/all/${moxId}`, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          "Accept": "application/json",
-          "Origin": "https://www.moxfield.com",
-          "Referer": "https://www.moxfield.com/",
-        },
-      });
-
-      if (!res.ok) {
-        return NextResponse.json(
-          {
-            error: `Moxfield returned ${res.status}. Try exporting and pasting the decklist instead.`,
-            fallback: true,
-          },
-          { status: 422 }
-        );
-      }
-
-      const data = await res.json();
-      entries = parseMoxfieldResponse(data);
-      sourceUrl = url;
-      deckName = data.name || null;
-      deckFormat = data.format || null;
-    } catch {
+    if (!process.env.MOXFIELD_USER_AGENT) {
       return NextResponse.json(
-        {
-          error: "Failed to fetch from Moxfield. Try pasting the decklist instead.",
-          fallback: true,
-        },
+        { error: "Moxfield API not configured. Try pasting the decklist instead.", fallback: true },
         { status: 422 }
       );
     }
-  } else if (decklist && typeof decklist === "string") {
-    entries = parseDeckList(decklist);
-  } else {
-    return NextResponse.json(
-      { error: "Provide either a decklist or a Moxfield URL" },
-      { status: 400 }
-    );
+
+    const admin = getAdminClient();
+
+    // Insert into queue
+    const { data: queueEntry, error: insertErr } = await admin
+      .from("moxfield_queue")
+      .insert({ moxfield_deck_id: moxId, deck_url: url, status: "pending" })
+      .select("id")
+      .single();
+
+    if (insertErr || !queueEntry) {
+      return NextResponse.json({ error: "Failed to queue import" }, { status: 500 });
+    }
+
+    // Try to process queue (drains abandoned jobs too)
+    await tryProcessQueue();
+
+    // Get position in queue
+    const { count } = await admin
+      .from("moxfield_queue")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["pending", "processing"])
+      .lte("created_at", new Date().toISOString());
+
+    return NextResponse.json({
+      queued: true,
+      queueId: queueEntry.id,
+      position: count ?? 1,
+    });
   }
 
-  if (entries.length === 0) {
-    return NextResponse.json(
-      { error: "No cards found in decklist" },
-      { status: 400 }
-    );
+  // Decklist text → process immediately
+  if (decklist && typeof decklist === "string") {
+    const entries = parseDeckList(decklist);
+
+    if (entries.length === 0) {
+      return NextResponse.json({ error: "No cards found in decklist" }, { status: 400 });
+    }
+
+    const { matched, unmatched } = await lookupDeckCards(entries);
+
+    const deckCards = matched.map((card) => ({
+      oracleId: card.card.oracle_id,
+      quantity: card.quantity,
+      section: card.section || "Mainboard",
+      originalSetCode: card.original_set_code,
+      originalCollectorNumber: card.original_collector_number,
+      originalIsFoil: card.original_is_foil,
+    }));
+
+    const deckId = await createAnonymousDeck({
+      name: "Imported Deck",
+      cards: deckCards,
+    });
+
+    return NextResponse.json({
+      deckId,
+      stats: {
+        total: entries.length,
+        matched: matched.length,
+        unmatched: unmatched.length,
+      },
+    });
   }
 
-  const { matched, unmatched } = await lookupDeckCards(entries);
-
-  const deckCards = matched.map((card) => ({
-    oracleId: card.card.oracle_id,
-    quantity: card.quantity,
-    section: card.section || "Mainboard",
-    originalSetCode: card.original_set_code,
-    originalCollectorNumber: card.original_collector_number,
-    originalIsFoil: card.original_is_foil,
-  }));
-
-  const deckId = await createAnonymousDeck({
-    name: deckName || "Imported Deck",
-    format: deckFormat ?? undefined,
-    sourceUrl: sourceUrl ?? undefined,
-    cards: deckCards,
-  });
-
-  return NextResponse.json({
-    deckId,
-    cards: matched,
-    unmatched,
-    stats: {
-      total: entries.length,
-      matched: matched.length,
-      unmatched: unmatched.length,
-    },
-    meta: {
-      source_url: sourceUrl,
-      name: deckName,
-      format: deckFormat,
-    },
-  });
+  return NextResponse.json(
+    { error: "Provide either a decklist or a Moxfield URL" },
+    { status: 400 }
+  );
 }

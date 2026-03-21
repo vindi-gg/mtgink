@@ -81,21 +81,32 @@ export function extractMoxfieldDeckId(url: string): string | null {
 export function parseMoxfieldResponse(data: MoxfieldDeck): DecklistEntry[] {
   const entries: DecklistEntry[] = [];
 
-  const sectionMap: [Record<string, { quantity: number; card: { name: string } }>, string][] = [
-    [data.commanders ?? {}, "Commander"],
-    [data.companions ?? {}, "Companion"],
-    [data.mainboard ?? {}, "Mainboard"],
-    [data.sideboard ?? {}, "Sideboard"],
-  ];
+  const boardNames = ["commanders", "companions", "mainboard", "sideboard"] as const;
+  const sectionLabels: Record<string, string> = {
+    commanders: "Commander",
+    companions: "Companion",
+    mainboard: "Mainboard",
+    sideboard: "Sideboard",
+  };
 
-  for (const [cards, section] of sectionMap) {
+  for (const board of boardNames) {
+    // v3: boards.mainboard.cards, v2: flat mainboard
+    const cards = data.boards?.[board]?.cards ?? data[board] ?? {};
+    const section = sectionLabels[board];
+
     for (const entry of Object.values(cards)) {
       if (entry.quantity > 0 && entry.card?.name) {
-        entries.push({
+        const e: DecklistEntry = {
           quantity: entry.quantity,
           name: entry.card.name,
           section,
-        });
+        };
+        if (entry.card.set) {
+          e.original_set_code = entry.card.set.toLowerCase();
+          e.original_collector_number = entry.card.cn;
+          e.original_is_foil = entry.isFoil ?? false;
+        }
+        entries.push(e);
       }
     }
   }
