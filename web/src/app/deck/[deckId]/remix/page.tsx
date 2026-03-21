@@ -69,12 +69,25 @@ export default function DeckRemixPage() {
         setDeck(data);
         const cards: RemixCard[] = data.cards
           .filter((c) => c.illustrations.length >= 2)
-          .map((c) => ({
-            card: c,
-            illustrations: [...c.illustrations].sort(
+          .map((c) => {
+            const sorted = [...c.illustrations].sort(
               (a, b) => (b.rating?.elo_rating ?? 0) - (a.rating?.elo_rating ?? 0)
-            ),
-          }))
+            );
+            // Move selected/default illustration to front
+            const defId = c.selected_illustration_id
+              || (c.original_set_code && sorted.find(
+                  (i) => i.set_code === c.original_set_code && i.collector_number === c.original_collector_number
+                )?.illustration_id)
+              || sorted[0]?.illustration_id;
+            if (defId && sorted[0]?.illustration_id !== defId) {
+              const idx = sorted.findIndex((i) => i.illustration_id === defId);
+              if (idx > 0) {
+                const [item] = sorted.splice(idx, 1);
+                sorted.unshift(item);
+              }
+            }
+            return { card: c, illustrations: sorted };
+          })
           .sort((a, b) => {
             const secA = derivedSection(a.card.section, a.card.card.type_line ?? "");
             const secB = derivedSection(b.card.section, b.card.card.type_line ?? "");
