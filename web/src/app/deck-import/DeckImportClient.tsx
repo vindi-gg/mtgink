@@ -161,17 +161,13 @@ export default function DeckImportClient() {
         className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-base text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 resize-none disabled:opacity-50"
       />
 
-      {input.trim() && !loading && (
+      {input.trim() && !loading && !input.trim().startsWith("http") && (
         <button
           onClick={() => doImport(input)}
           className="mt-3 px-6 py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 transition-colors"
         >
           Import
         </button>
-      )}
-
-      {loading && !queuePosition && (
-        <p className="text-sm text-gray-500 mt-3">Importing...</p>
       )}
 
       {error && (
