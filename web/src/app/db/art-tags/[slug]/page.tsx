@@ -17,10 +17,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const tag = await getTagBySlug(slug);
-  if (!tag) return { title: "Art Tag Not Found — MTG Ink" };
+  if (!tag) return { title: "Art Tag Not Found" };
   return {
-    title: `${tag.label} — Art Tags — MTG Ink`,
-    description: `Browse all cards tagged "${tag.label}" in Magic: The Gathering.`,
+    title: `${tag.label} — Art Tags`,
+    description: `Browse all MTG cards tagged "${tag.label}". Compare art and discover illustrations.`,
   };
 }
 

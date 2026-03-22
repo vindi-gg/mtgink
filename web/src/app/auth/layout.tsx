@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Sign In — MTG Ink",
+  title: "Sign In",
   robots: { index: false, follow: false },
 };
 

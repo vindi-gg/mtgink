@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Ink Gauntlet — MTG Ink",
+  title: "Ink Gauntlet",
   description: "32 illustrations, single elimination — coming soon",
   robots: { index: false, follow: false },
 };

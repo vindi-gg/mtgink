@@ -3,7 +3,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import DailyRemixClient from "./DailyRemixClient";
 
 export const metadata = {
-  title: "Daily Remix — MTG Ink",
+  title: "Daily Remix",
   description: "Today's daily art showdown. Pick your favorite art!",
 };
 

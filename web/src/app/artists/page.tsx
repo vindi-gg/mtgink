@@ -8,7 +8,7 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: "Artists",
   description:
-    "Browse Magic: The Gathering artists ranked by popularity and illustration count.",
+    "Browse MTG artists ranked by popularity and illustration count.",
 };
 
 type SortOption = "illustrations" | "popular" | "trending";

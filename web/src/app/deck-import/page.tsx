@@ -1,7 +1,7 @@
 import DeckImportClient from "./DeckImportClient";
 
 export const metadata = {
-  title: "Import Deck — MTG Ink",
+  title: "Import Deck",
   description: "Import a deck from Moxfield and customize card art.",
 };
 

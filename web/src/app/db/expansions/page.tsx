@@ -4,8 +4,8 @@ import { getPlayableSets, getAllSets } from "@/lib/queries";
 export const revalidate = 3600;
 
 export const metadata = {
-  title: "Expansions — MTG Ink",
-  description: "Browse all Magic: The Gathering expansions and sets.",
+  title: "Expansions",
+  description: "Browse all MTG expansions, sets, and products.",
 };
 
 export default async function ExpansionsPage({
@@ -28,7 +28,7 @@ export default async function ExpansionsPage({
         </div>
         <div className="flex items-center justify-between mb-6">
           <p className="text-gray-400 text-sm">
-            {sets.length} sets
+            {sets.length} sets and products
           </p>
           <Link
             href={showAll ? "/db/expansions" : "/db/expansions?all=1"}

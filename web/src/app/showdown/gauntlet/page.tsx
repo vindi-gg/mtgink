@@ -17,7 +17,7 @@ import type { CompareFilters, GauntletEntry } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Gauntlet — MTG Ink",
+  title: "Gauntlet",
   description: "King of the hill — winner stays, faces the next challenger",
   robots: { index: false, follow: false },
 };

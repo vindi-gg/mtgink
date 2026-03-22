@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Deck Explorer — MTG Ink",
+  title: "Deck Explorer",
   description: "Import your deck, explore art versions for every card, and build your perfect purchase list.",
 };
 

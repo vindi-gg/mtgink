@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getTagBySlug, getCardsByTag } from "@/lib/queries";
+import { collectionPageJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import CardGrid from "@/components/CardGrid";
 import Pagination from "@/components/Pagination";
 
@@ -17,10 +18,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const tag = await getTagBySlug(slug);
-  if (!tag) return { title: "Tag Not Found — MTG Ink" };
+  if (!tag) return { title: "Tag Not Found" };
   return {
-    title: `${tag.label} — Tags — MTG Ink`,
-    description: `Browse all cards tagged "${tag.label}" in Magic: The Gathering.`,
+    title: `${tag.label} — MTG Cards Tagged ${tag.label}`,
+    description: `Browse all MTG cards tagged "${tag.label}". Compare art and discover illustrations.`,
   };
 }
 
@@ -42,6 +43,19 @@ export default async function TagDetailPage({
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
+        <JsonLd data={[
+          collectionPageJsonLd(
+            tag.label,
+            `All MTG cards tagged "${tag.label}"`,
+            `/db/tags/${slug}`,
+            total,
+          ),
+          breadcrumbJsonLd([
+            { name: "Home", url: "/" },
+            { name: tag.type === "illustration" ? "Art Tags" : "Card Tags", url: tag.type === "illustration" ? "/db/art-tags" : "/db/tags" },
+            { name: tag.label, url: `/db/tags/${slug}` },
+          ]),
+        ]} />
         <div className="flex items-center gap-3 mb-1 text-sm">
           <Link href="/db" className="text-gray-500 hover:text-gray-300">
             Database

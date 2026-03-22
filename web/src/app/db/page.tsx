@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Magic: The Gathering Database — MTG Ink",
-  description: "Browse the Magic: The Gathering card database. Explore artists, expansions, creature tribes, tags, and more.",
+  title: "MTG Database",
+  description: "Browse the MTG card database. Explore artists, expansions, creature tribes, tags, and more.",
 };
 
 const sections = [
@@ -41,7 +41,7 @@ const sections = [
 export default function DbIndexPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
-        <h1 className="text-3xl font-bold mb-2">Magic: The Gathering Database</h1>
+        <h1 className="text-3xl font-bold mb-2">MTG Database</h1>
         <p className="text-gray-400 mb-8">
           Browse the complete card database.
         </p>

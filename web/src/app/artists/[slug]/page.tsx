@@ -20,14 +20,14 @@ export async function generateMetadata({
   const artist = await getArtistBySlug(slug);
   if (!artist) return { title: "Artist Not Found" };
 
-  const title = `${artist.name} — Magic: The Gathering Artist`;
-  const description = `Browse all ${artist.illustration_count} Magic: The Gathering card illustrations by ${artist.name}. View artwork, ratings, and printings.`;
+  const title = `${artist.name} — MTG Artist`;
+  const description = `Browse all ${artist.illustration_count} MTG card illustrations by ${artist.name}. View artwork, ratings, and printings.`;
 
   return {
     title,
     description,
     openGraph: {
-      title: `${title} — MTG Ink`,
+      title,
       description,
       ...(artist.hero_set_code && artist.hero_collector_number
         ? {
@@ -83,8 +83,7 @@ export default async function ArtistDetailPage({
         {/* Header */}
         <h1 className="text-3xl font-bold">{artist.name}</h1>
         <p className="text-gray-400 text-sm mt-1">
-          Magic: The Gathering Artist — {artist.illustration_count} Card
-          Illustrations
+          MTG Artist — {artist.illustration_count} Card Illustrations
         </p>
         <div className="flex items-center gap-4 text-sm text-gray-500 mt-2 mb-4">
           {allTimeStat && allTimeStat.total_votes > 0 && (

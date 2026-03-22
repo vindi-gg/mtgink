@@ -46,9 +46,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const result = await getResult(id);
-  if (!result) return { title: "Result not found — MTG Ink" };
+  if (!result) return { title: "Result not found" };
 
-  const title = `${result.champion_name} wins the gauntlet! — MTG Ink`;
+  const title = `${result.champion_name} wins the gauntlet!`;
   const description = `${result.champion_name} went ${result.champion_wins}-0 in a ${result.pool_size}-card gauntlet on MTG Ink`;
 
   return {

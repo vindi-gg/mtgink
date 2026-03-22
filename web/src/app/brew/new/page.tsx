@@ -1,7 +1,7 @@
 import BrewCreateForm from "./BrewCreateForm";
 
 export const metadata = {
-  title: "Create Brew — MTG Ink",
+  title: "Create Brew",
   description: "Build a custom showdown — pick your mode, source, and filters",
 };
 

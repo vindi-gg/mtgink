@@ -3,7 +3,7 @@ import DailyGauntletClient from "./DailyGauntletClient";
 import type { GauntletEntry } from "@/lib/types";
 
 export const metadata = {
-  title: "Daily Gauntlet — MTG Ink",
+  title: "Daily Gauntlet",
   description: "Today's daily gauntlet. King of the hill — winner stays!",
 };
 

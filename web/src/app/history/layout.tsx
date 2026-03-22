@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Vote History — MTG Ink",
+  title: "Vote History",
   description: "Your art comparison vote history.",
 };
 

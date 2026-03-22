@@ -6,7 +6,7 @@ import type { CompareFilters } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Remix — MTG Ink",
+  title: "Remix",
   description: "Same card, different art — pick the best version",
   robots: { index: false, follow: false },
 };

@@ -5,7 +5,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/showdown", "/auth", "/brew"],
+      disallow: ["/showdown", "/auth", "/brew", "/deck-import", "/api/"],
     },
+    sitemap: "https://mtg.ink/sitemap.xml",
   };
 }

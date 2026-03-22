@@ -6,7 +6,7 @@ import DailyGauntletResultsClient from "./DailyGauntletResultsClient";
 import DailyGauntletShareButton from "./DailyGauntletShareButton";
 
 export const metadata = {
-  title: "Daily Gauntlet Results — MTG Ink",
+  title: "Daily Gauntlet Results",
   description: "Community results for today's daily gauntlet challenge.",
 };
 

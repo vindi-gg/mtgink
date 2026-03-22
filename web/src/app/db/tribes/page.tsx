@@ -6,8 +6,8 @@ import DbSearch from "@/components/DbSearch";
 export const revalidate = 3600; // tribes change only on data imports
 
 export const metadata = {
-  title: "Creature Tribes — MTG Ink",
-  description: "Browse all Magic: The Gathering creature types. Find every Goblin, Elf, Dragon, Zombie, and more.",
+  title: "Creature Tribes",
+  description: "Browse all MTG creature types. Find every Goblin, Elf, Dragon, Zombie, and more.",
 };
 
 async function TribesList({ query }: { query: string }) {

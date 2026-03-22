@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { artCropUrl } from "@/lib/image-utils";
+import { websiteJsonLd, JsonLd } from "@/lib/jsonld";
 import DailyChallengesSection from "@/components/DailyChallengesSection";
 import ModeCards from "@/components/ModeCards";
 import type { DailyChallenge, DailyChallengeStats } from "@/lib/types";
@@ -8,8 +9,8 @@ import type { DailyChallenge, DailyChallengeStats } from "@/lib/types";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "MTG Ink — Discover & Rank Magic Cards and Art",
-  description: "Discover and rank the best Magic: The Gathering cards and art.",
+  title: "MTG Ink — Compare & Rank Every MTG Card Art",
+  description: "Compare and rank every Magic: The Gathering card art. Browse 37,000+ cards, discover illustrations across all printings, and vote for the best MTG art.",
 };
 
 export default async function HomePage() {
@@ -73,6 +74,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
+      <JsonLd data={websiteJsonLd()} />
       <div className="flex-1 px-4 pt-8 md:pt-16">
         <div className="text-center max-w-2xl mx-auto">
           <h1 className="font-bold mb-4 flex flex-col items-center" style={{ lineHeight: 0.9, fontFamily: "'Futura', 'Futura Bold', 'Trebuchet MS', Arial, sans-serif" }}>
@@ -80,7 +82,7 @@ export default async function HomePage() {
             <span className="text-6xl text-amber-400 tracking-wide">INK</span>
           </h1>
           <p className="text-gray-400 text-lg mb-10">
-            Discover and rank the best Magic: The Gathering cards and art.
+            Compare and rank every MTG card art. Discover the best illustrations.
           </p>
 
           {/* Daily Challenges — server-rendered, participation checked client-side */}

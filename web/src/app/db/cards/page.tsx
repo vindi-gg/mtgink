@@ -6,8 +6,8 @@ import DbCardSearch from "@/components/DbCardSearch";
 export const revalidate = 3600;
 
 export const metadata = {
-  title: "Cards — MTG Ink",
-  description: "Top Magic: The Gathering cards by popularity and number of prints.",
+  title: "Cards",
+  description: "Top MTG cards by popularity and number of prints.",
 };
 
 type SortOption = "popular" | "prints";

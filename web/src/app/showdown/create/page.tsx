@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Create a Showdown — MTG Ink",
+  title: "Create a Showdown",
   description: "Build your own custom showdown",
   robots: { index: false, follow: false },
 };

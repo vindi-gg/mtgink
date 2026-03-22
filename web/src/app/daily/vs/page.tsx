@@ -3,7 +3,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import DailyVsClient from "./DailyVsClient";
 
 export const metadata = {
-  title: "Daily VS — MTG Ink",
+  title: "Daily VS",
   description: "Today's daily card matchup. Pick your winner!",
 };
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSetByCode, getCardsForSet } from "@/lib/queries";
+import { collectionPageJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import SetCardGrid from "@/components/SetCardGrid";
 
 export const revalidate = 3600;
@@ -13,10 +14,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { set_code } = await params;
   const set = await getSetByCode(set_code);
-  if (!set) return { title: "Set Not Found — MTG Ink" };
+  if (!set) return { title: "Set Not Found" };
   return {
-    title: `${set.name} — MTG Ink`,
-    description: `Browse all ${set.card_count ?? ""} cards in ${set.name} (${set.set_code.toUpperCase()}).${set.released_at ? ` Released ${set.released_at}.` : ""}`,
+    title: `${set.name} (${set.set_code.toUpperCase()}) — All ${set.card_count ?? ""} Cards`,
+    description: `Browse all ${set.card_count ?? ""} cards in ${set.name}. Compare card art and find the best illustrations.${set.released_at ? ` Released ${set.released_at}.` : ""}`,
   };
 }
 
@@ -33,6 +34,19 @@ export default async function SetDetailPage({
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
+        <JsonLd data={[
+          collectionPageJsonLd(
+            set.name,
+            `All ${cards.length} cards in ${set.name}`,
+            `/db/expansions/${set_code}`,
+            cards.length,
+          ),
+          breadcrumbJsonLd([
+            { name: "Home", url: "/" },
+            { name: "Expansions", url: "/db/expansions" },
+            { name: set.name, url: `/db/expansions/${set_code}` },
+          ]),
+        ]} />
         <div className="flex items-center gap-3 mb-1 text-sm">
           <Link href="/db" className="text-gray-500 hover:text-gray-300">
             Database

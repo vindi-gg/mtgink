@@ -9,8 +9,8 @@ export const revalidate = 3600;
 const PAGE_SIZE = 50;
 
 export const metadata = {
-  title: "Card Tags — MTG Ink",
-  description: "Browse Magic: The Gathering cards by community-curated card tags.",
+  title: "Card Tags",
+  description: "Browse MTG cards by community-curated card tags.",
 };
 
 async function TagsList({ query, page }: { query: string; page: number }) {

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense, cache } from "react";
 import { notFound } from "next/navigation";
 import { getCardsByTribe, getCreatureTribes } from "@/lib/queries";
+import { collectionPageJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import CardGrid from "@/components/CardGrid";
 import Pagination from "@/components/Pagination";
 
@@ -25,10 +26,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { type } = await params;
   const tribe = await getTribeBySlug(type);
-  if (!tribe) return { title: "Tribe Not Found — MTG Ink" };
+  if (!tribe) return { title: "Tribe Not Found" };
   return {
-    title: `${tribe.tribe} — Creature Tribes — MTG Ink`,
-    description: `Browse all ${tribe.card_count.toLocaleString()} ${tribe.tribe} creatures in Magic: The Gathering.`,
+    title: `${tribe.tribe} — All MTG ${tribe.tribe} Creatures`,
+    description: `Browse all ${tribe.card_count.toLocaleString()} MTG ${tribe.tribe} creatures. Compare art versions and rank illustrations.`,
   };
 }
 
@@ -51,6 +52,19 @@ export default async function TribeDetailPage({
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
+        <JsonLd data={[
+          collectionPageJsonLd(
+            tribe.tribe,
+            `All ${total.toLocaleString()} MTG ${tribe.tribe} creatures`,
+            `/db/tribes/${type}`,
+            total,
+          ),
+          breadcrumbJsonLd([
+            { name: "Home", url: "/" },
+            { name: "Tribes", url: "/db/tribes" },
+            { name: tribe.tribe, url: `/db/tribes/${type}` },
+          ]),
+        ]} />
         <div className="flex items-center gap-3 mb-1 text-sm">
           <Link href="/db" className="text-gray-500 hover:text-gray-300">
             Database

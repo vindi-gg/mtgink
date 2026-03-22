@@ -5,7 +5,7 @@ import { artCropUrl } from "@/lib/image-utils";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Brews — MTG Ink",
+  title: "Brews",
   description: "Community-created custom showdowns",
 };
 

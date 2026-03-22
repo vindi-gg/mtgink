@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Clash Gauntlet — MTG Ink",
+  title: "Clash Gauntlet",
   description: "32 cards, single elimination — coming soon",
   robots: { index: false, follow: false },
 };

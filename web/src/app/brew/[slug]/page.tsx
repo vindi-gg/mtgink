@@ -7,9 +7,9 @@ export const revalidate = 60;
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const brew = await getBrewBySlug(slug);
-  if (!brew) return { title: "Brew Not Found — MTG Ink" };
+  if (!brew) return { title: "Brew Not Found" };
   return {
-    title: `${brew.name} — MTG Ink`,
+    title: brew.name,
     description: brew.description || `${brew.mode} brew: ${brew.source_label}`,
   };
 }

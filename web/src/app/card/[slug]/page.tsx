@@ -16,6 +16,7 @@ import CardFaceToggle from "@/components/CardFaceToggle";
 import FavoriteCardButton from "@/components/FavoriteCardButton";
 import Sidebar from "@/components/Sidebar";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
+import { imageGalleryJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import { notFound } from "next/navigation";
 
 export const revalidate = 3600; // Re-generate card pages hourly
@@ -27,13 +28,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const card = await getCardBySlug(slug);
-  if (!card) return { title: "Card Not Found — MTG Ink" };
+  if (!card) return { title: "Card Not Found" };
 
   const illustrations = await getIllustrationsForCard(card.oracle_id);
   const topIll = illustrations[0];
 
-  const title = `${card.name} — MTG Ink`;
-  const description = `${illustrations.length} unique illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art versions and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
+  const title = `${card.name} — All Art Versions Ranked`;
+  const description = `See all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}, ranked by community votes. Compare art versions and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
 
   const ogImage = topIll
     ? artCropUrl(topIll.set_code, topIll.collector_number, topIll.image_version)
@@ -130,15 +131,26 @@ export default async function CardPage({
   const oracleTags = tags.filter((t) => t.source !== "ink" && t.type === "oracle");
   const artTags = tags.filter((t) => t.source !== "ink" && t.type !== "oracle");
 
+  const setNames = [...new Set(illustrations.map((ill) => ill.set_name))];
+  const setCount = setNames.length;
+
   return (
     <div className="flex gap-8">
+      <JsonLd data={[
+        imageGalleryJsonLd(card.name, illustrations, card.slug),
+        breadcrumbJsonLd([
+          { name: "Home", url: "/" },
+          { name: card.name, url: `/card/${card.slug}` },
+        ]),
+      ]} />
       <main className="flex-1 min-w-0 min-h-screen bg-gray-950 text-white py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">{card.name}</h1>
             <p className="text-gray-400 text-sm mt-1">
               {illustrations.length} unique illustration
-              {illustrations.length !== 1 ? "s" : ""}
+              {illustrations.length !== 1 ? "s" : ""} across {setCount} set
+              {setCount !== 1 ? "s" : ""} — ranked by community votes
               {" · "}
               {totalPrintings} printing{totalPrintings !== 1 ? "s" : ""}
               {card.type_line && ` · ${card.type_line}`}
