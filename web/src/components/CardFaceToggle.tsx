@@ -37,7 +37,7 @@ export default function CardFaceToggle({ frontSrc, backSrc, alt, className, clic
           e.preventDefault();
           setShowBack(!showBack);
         }}
-        className="absolute top-2 right-2 z-30 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100 md:opacity-0 max-md:opacity-70"
+        className="absolute top-2 right-2 z-30 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors cursor-pointer opacity-0 group-hover:opacity-100 md:opacity-0 max-md:opacity-70"
         title="Flip card"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/80">

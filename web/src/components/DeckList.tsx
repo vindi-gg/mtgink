@@ -86,7 +86,7 @@ export default function DeckList() {
             </Link>
             <button
               onClick={() => handleDelete(deck.id)}
-              className="mt-2 text-xs text-gray-600 hover:text-red-400 transition-colors"
+              className="mt-2 text-xs text-gray-600 hover:text-red-400 transition-colors cursor-pointer"
             >
               Delete
             </button>

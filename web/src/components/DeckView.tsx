@@ -651,7 +651,7 @@ export default function DeckView({
             <span className="text-xs text-gray-500">Multi-art only</span>
             <button
               onClick={() => setHideOneArt(!hideOneArt)}
-              className={`relative w-8 h-[18px] rounded-full transition-colors ${hideOneArt ? "bg-amber-500" : "bg-gray-700"}`}
+              className={`relative w-8 h-[18px] rounded-full transition-colors cursor-pointer ${hideOneArt ? "bg-amber-500" : "bg-gray-700"}`}
             >
               <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${hideOneArt ? "left-[16px]" : "left-[2px]"}`} />
             </button>

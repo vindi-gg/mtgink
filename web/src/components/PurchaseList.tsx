@@ -103,7 +103,7 @@ export default function PurchaseList() {
                   )}
                   <button
                     onClick={() => handleRemove(item)}
-                    className="text-xs text-gray-600 hover:text-red-400 transition-colors"
+                    className="text-xs text-gray-600 hover:text-red-400 transition-colors cursor-pointer"
                     title="Remove from list"
                   >
                     Remove
