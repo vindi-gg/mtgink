@@ -144,12 +144,12 @@ export async function getCrossCardPair(filters?: CompareFilters): Promise<Compar
 }
 
 /** Get all distinct illustrations for a card, picking one representative printing per illustration */
-export async function getIllustrationsForCard(oracleId: string): Promise<Illustration[]> {
+export async function getIllustrationsForCard(oracleId: string): Promise<(Illustration & { cheapest_price: number | null })[]> {
   const { data, error } = await getAdminClient().rpc("get_illustrations_for_card", {
     p_oracle_id: oracleId,
   });
   if (error) throw new Error(`Failed to get illustrations: ${error.message}`);
-  return data as Illustration[];
+  return (data as any[]).map((row) => ({ ...row, cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null }));
 }
 
 /** Get ELO rating for an illustration, or null if unrated */

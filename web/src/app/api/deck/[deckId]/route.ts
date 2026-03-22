@@ -26,7 +26,7 @@ export async function GET(
   // Check if current user is the owner
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
-  const isOwner = user?.id === deck.user_id;
+  const isOwner = deck.user_id === null || user?.id === deck.user_id;
 
   const detail = await getDeckDetail(deckId);
   return NextResponse.json({ ...detail, is_owner: isOwner });

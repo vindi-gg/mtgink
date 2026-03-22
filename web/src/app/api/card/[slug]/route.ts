@@ -28,6 +28,7 @@ export async function GET(
   const illustrationsWithData = illustrations.map((ill) => ({
     ...ill,
     rating: ratingsMap.get(ill.illustration_id) ?? null,
+    cheapest_price: ill.cheapest_price,
     printings: printingsMap.get(ill.illustration_id) ?? [],
   }));
 
