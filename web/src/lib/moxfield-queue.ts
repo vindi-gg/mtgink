@@ -1,6 +1,6 @@
 import { parseMoxfieldResponse } from "@/lib/deck";
 import { lookupDeckCards } from "@/lib/queries";
-import { createAnonymousDeck } from "@/lib/deck-queries";
+import { createAnonymousDeck, syncDeckCards } from "@/lib/deck-queries";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 export async function tryProcessQueue() {
@@ -27,7 +27,7 @@ export async function tryProcessQueue() {
   // Find oldest pending entry
   const { data: pending } = await admin
     .from("moxfield_queue")
-    .select("id, moxfield_deck_id, deck_url")
+    .select("id, moxfield_deck_id, deck_url, target_deck_id, user_id")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(1)
@@ -72,12 +72,22 @@ export async function tryProcessQueue() {
       originalIsFoil: card.original_is_foil,
     }));
 
-    const deckId = await createAnonymousDeck({
-      name: moxData.name || "Imported Deck",
-      format: moxData.format || undefined,
-      sourceUrl: pending.deck_url,
-      cards: deckCards,
-    });
+    let deckId: string;
+
+    if (pending.target_deck_id) {
+      // Re-sync existing deck: update cards, preserve art selections
+      deckId = pending.target_deck_id;
+      await syncDeckCards(deckId, deckCards);
+    } else {
+      // New import
+      deckId = await createAnonymousDeck({
+        name: moxData.name || "Imported Deck",
+        format: moxData.format || undefined,
+        sourceUrl: pending.deck_url,
+        userId: pending.user_id,
+        cards: deckCards,
+      });
+    }
 
     await admin
       .from("moxfield_queue")

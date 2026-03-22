@@ -18,6 +18,10 @@ export default function DeckDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
+  const [syncModal, setSyncModal] = useState(false);
+  const [syncState, setSyncState] = useState<"confirm" | "queued" | "processing" | "done" | "error">("confirm");
+  const [syncPosition, setSyncPosition] = useState<number | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   function loadDeck() {
     fetch(`/api/deck/${deckId}`)
@@ -57,6 +61,72 @@ export default function DeckDetailPage() {
     if (res.ok) {
       setDeck({ ...deck, name: editName });
       setEditing(false);
+    }
+  }
+
+  function openSyncModal() {
+    setSyncModal(true);
+    setSyncState("confirm");
+    setSyncPosition(null);
+    setSyncError(null);
+  }
+
+  function closeSyncModal() {
+    // Only allow closing if not actively syncing
+    if (syncState === "queued" || syncState === "processing") return;
+    setSyncModal(false);
+  }
+
+  async function handleSync() {
+    setSyncState("queued");
+    setSyncPosition(1);
+    setSyncError(null);
+    try {
+      const res = await fetch(`/api/deck/${deckId}/sync`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncError(data.error || "Sync failed");
+        setSyncState("error");
+        return;
+      }
+
+      // Poll for completion
+      setSyncPosition(data.position ?? 1);
+      const queueId = data.queueId;
+      let delay = 500;
+      while (true) {
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.min(delay + 300, 1500);
+
+        const statusRes = await fetch(`/api/deck/import/status?id=${queueId}`);
+        const statusData = await statusRes.json();
+
+        if (statusData.status === "done") {
+          setSyncState("done");
+          // Reload deck data after short delay so user sees success
+          setTimeout(() => {
+            setSyncModal(false);
+            setLoading(true);
+            loadDeck();
+          }, 1000);
+          return;
+        }
+
+        if (statusData.status === "error") {
+          setSyncError(statusData.error || "Sync failed");
+          setSyncState("error");
+          return;
+        }
+
+        // Update position while pending
+        setSyncPosition(statusData.position ?? null);
+        if (statusData.status === "processing") {
+          setSyncState("processing");
+        }
+      }
+    } catch {
+      setSyncError("Failed to sync. Try again.");
+      setSyncState("error");
     }
   }
 
@@ -143,15 +213,23 @@ export default function DeckDetailPage() {
 
         {deck.is_owner && (
           <div className="flex items-center gap-2">
+            {deck.source_url?.includes("moxfield.com") && (
+              <button
+                onClick={openSyncModal}
+                className="text-xs text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              >
+                Sync from Moxfield
+              </button>
+            )}
             <button
               onClick={() => setEditing(true)}
-              className="text-xs text-gray-400 hover:text-white transition-colors"
+              className="text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
             >
               Rename
             </button>
             <button
               onClick={handleDelete}
-              className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+              className="text-xs text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
             >
               Delete
             </button>
@@ -178,6 +256,81 @@ export default function DeckDetailPage() {
         isOwner={deck.is_owner}
         hasPurchases={hasPurchases}
       />
+
+      {/* Sync from Moxfield modal */}
+      {syncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeSyncModal}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            {syncState === "confirm" && (
+              <>
+                <h3 className="text-lg font-bold text-white mb-2">Sync from Moxfield</h3>
+                <p className="text-sm text-gray-400 mb-1">
+                  This will update your card list from Moxfield.
+                </p>
+                <p className="text-sm text-gray-400 mb-5">
+                  Your art selections and buy list will be preserved.
+                </p>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={closeSyncModal}
+                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSync}
+                    className="px-4 py-2 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition-colors cursor-pointer"
+                  >
+                    Sync Now
+                  </button>
+                </div>
+              </>
+            )}
+
+            {(syncState === "queued" || syncState === "processing") && (
+              <div className="text-center py-4">
+                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-sm text-white font-medium">
+                  {syncState === "processing"
+                    ? "Syncing your deck..."
+                    : syncPosition && syncPosition > 1
+                      ? `#${syncPosition} in queue — importing shortly...`
+                      : "Fetching from Moxfield..."}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">This usually takes a few seconds</p>
+              </div>
+            )}
+
+            {syncState === "done" && (
+              <div className="text-center py-4">
+                <div className="text-3xl mb-3">&#10003;</div>
+                <p className="text-sm text-white font-medium">Deck synced successfully!</p>
+              </div>
+            )}
+
+            {syncState === "error" && (
+              <>
+                <h3 className="text-lg font-bold text-white mb-2">Sync Failed</h3>
+                <p className="text-sm text-red-400 mb-5">{syncError}</p>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={closeSyncModal}
+                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleSync}
+                    className="px-4 py-2 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition-colors cursor-pointer"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

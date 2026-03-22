@@ -556,8 +556,9 @@ export default function DeckView({
       ? (data as DeckImportResponse).unmatched.map((e) => e.name)
       : (data.unmatched as string[]);
 
-  const matchedCount =
+  const uniqueCount =
     "stats" in data ? (data as DeckImportResponse).stats.matched : cards.length;
+  const totalCardCount = cards.reduce((sum, c) => sum + c.quantity, 0);
   const unmatchedCount =
     "stats" in data
       ? (data as DeckImportResponse).stats.unmatched
@@ -568,8 +569,9 @@ export default function DeckView({
       {/* Stats bar */}
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <span className="text-gray-300">
-          <span className="font-bold text-white">{matchedCount}</span>{" "}
-          cards matched
+          <span className="font-bold text-white">{totalCardCount}</span> cards
+          <span className="text-gray-500 mx-1">|</span>
+          <span className="text-gray-500">{uniqueCount} unique</span>
         </span>
         <span className="text-gray-500">
           {totalArts} unique illustrations

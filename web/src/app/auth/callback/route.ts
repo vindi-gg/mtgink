@@ -17,11 +17,17 @@ export async function GET(request: NextRequest) {
   if (code) {
     const supabase = await createClient();
     if (supabase) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (!error) {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        console.error("Auth callback error:", error.message);
+      } else {
         return NextResponse.redirect(redirectUrl);
       }
+    } else {
+      console.error("Auth callback: supabase client is null");
     }
+  } else {
+    console.error("Auth callback: no code parameter");
   }
 
   return NextResponse.redirect(redirectUrl);

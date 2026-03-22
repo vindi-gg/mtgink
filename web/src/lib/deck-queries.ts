@@ -385,6 +385,7 @@ export async function createAnonymousDeck(params: {
   name: string;
   format?: string;
   sourceUrl?: string;
+  userId?: string | null;
   cards: { oracleId: string; quantity: number; section: string; selectedIllustrationId?: string; originalSetCode?: string; originalCollectorNumber?: string; originalIsFoil?: boolean }[];
 }): Promise<string> {
   const admin = getAdminClient();
@@ -392,7 +393,7 @@ export async function createAnonymousDeck(params: {
   const { data, error } = await admin
     .from("decks")
     .insert({
-      user_id: null,
+      user_id: params.userId ?? null,
       name: params.name,
       format: params.format ?? null,
       source_url: params.sourceUrl ?? null,
@@ -420,6 +421,53 @@ export async function createAnonymousDeck(params: {
   }
 
   return deckId;
+}
+
+/** Re-sync deck cards from a fresh import, preserving art selections and to_buy flags */
+export async function syncDeckCards(
+  deckId: string,
+  newCards: { oracleId: string; quantity: number; section: string; originalSetCode?: string; originalCollectorNumber?: string; originalIsFoil?: boolean }[]
+): Promise<void> {
+  const admin = getAdminClient();
+
+  // Get existing cards to preserve selections
+  const { data: existing } = await admin
+    .from("deck_cards")
+    .select("oracle_id, selected_illustration_id, to_buy")
+    .eq("deck_id", deckId);
+
+  const preservedMap = new Map(
+    (existing ?? []).map((c) => [c.oracle_id, { selected_illustration_id: c.selected_illustration_id, to_buy: c.to_buy }])
+  );
+
+  // Delete all existing cards
+  await admin.from("deck_cards").delete().eq("deck_id", deckId);
+
+  // Insert new cards with preserved selections
+  if (newCards.length > 0) {
+    await admin.from("deck_cards").insert(
+      newCards.map((c) => {
+        const preserved = preservedMap.get(c.oracleId);
+        return {
+          deck_id: deckId,
+          oracle_id: c.oracleId,
+          quantity: c.quantity,
+          section: c.section,
+          selected_illustration_id: preserved?.selected_illustration_id ?? null,
+          to_buy: preserved?.to_buy ?? false,
+          original_set_code: c.originalSetCode ?? null,
+          original_collector_number: c.originalCollectorNumber ?? null,
+          original_is_foil: c.originalIsFoil ?? false,
+        };
+      })
+    );
+  }
+
+  // Update deck timestamp
+  await admin
+    .from("decks")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", deckId);
 }
 
 export async function lookupAndCreateDeck(

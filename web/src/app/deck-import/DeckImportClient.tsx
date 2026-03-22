@@ -1,10 +1,22 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 export default function DeckImportClient() {
   const router = useRouter();
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    if (supabase) {
+      supabase.auth.getUser().then(({ data: { user } }) => setIsAuthed(!!user));
+    } else {
+      setIsAuthed(false);
+    }
+  }, []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +118,14 @@ export default function DeckImportClient() {
 
   return (
     <div>
+      {isAuthed === false && (
+        <div className="mb-3 px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg">
+          <p className="text-sm text-gray-300">
+            <Link href="/auth?returnTo=/deck-import" className="text-amber-400 font-medium hover:text-amber-300 cursor-pointer">Sign in</Link> to save decks to your account. You can still import without signing in, but decks will only be stored in your browser.
+          </p>
+        </div>
+      )}
+
       {showFallback && (
         <div className="mb-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
           <p className="text-sm text-amber-400 font-medium mb-1">Paste your decklist instead</p>

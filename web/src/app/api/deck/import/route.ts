@@ -3,10 +3,19 @@ import { parseDeckList, extractMoxfieldDeckId } from "@/lib/deck";
 import { lookupDeckCards } from "@/lib/queries";
 import { createAnonymousDeck } from "@/lib/deck-queries";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { decklist, url } = body as { decklist?: string; url?: string };
+
+  // Get logged-in user if any
+  let userId: string | null = null;
+  const supabase = await createClient();
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
+  }
 
   // Moxfield URL → queue for rate-limited processing
   if (url && typeof url === "string") {
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Insert into queue
     const { data: queueEntry, error: insertErr } = await admin
       .from("moxfield_queue")
-      .insert({ moxfield_deck_id: moxId, deck_url: url, status: "pending" })
+      .insert({ moxfield_deck_id: moxId, deck_url: url, status: "pending", user_id: userId })
       .select("id")
       .single();
 
@@ -66,6 +75,7 @@ export async function POST(request: NextRequest) {
 
     const deckId = await createAnonymousDeck({
       name: "Imported Deck",
+      userId,
       cards: deckCards,
     });
 

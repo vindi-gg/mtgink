@@ -108,7 +108,7 @@ export default function Navbar() {
   const userMenuLinks = [
     { href: "/favorites", label: "Favorites" },
     { href: "/history", label: "Vote History" },
-    { href: "/deck", label: "Library" },
+    { href: "/deck", label: "My Decks" },
   ];
 
   const allLinks = [...primaryLinks, ...secondaryLinks];

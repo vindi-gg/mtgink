@@ -36,7 +36,7 @@ export default function DeckList() {
       <div className="text-center py-12">
         <p className="text-gray-400 mb-4">No saved decks yet.</p>
         <Link
-          href="/deck/new"
+          href="/deck-import"
           className="px-6 py-2 bg-amber-500 text-black font-bold rounded-lg hover:bg-amber-400 transition-colors inline-block"
         >
           Import Your First Deck
@@ -50,7 +50,7 @@ export default function DeckList() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Your Decks</h2>
         <Link
-          href="/deck/new"
+          href="/deck-import"
           className="px-4 py-1.5 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition-colors"
         >
           Import New Deck
@@ -73,7 +73,7 @@ export default function DeckList() {
                         {deck.format}
                       </span>
                     )}
-                    <span>{deck.unique_cards} cards</span>
+                    <span>{deck.card_count} cards</span>
                     <span>
                       {new Date(deck.updated_at).toLocaleDateString()}
                     </span>
