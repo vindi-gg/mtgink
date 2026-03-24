@@ -91,9 +91,10 @@ interface ShowdownViewProps {
   mode: "remix" | "vs";
   initialPair: ComparisonPair | ClashPair;
   initialFilters?: CompareFilters;
+  themeLabel?: string;
 }
 
-export default function ShowdownView({ mode, initialPair, initialFilters }: ShowdownViewProps) {
+export default function ShowdownView({ mode, initialPair, initialFilters, themeLabel }: ShowdownViewProps) {
   const { imageMode, cardUrl } = useImageMode();
   const isRemix = mode === "remix";
 
@@ -102,6 +103,8 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
   const [filters] = useState<CompareFilters>(initialFilters ?? {});
   const [filterError, setFilterError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<0 | 1 | null>(null);
+  const isMobileCard = typeof window !== "undefined" && window.innerWidth < 768 && imageMode === "card";
 
   const sidesRef = useRef(sides);
   const votingRef = useRef(false);
@@ -118,6 +121,26 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
 
   sidesRef.current = sides;
   filtersRef.current = filters;
+
+  // Persist theme/filters in URL so refresh preserves them
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    let changed = false;
+    if (filters.subtype && !url.searchParams.has("subtype")) {
+      url.searchParams.set("subtype", filters.subtype);
+      if (filters.type) url.searchParams.set("type", filters.type);
+      changed = true;
+    }
+    if (filters.set_code && !url.searchParams.has("set_code")) {
+      url.searchParams.set("set_code", filters.set_code);
+      changed = true;
+    }
+    if (themeLabel && !url.searchParams.has("artist")) {
+      url.searchParams.set("artist", themeLabel);
+      changed = true;
+    }
+    if (changed) window.history.replaceState(null, "", url.toString());
+  }, []);
 
   // Update URL with current matchup IDs (skip initial to keep clean URLs)
   useEffect(() => {
@@ -149,6 +172,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
     const next = normalizePair(raw, mode);
     setSides(next);
     sidesRef.current = next;
+    setSelectedCard(null);
   }
 
   // --- Vote ---
@@ -246,11 +270,23 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
 
   function renderSide(side: ShowdownSide, sideIdx: 0 | 1) {
     const artUrl = cardUrl(side.set_code, side.collector_number, side.image_version);
-    const handleClick = () => vote(sideIdx);
+    const isSelected = selectedCard === sideIdx;
+
+    const handleClick = () => {
+      if (isMobileCard) {
+        if (isSelected) {
+          vote(sideIdx);
+        } else {
+          setSelectedCard(sideIdx);
+        }
+      } else {
+        vote(sideIdx);
+      }
+    };
 
     return (
       <div className="flex flex-col items-center">
-        <div className="relative w-full">
+        <div className={`relative w-full transition-shadow duration-200 rounded-[5%] ${isSelected && isMobileCard ? "ring-2 ring-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]" : ""}`}>
           <CardImage
             key={side.illustration_id}
             src={artUrl}
@@ -259,6 +295,14 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
             onImageError={skip}
             className="w-full"
           />
+          {isSelected && isMobileCard && (
+            <div className="absolute bottom-0 left-0 right-0 rounded-b-[5%] pointer-events-none">
+              <div className="h-12 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+              <div className="bg-black/90 px-3 py-1.5 rounded-b-[5%]">
+                <p className="text-center text-xs font-medium text-amber-400">Tap again to vote</p>
+              </div>
+            </div>
+          )}
           {imageMode !== "card" && (
             <CardPreviewOverlay
               setCode={side.set_code}
@@ -313,6 +357,8 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
           <>Which <span className="text-amber-400 capitalize">{filters.type}</span> is best?</>
         ) : filters.set_code ? (
           <>Which <span className="text-amber-400 uppercase">{filters.set_code}</span> card is best?</>
+        ) : themeLabel ? (
+          <>Best <a href={`/artists/${themeLabel.toLowerCase().replace(/\s+/g, "-")}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">{themeLabel}</a> card?</>
         ) : (
           <>Which card is best?</>
         )}
@@ -331,17 +377,35 @@ export default function ShowdownView({ mode, initialPair, initialFilters }: Show
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
-          {renderSide(a, 0)}
-          {renderSide(b, 1)}
-        </div>
+        {imageMode === "card" ? (
+          <>
+            {/* Mobile: overlapping cards; Desktop: side-by-side grid */}
+            <div className="hidden md:grid md:grid-cols-2 md:gap-6">
+              {renderSide(a, 0)}
+              {renderSide(b, 1)}
+            </div>
+            <div className="md:hidden relative w-[90%] mx-auto" style={{ aspectRatio: "488 / 830" }}>
+              <div className={`absolute top-0 left-0 w-[75%] transition-all duration-200 ${selectedCard === 0 ? "z-30" : "z-10"}`}>
+                {renderSide(a, 0)}
+              </div>
+              <div className={`absolute bottom-[5%] right-0 w-[75%] transition-all duration-200 ${selectedCard === 1 || selectedCard === null ? "z-20" : "z-10"}`}>
+                {renderSide(b, 1)}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
+            {renderSide(a, 0)}
+            {renderSide(b, 1)}
+          </div>
+        )}
       </div>
 
-      {!isRemix && hasActiveFilters(filters) && (
-        <div className="text-center mt-3">
+      {!isRemix && (hasActiveFilters(filters) || themeLabel) && (
+        <div className="text-center mt-2">
           <a
             href={`/showdown/vs`}
-            className="text-xs text-gray-500 hover:text-amber-400 transition-colors cursor-pointer"
+            className="inline-block px-4 py-1.5 text-xs font-medium text-gray-400 border border-gray-700 rounded-lg hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
           >
             New theme
           </a>

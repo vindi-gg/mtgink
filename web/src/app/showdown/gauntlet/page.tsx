@@ -208,8 +208,18 @@ export default async function GauntletPage({
         pool = await getGauntletCards(poolSize);
       }
     }
-  } catch {
+  } catch (err) {
+    console.error("Gauntlet pool load failed:", err);
     pool = [];
+  }
+
+  // If pool is empty on an unfiltered request, retry once (transient DB failure / cold start)
+  if ((!pool || pool.length < 2) && !oracle_id && !artist && !tag && !themeId && !brewSlug && !colors && !type && !subtype && !set_code && !rules_text && mode !== "card" && mode !== "group") {
+    try {
+      pool = await getGauntletCards(poolSize);
+    } catch {
+      pool = [];
+    }
   }
 
   if (!pool || pool.length < 2) {

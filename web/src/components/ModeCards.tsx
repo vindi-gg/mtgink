@@ -42,7 +42,7 @@ export default function ModeCards({ images = [] }: ModeCardsProps) {
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-950/70 to-gray-950/40" />
-              <div className="relative p-5 flex items-center justify-between gap-4">
+              <div className="relative p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="text-left min-w-0">
                   <h3 className="text-lg font-bold text-white">{mode.name}</h3>
                   <p className="text-sm text-gray-400">{mode.description}</p>

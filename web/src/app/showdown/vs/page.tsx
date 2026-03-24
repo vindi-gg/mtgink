@@ -1,4 +1,4 @@
-import { getClashPair, getSpecificClashPair, resolvePrintingRef, getRandomVsTheme } from "@/lib/queries";
+import { getClashPair, getSpecificClashPair, resolvePrintingRef, getRandomVsTheme, getRandomCardsByArtist } from "@/lib/queries";
 import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import ShowdownView from "@/components/ShowdownView";
 import type { CompareFilters } from "@/lib/types";
@@ -14,11 +14,12 @@ export const metadata = {
 export default async function VsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ colors?: string; type?: string; subtype?: string; set_code?: string; rules_text?: string; a?: string; b?: string; brew?: string }>;
+  searchParams: Promise<{ colors?: string; type?: string; subtype?: string; set_code?: string; rules_text?: string; a?: string; b?: string; brew?: string; artist?: string }>;
 }) {
-  const { colors, type, subtype, set_code, rules_text, a, b, brew: brewSlug } = await searchParams;
+  const { colors, type, subtype, set_code, rules_text, a, b, brew: brewSlug, artist: artistParam } = await searchParams;
 
   let filters: CompareFilters = {};
+  let themeLabel: string | undefined;
 
   if (brewSlug) {
     const brew = await getBrewBySlug(brewSlug);
@@ -34,6 +35,8 @@ export default async function VsPage({
         filters.subtype = brew.source_id;
       }
     }
+  } else if (artistParam) {
+    themeLabel = artistParam;
   } else if (colors || type || subtype || set_code || rules_text) {
     filters = {
       colors: colors ? colors.split(",").filter(Boolean) : undefined,
@@ -44,13 +47,17 @@ export default async function VsPage({
     };
   }
 
-  const hasExplicitFilters = Object.keys(filters).length > 0;
+  const hasExplicitFilters = Object.keys(filters).length > 0 || !!themeLabel;
 
-  // When no explicit filters, pick a random VS theme (tribe) so there's always a topic
+  // When no explicit filters, pick a random VS theme so there's always a topic
   if (!hasExplicitFilters && !a && !b) {
     const theme = await getRandomVsTheme();
     if (theme?.tribe) {
-      filters = { subtype: theme.tribe };
+      filters = { type: "Creature", subtype: theme.tribe };
+    } else if (theme?.set_code) {
+      filters = { set_code: theme.set_code };
+    } else if (theme?.artist) {
+      themeLabel = theme.artist;
     }
   }
 
@@ -62,6 +69,13 @@ export default async function VsPage({
       const [refA, refB] = await Promise.all([resolvePrintingRef(a), resolvePrintingRef(b)]);
       if (refA && refB) {
         pair = await getSpecificClashPair(refA.oracle_id, refB.oracle_id);
+      }
+    }
+    if (!pair && themeLabel) {
+      // Artist theme — fetch two random cards by that artist
+      const oracleIds = await getRandomCardsByArtist(themeLabel);
+      if (oracleIds.length >= 2) {
+        pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
       }
     }
     if (!pair) {
@@ -77,6 +91,7 @@ export default async function VsPage({
         mode="vs"
         initialPair={pair}
         initialFilters={hasFilters ? filters : undefined}
+        themeLabel={themeLabel}
       />
     </main>
   );

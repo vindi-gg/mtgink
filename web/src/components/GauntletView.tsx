@@ -603,7 +603,7 @@ export default function GauntletView({
 
         {/* Main grid */}
         <div className="relative max-w-4xl mx-auto">
-          <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
+          <div className={`grid ${imageMode === "card" ? "grid-cols-2" : "grid-cols-1 landscape:grid-cols-2"} md:grid-cols-2 gap-2 md:gap-6`}>
             {renderEntry(champion, 0, "Champion", championWins)}
             {renderEntry(challenger, 1, "Challenger")}
           </div>

@@ -1535,10 +1535,30 @@ export async function getRandomVsTheme(): Promise<GauntletTheme | null> {
     .from("gauntlet_themes")
     .select("*")
     .eq("is_active", true)
-    .eq("pool_mode", "vs");
+    .eq("pool_mode", "vs")
+    .in("theme_type", ["tribe", "set", "artist"]);
 
   if (!data || data.length === 0) return null;
   return data[Math.floor(Math.random() * data.length)] as GauntletTheme;
+}
+
+/** Get two random oracle_ids by a specific artist */
+export async function getRandomCardsByArtist(artist: string): Promise<string[]> {
+  const { data } = await getAdminClient()
+    .from("printings")
+    .select("oracle_id")
+    .eq("artist", artist)
+    .limit(200);
+
+  if (!data || data.length < 2) return [];
+  const unique = [...new Set(data.map((r: { oracle_id: string }) => r.oracle_id))];
+  if (unique.length < 2) return [];
+  // Shuffle and pick 2
+  for (let i = unique.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [unique[i], unique[j]] = [unique[j], unique[i]];
+  }
+  return unique.slice(0, 2);
 }
 
 /** Get a specific theme by ID */
