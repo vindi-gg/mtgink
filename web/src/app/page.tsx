@@ -85,10 +85,8 @@ export default async function HomePage() {
             Compare and rank every MTG card art. Discover the best illustrations.
           </p>
 
-          {/* Daily Challenges — server-rendered, participation checked client-side */}
-          {challenges.length > 0 && (
-            <DailyChallengesSection challenges={challenges} />
-          )}
+          {/* Daily Challenges — always rendered so client-side fetch catches day rollover */}
+          <DailyChallengesSection challenges={challenges} />
 
           {/* Modes */}
           <ModeCards images={modeImages} />

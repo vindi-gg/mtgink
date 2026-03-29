@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGauntletCards } from "@/lib/queries";
-import type { CompareFilters } from "@/lib/types";
+import { getGauntletCards, getGauntletCardsByTag } from "@/lib/queries";
+import type { CompareFilters, GauntletEntry } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const count = Math.min(parseInt(searchParams.get("count") ?? "10"), 50);
   const exclude = searchParams.get("exclude")?.split(",").filter(Boolean);
+  const tag = searchParams.get("tag") || undefined;
 
   const colors = searchParams.get("colors")?.split(",").filter(Boolean);
   const type = searchParams.get("type") || undefined;
@@ -19,7 +20,17 @@ export async function GET(req: NextRequest) {
       : undefined;
 
   try {
-    const entries = await getGauntletCards(count, filters, exclude);
+    let entries: GauntletEntry[];
+
+    if (tag) {
+      // Fetch more to account for exclusions, then filter client-side
+      const raw = await getGauntletCardsByTag(tag, count + (exclude?.length ?? 0));
+      const excludeSet = new Set(exclude ?? []);
+      entries = raw.filter((e) => !excludeSet.has(e.oracle_id)).slice(0, count);
+    } else {
+      entries = await getGauntletCards(count, filters, exclude);
+    }
+
     return NextResponse.json(entries);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to fetch gauntlet cards";

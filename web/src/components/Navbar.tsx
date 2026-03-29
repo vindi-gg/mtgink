@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import SearchModal from "./SearchModal";
-import { useImageMode } from "@/lib/image-mode";
 
 function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/showdown/remix" && (pathname.startsWith("/showdown/remix") || pathname === "/showdown")) return true;
@@ -29,7 +28,10 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [playMenuOpen, setPlayMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { imageMode, toggleImageMode } = useImageMode();
+  const [betaDismissed, setBetaDismissed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("mtgink_beta_dismissed") === "1";
+  });
   const supabase = createClient();
 
   useEffect(() => {
@@ -168,17 +170,6 @@ export default function Navbar() {
             <kbd className="text-[10px] text-gray-600">/</kbd>
           </button>
 
-          {/* Image mode toggle */}
-          <button
-            onClick={toggleImageMode}
-            className="flex items-center gap-0.5 px-1.5 py-1 border border-gray-700 rounded-md text-xs font-medium transition-colors hover:border-gray-500 cursor-pointer"
-            title={imageMode === "art" ? "Showing art crops — click for full cards" : "Showing full cards — click for art crops"}
-          >
-            <span className={imageMode === "art" ? "text-amber-400" : "text-gray-500"}>Art</span>
-            <span className="text-gray-600">/</span>
-            <span className={imageMode === "card" ? "text-amber-400" : "text-gray-500"}>Card</span>
-          </button>
-
           {user ? (
             <div className="relative">
               <button
@@ -285,16 +276,6 @@ export default function Navbar() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           </Link>
-
-          {/* Image mode toggle (mobile) */}
-          <button
-            onClick={toggleImageMode}
-            className="flex items-center gap-0.5 px-1.5 py-1 border border-gray-700 rounded-md text-[10px] font-medium transition-colors cursor-pointer"
-          >
-            <span className={imageMode === "art" ? "text-amber-400" : "text-gray-500"}>Art</span>
-            <span className="text-gray-600">/</span>
-            <span className={imageMode === "card" ? "text-amber-400" : "text-gray-500"}>Card</span>
-          </button>
 
           {/* Search (mobile) */}
           <button
@@ -407,6 +388,18 @@ export default function Navbar() {
       )}
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </nav>
+    {/* Beta banner */}
+    {!betaDismissed && (
+      <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-400/80">
+        MTG Ink is in beta — we&apos;ll do our best not to reset favorites and decks, but we may have to!
+        <button
+          onClick={() => { setBetaDismissed(true); localStorage.setItem("mtgink_beta_dismissed", "1"); }}
+          className="ml-2 text-amber-500/50 hover:text-amber-400 cursor-pointer"
+        >
+          &times;
+        </button>
+      </div>
+    )}
     {/* Mobile Play panel — outside nav so backdrop-blur doesn't trap fixed overlay */}
     {playMenuOpen && (
       <>

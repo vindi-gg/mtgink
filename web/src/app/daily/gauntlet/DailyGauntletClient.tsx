@@ -137,7 +137,7 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
     : "Daily Gauntlet";
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <GauntletView
         mode={mode}
         pool={pool}

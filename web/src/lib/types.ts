@@ -419,7 +419,7 @@ export interface GauntletEntry {
 
 export interface GauntletTheme {
   id: number;
-  theme_type: "card_remix" | "tribe" | "tag" | "set" | "artist";
+  theme_type: "card_remix" | "tribe" | "tag" | "set" | "artist" | "art_tag";
   pool_mode: "remix" | "vs";
   label: string;
   description: string | null;

@@ -14,7 +14,9 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import ArtGallery from "@/components/ArtGallery";
 import CardFaceToggle from "@/components/CardFaceToggle";
 import FavoriteCardButton from "@/components/FavoriteCardButton";
+import PrintingCard from "@/components/PrintingCard";
 import Sidebar from "@/components/Sidebar";
+import TagList from "@/components/TagList";
 import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
 import { imageGalleryJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import { notFound } from "next/navigation";
@@ -222,16 +224,22 @@ export default async function CardPage({
                               clickToFlip
                             />
                           ) : (
-                            <img
+                            <PrintingCard
                               src={normalCardUrl(p.set_code, p.collector_number, p.image_version)}
                               alt={`${card.name} - ${p.set_name} #${p.collector_number}`}
-                              className="w-full rounded-lg"
-                              loading="lazy"
+                              setCode={p.set_code}
+                              collectorNumber={p.collector_number}
+                              imageVersion={p.image_version}
+                              cardName={card.name}
+                              setName={p.set_name}
+                              rarity={p.rarity}
+                              price={price}
+                              tcgplayerId={p.tcgplayer_id}
                             />
                           )}
                           <div className="mt-1.5 px-0.5">
                             <p className="text-xs text-gray-400 truncate">
-                              {p.set_name}
+                              <Link href={`/db/expansions/${p.set_code}`} className="hover:text-amber-400 transition-colors">{p.set_name}</Link>
                             </p>
                             <div className="flex items-center gap-2 text-xs">
                               <span className="text-gray-600">
@@ -285,36 +293,10 @@ export default async function CardPage({
         {tags.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
             {oracleTags.length > 0 && (
-              <div>
-                <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2">Card Tags</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {oracleTags.map((t) => (
-                    <Link
-                      key={t.tag_id}
-                      href={`/db/tags/${t.slug}`}
-                      className="px-2 py-1 text-xs rounded-md bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-amber-400 transition-colors"
-                    >
-                      {t.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              <TagList title="Card Tags" tags={oracleTags} className="bg-gray-800 text-gray-300" />
             )}
             {artTags.length > 0 && (
-              <div>
-                <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2">Art Tags</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {artTags.map((t) => (
-                    <Link
-                      key={t.tag_id}
-                      href={`/db/tags/${t.slug}`}
-                      className="px-2 py-1 text-xs rounded-md bg-gray-800/60 text-gray-400 hover:bg-gray-700 hover:text-amber-400 transition-colors"
-                    >
-                      {t.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              <TagList title="Art Tags" tags={artTags} className="bg-gray-800/60 text-gray-400" />
             )}
           </div>
         )}

@@ -93,10 +93,17 @@ function filterParams(filters?: CompareFilters) {
   };
 }
 
+/** Layouts excluded from random pools (gauntlets, VS, remix) */
+const EXCLUDED_LAYOUTS = new Set([
+  "planar", "vanguard", "scheme", "emblem",
+  "token", "double_faced_token", "art_series",
+]);
+
 /** Pick random cards directly in Postgres */
 async function getRandomCards(count: number, minIllustrations: number, filters?: CompareFilters): Promise<OracleCard[]> {
+  // Fetch extra to compensate for layout filtering
   const { data, error } = await getAdminClient().rpc("get_random_cards", {
-    p_count: count,
+    p_count: Math.ceil(count * 1.3),
     p_min_illustrations: minIllustrations,
     ...filterParams(filters),
   });
@@ -104,16 +111,19 @@ async function getRandomCards(count: number, minIllustrations: number, filters?:
   if (error) throw new Error(`Failed to get random cards: ${error.message}`);
   if (!data || data.length === 0) throw new Error("No cards match the selected filters");
 
-  return (data as { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: unknown; cmc: number | null }[]).map((r) => ({
-    oracle_id: r.oracle_id,
-    name: r.name,
-    slug: r.slug,
-    layout: r.layout,
-    type_line: r.type_line,
-    mana_cost: r.mana_cost,
-    colors: r.colors ? JSON.stringify(r.colors) : null,
-    cmc: r.cmc,
-  }));
+  return (data as { oracle_id: string; name: string; slug: string; layout: string | null; type_line: string | null; mana_cost: string | null; colors: unknown; cmc: number | null }[])
+    .filter((r) => !EXCLUDED_LAYOUTS.has(r.layout ?? ""))
+    .slice(0, count)
+    .map((r) => ({
+      oracle_id: r.oracle_id,
+      name: r.name,
+      slug: r.slug,
+      layout: r.layout,
+      type_line: r.type_line,
+      mana_cost: r.mana_cost,
+      colors: r.colors ? JSON.stringify(r.colors) : null,
+      cmc: r.cmc,
+    }));
 }
 
 /** Get a cross-card comparison pair: two different cards, one illustration each */
@@ -277,7 +287,7 @@ export async function getPrintingsForCard(oracleId: string): Promise<Map<string,
     .not("illustration_id", "is", null)
     .eq("sets.digital", false)
     .not("set_code", "in", `(${NON_ENGLISH_SETS.join(",")})`)
-    .order("released_at", { ascending: true });
+    .order("released_at", { ascending: false });
 
   if (error) throw new Error(`Failed to get printings: ${error.message}`);
 
@@ -1517,29 +1527,70 @@ export async function getDailyChallengeStats(challengeId: number): Promise<Daily
 // Gauntlet Themes
 // =============================================================================
 
+/** Pick a random theme with balanced type selection (pick type first, then theme) */
+function pickBalancedTheme(themes: GauntletTheme[]): GauntletTheme | null {
+  if (themes.length === 0) return null;
+  // Get distinct types
+  const types = [...new Set(themes.map((t) => t.theme_type))];
+  // Pick a random type
+  const type = types[Math.floor(Math.random() * types.length)];
+  // Pick a random theme within that type
+  const ofType = themes.filter((t) => t.theme_type === type);
+  return ofType[Math.floor(Math.random() * ofType.length)];
+}
+
 /** Get a random active theme */
 export async function getRandomTheme(): Promise<GauntletTheme | null> {
-  // Supabase doesn't support ORDER BY random(), so fetch all active and pick one
   const { data } = await getAdminClient()
     .from("gauntlet_themes")
     .select("*")
     .eq("is_active", true);
 
-  if (!data || data.length === 0) return null;
-  return data[Math.floor(Math.random() * data.length)] as GauntletTheme;
+  return pickBalancedTheme((data as GauntletTheme[]) ?? []);
 }
 
-/** Get a random VS theme (tribe-based) for the regular VS page */
-export async function getRandomVsTheme(): Promise<GauntletTheme | null> {
+/** Get a random VS theme for the regular VS page */
+export async function getRandomVsTheme(allowedTypes?: string[]): Promise<GauntletTheme | null> {
+  const types = allowedTypes ?? ["tribe", "set", "artist", "tag", "art_tag"];
   const { data } = await getAdminClient()
     .from("gauntlet_themes")
     .select("*")
     .eq("is_active", true)
     .eq("pool_mode", "vs")
-    .in("theme_type", ["tribe", "set", "artist"]);
+    .in("theme_type", types);
 
-  if (!data || data.length === 0) return null;
-  return data[Math.floor(Math.random() * data.length)] as GauntletTheme;
+  return pickBalancedTheme((data as GauntletTheme[]) ?? []);
+}
+
+/** Get two random oracle_ids that share an oracle tag */
+export async function getRandomCardsByTag(tagId: string): Promise<string[]> {
+  const { data } = await getAdminClient()
+    .from("oracle_tags")
+    .select("oracle_id")
+    .eq("tag_id", tagId)
+    .limit(200);
+
+  if (!data || data.length < 2) return [];
+  const ids = data.map((r: { oracle_id: string }) => r.oracle_id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids.slice(0, 2);
+}
+
+/** Get two random oracle_ids that share an illustration (art) tag */
+export async function getRandomCardsByArtTag(tagId: string): Promise<string[]> {
+  const { data } = await getAdminClient()
+    .rpc("get_oracle_ids_by_art_tag", { p_tag_id: tagId });
+
+  if (!data || data.length < 2) return [];
+  const ids = data.map((r: { oracle_id: string }) => r.oracle_id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids.slice(0, 2);
 }
 
 /** Get two random oracle_ids by a specific artist */
@@ -1766,18 +1817,21 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
   // Shuffle and take count
   const shuffled = oracleIds.sort(() => Math.random() - 0.5).slice(0, count);
 
-  // Get card data + representative printing
+  // Get card data + representative printing (exclude non-standard layouts)
   const { data: cards } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, type_line, mana_cost")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost")
     .in("oracle_id", shuffled);
 
   if (!cards || cards.length === 0) return [];
+  const filteredCards = cards.filter((c) => !EXCLUDED_LAYOUTS.has(c.layout ?? ""));
+  if (filteredCards.length === 0) return [];
+  const filteredIds = filteredCards.map((c) => c.oracle_id);
 
   const { data: printings } = await getAdminClient()
     .from("printings")
     .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
-    .in("oracle_id", shuffled)
+    .in("oracle_id", filteredIds)
     .not("illustration_id", "is", null)
     .eq("sets.digital", false)
     .order("released_at", { ascending: false });
@@ -1789,7 +1843,7 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
     }
   }
 
-  return cards
+  return filteredCards
     .map((card) => {
       const printing = printingMap.get(card.oracle_id);
       if (!printing) return null;
@@ -1890,7 +1944,7 @@ export async function getBrewCount(
       query = query.ilike("oracle_text", `%${rulesText}%`);
     }
     if (colors && colors.length > 0) {
-      query = query.contains("colors", colors);
+      query = query.filter("colors", "cs", JSON.stringify(colors));
     }
 
     const { count } = await query;

@@ -88,6 +88,7 @@ export default async function VsPage({
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-2 md:py-8">
       <ShowdownView
+        key={pair.a.oracle_id + pair.b.oracle_id}
         mode="vs"
         initialPair={pair}
         initialFilters={hasFilters ? filters : undefined}

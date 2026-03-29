@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 interface SearchResult {
@@ -107,14 +108,14 @@ export default function SearchModal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100]" onClick={onClose}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <div className="absolute inset-0 bg-black/50" />
 
       {/* Modal */}
       <div
-        className="relative max-w-lg mx-auto mt-3 sm:mt-[15vh] mx-4"
+        className="relative max-w-lg mx-auto mt-16 sm:mt-[15vh] px-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
@@ -207,6 +208,7 @@ export default function SearchModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

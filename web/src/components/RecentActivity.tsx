@@ -56,17 +56,18 @@ export default function RecentActivity() {
   if (gauntlets.length === 0) return null;
 
   return (
-    <div className="mt-8 border-t border-gray-800 pt-6">
-      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 text-center">
+    <div className="mt-6 pt-4">
+      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 text-center">
         Recent Gauntlets
       </h3>
-      <div className="flex gap-3 overflow-x-auto pb-2 justify-center">
+      <div className="space-y-1.5">
         {gauntlets.map((g) => {
           const champion = g.results[g.results.length - 1];
           return (
-            <div
+            <a
               key={g.id}
-              className="flex items-center gap-2 bg-gray-900/50 rounded-lg px-3 py-2 shrink-0"
+              href={`/gauntlet/result/${g.id}`}
+              className="flex items-center gap-2 bg-gray-900/50 rounded-lg px-3 py-2 hover:bg-gray-800/50 transition-colors cursor-pointer"
             >
               {champion && (
                 <img
@@ -76,14 +77,14 @@ export default function RecentActivity() {
                 />
               )}
               <div className="min-w-0">
-                <p className="text-xs font-medium text-amber-400 truncate max-w-[120px]">
+                <p className="text-xs font-medium text-amber-400 truncate">
                   {g.champion_name}
                 </p>
                 <p className="text-[10px] text-gray-500">
                   {g.champion_wins}W · {g.pool_size} cards · {timeAgo(g.completed_at)}
                 </p>
               </div>
-            </div>
+            </a>
           );
         })}
       </div>

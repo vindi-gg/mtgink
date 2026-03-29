@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
+import ShowdownSubnav, { ShowdownSidebar } from "./ShowdownSubnav";
+import type { ThemeRotation, VsThemeType } from "./ShowdownSubnav";
+import { VS_THEME_TYPES } from "./ShowdownSubnav";
 import { artCropUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -100,11 +103,26 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
 
   const [sides, setSides] = useState(() => normalizePair(initialPair, mode));
   const [voting, setVoting] = useState(false);
-  const [filters] = useState<CompareFilters>(initialFilters ?? {});
+  const [filters, setFilters] = useState<CompareFilters>(initialFilters ?? {});
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [selectedCard, setSelectedCard] = useState<0 | 1 | null>(null);
+  const [currentThemeLabel, setCurrentThemeLabel] = useState(themeLabel);
   const isMobileCard = typeof window !== "undefined" && window.innerWidth < 768 && imageMode === "card";
+
+  // Theme rotation (VS only)
+  const [themeRotation, setThemeRotation] = useState<ThemeRotation>(() => {
+    if (typeof window === "undefined") return "manual";
+    return (localStorage.getItem("mtgink_theme_rotation") as ThemeRotation) || "manual";
+  });
+  const [themeTypes, setThemeTypes] = useState<VsThemeType[]>(() => {
+    if (typeof window === "undefined") return VS_THEME_TYPES.map((t) => t.value);
+    const saved = localStorage.getItem("mtgink_theme_types");
+    if (saved) try { return JSON.parse(saved); } catch { /* ignore */ }
+    return VS_THEME_TYPES.map((t) => t.value);
+  });
+  const themeTypesRef = useRef(themeTypes);
+  themeTypesRef.current = themeTypes;
+  const voteCountRef = useRef(0);
 
   const sidesRef = useRef(sides);
   const votingRef = useRef(false);
@@ -175,6 +193,47 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
     setSelectedCard(null);
   }
 
+  function handleThemeRotationChange(value: ThemeRotation) {
+    setThemeRotation(value);
+    localStorage.setItem("mtgink_theme_rotation", value);
+    voteCountRef.current = 0;
+  }
+
+  function handleThemeTypesChange(types: VsThemeType[]) {
+    setThemeTypes(types);
+    localStorage.setItem("mtgink_theme_types", JSON.stringify(types));
+  }
+
+  async function loadNewTheme() {
+    try {
+      const typesParam = themeTypesRef.current.length < VS_THEME_TYPES.length
+        ? `&theme_types=${themeTypesRef.current.join(",")}`
+        : "";
+      const res = await fetch(`/api/showdown/compare?mode=vs&random_theme=1${typesParam}`);
+      if (res.ok) {
+        const data = await res.json();
+        const { _theme, ...pair } = data;
+        updateSides(pair);
+        setFilters(_theme?.filters ?? {});
+        setCurrentThemeLabel(_theme?.label ?? undefined);
+        filtersRef.current = _theme?.filters ?? {};
+        // Update URL to reflect new theme
+        const url = new URL("/showdown/vs", window.location.origin);
+        if (_theme?.filters?.subtype) {
+          url.searchParams.set("subtype", _theme.filters.subtype);
+          if (_theme.filters.type) url.searchParams.set("type", _theme.filters.type);
+        } else if (_theme?.filters?.set_code) {
+          url.searchParams.set("set_code", _theme.filters.set_code);
+        } else if (_theme?.label) {
+          url.searchParams.set("artist", _theme.label);
+        }
+        window.history.replaceState(null, "", url.toString());
+      }
+    } catch (err) {
+      console.error("Failed to load new theme:", err);
+    }
+  }
+
   // --- Vote ---
 
   async function vote(winnerIdx: 0 | 1) {
@@ -219,6 +278,17 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
 
       const data = await res.json();
       updateSides(isRemix ? (data as VoteResponse).next : (data as CardVoteResponse).next);
+
+      // Theme rotation (VS only)
+      if (!isRemix && themeRotation !== "manual") {
+        voteCountRef.current++;
+        const threshold = themeRotation === "every" ? 1 : 5;
+        if (voteCountRef.current >= threshold) {
+          voteCountRef.current = 0;
+          await loadNewTheme();
+          return;
+        }
+      }
     } catch (err) {
       console.error("Vote failed:", err);
     } finally {
@@ -339,133 +409,105 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
     );
   }
 
-  return (
-    <div>
-      {/* Heading */}
-      <h2 className="font-bold text-center mb-1 md:mb-2 text-base md:text-lg truncate max-w-full px-2">
-        {isRemix ? (
-          <>
-            Which{" "}
-            <a href={`/card/${a.slug}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">
-              {a.name}
-            </a>{" "}
-            art is best?
-          </>
-        ) : filters.subtype ? (
-          <>Which <span className="text-amber-400 capitalize">{filters.subtype}</span> is best?</>
-        ) : filters.type ? (
-          <>Which <span className="text-amber-400 capitalize">{filters.type}</span> is best?</>
-        ) : filters.set_code ? (
-          <>Which <span className="text-amber-400 uppercase">{filters.set_code}</span> card is best?</>
-        ) : themeLabel ? (
-          <>Best <a href={`/artists/${themeLabel.toLowerCase().replace(/\s+/g, "-")}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">{themeLabel}</a> card?</>
-        ) : (
-          <>Which card is best?</>
-        )}
-      </h2>
+  const sidebarProps = {
+    shareUrl: shareUrl(),
+    cardLinks: sameCard
+      ? [{ name: a.name, slug: a.slug }]
+      : [{ name: a.name, slug: a.slug }, { name: b.name, slug: b.slug }],
+    themeRotation: !isRemix ? themeRotation : undefined,
+    onThemeRotationChange: !isRemix ? handleThemeRotationChange : undefined,
+    onNewTheme: !isRemix ? loadNewTheme : undefined,
+    themeTypes: !isRemix ? themeTypes : undefined,
+    onThemeTypesChange: !isRemix ? handleThemeTypesChange : undefined,
+  };
 
-      {/* Main grid */}
-      <div className="relative max-w-4xl mx-auto">
-        {voting && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/60 rounded-lg backdrop-blur-[2px] pointer-events-none">
-            <div className="flex items-center gap-2 text-amber-400">
-              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              <span className="text-sm font-medium">Loading next...</span>
+  return (
+    <div className="md:flex md:gap-6 md:max-w-7xl md:mx-auto">
+      <div className="flex-1 min-w-0">
+        {/* Subnav */}
+        <ShowdownSubnav {...sidebarProps}>
+          {isRemix ? (
+            <>
+              Which{" "}
+              <a href={`/card/${a.slug}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">
+                {a.name}
+              </a>{" "}
+              art is best?
+            </>
+          ) : filters.subtype ? (
+            <>Which <span className="text-amber-400 capitalize">{filters.subtype}</span> is best?</>
+          ) : filters.type ? (
+            <>Which <span className="text-amber-400 capitalize">{filters.type}</span> is best?</>
+          ) : filters.set_code ? (
+            <>Which <span className="text-amber-400 uppercase">{filters.set_code}</span> card is best?</>
+          ) : currentThemeLabel ? (
+            <>Best <a href={`/artists/${currentThemeLabel.toLowerCase().replace(/\s+/g, "-")}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">{currentThemeLabel}</a> card?</>
+          ) : (
+            <>Which card is best?</>
+          )}
+        </ShowdownSubnav>
+
+        {/* Main grid */}
+        <div className="relative max-w-4xl mx-auto">
+          {voting && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/60 rounded-lg backdrop-blur-[2px] pointer-events-none">
+              <div className="flex items-center gap-2 text-amber-400">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span className="text-sm font-medium">Loading next...</span>
+              </div>
             </div>
-          </div>
-        )}
-        {imageMode === "card" ? (
-          <>
-            {/* Mobile: overlapping cards; Desktop: side-by-side grid */}
-            <div className="hidden md:grid md:grid-cols-2 md:gap-6">
+          )}
+          {imageMode === "card" ? (
+            <>
+              {/* Mobile: overlapping cards; Desktop: side-by-side grid */}
+              <div className="hidden md:grid md:grid-cols-2 md:gap-6">
+                {renderSide(a, 0)}
+                {renderSide(b, 1)}
+              </div>
+              <div className="md:hidden relative w-[90%] mx-auto" style={{ aspectRatio: "488 / 830" }}>
+                <div className={`absolute top-0 left-0 w-[75%] transition-all duration-200 ${selectedCard === 0 ? "z-30" : "z-10"}`}>
+                  {renderSide(a, 0)}
+                </div>
+                <div className={`absolute bottom-[5%] right-0 w-[75%] transition-all duration-200 ${selectedCard === 1 || selectedCard === null ? "z-20" : "z-10"}`}>
+                  {renderSide(b, 1)}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
               {renderSide(a, 0)}
               {renderSide(b, 1)}
             </div>
-            <div className="md:hidden relative w-[90%] mx-auto" style={{ aspectRatio: "488 / 830" }}>
-              <div className={`absolute top-0 left-0 w-[75%] transition-all duration-200 ${selectedCard === 0 ? "z-30" : "z-10"}`}>
-                {renderSide(a, 0)}
-              </div>
-              <div className={`absolute bottom-[5%] right-0 w-[75%] transition-all duration-200 ${selectedCard === 1 || selectedCard === null ? "z-20" : "z-10"}`}>
-                {renderSide(b, 1)}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
-            {renderSide(a, 0)}
-            {renderSide(b, 1)}
+          )}
+        </div>
+
+        {filterError && (
+          <p className="text-center text-sm text-red-400 mt-2">{filterError}</p>
+        )}
+
+        <div className="hidden md:flex justify-center items-center gap-6 mt-3 text-xs text-gray-600">
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
+            <span>Vote Left</span>
           </div>
-        )}
-      </div>
-
-      {!isRemix && (hasActiveFilters(filters) || themeLabel) && (
-        <div className="text-center mt-2">
-          <a
-            href={`/showdown/vs`}
-            className="inline-block px-4 py-1.5 text-xs font-medium text-gray-400 border border-gray-700 rounded-lg hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
-          >
-            New theme
-          </a>
-        </div>
-      )}
-
-      {filterError && (
-        <p className="text-center text-sm text-red-400 mt-2">{filterError}</p>
-      )}
-
-      <div className="hidden md:flex justify-center items-center gap-6 mt-3 text-xs text-gray-600">
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
-          <span>Vote Left</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">S</kbd>
-          <span>Skip</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span>Vote Right</span>
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">S</kbd>
+            <span>Skip</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span>Vote Right</span>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
+          </div>
         </div>
       </div>
 
-      {/* Secondary actions — below vote controls */}
-      <div className="flex justify-center gap-2 mt-3">
-        <button
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(shareUrl());
-            } catch {
-              const input = document.createElement("input");
-              input.value = shareUrl();
-              document.body.appendChild(input);
-              input.select();
-              document.execCommand("copy");
-              document.body.removeChild(input);
-            }
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
-          className="px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors cursor-pointer"
-        >
-          {copied ? "Copied!" : "Share"}
-        </button>
-        {isRemix && sameCard && (
-          <a
-            href={`/card/${a.slug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
-          >
-            All {a.name} prints
-          </a>
-        )}
-      </div>
-
+      {/* Desktop sidebar */}
+      <ShowdownSidebar {...sidebarProps} />
     </div>
   );
 }

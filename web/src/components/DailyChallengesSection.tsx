@@ -24,17 +24,16 @@ export default function DailyChallengesSection({ challenges: serverChallenges }:
   const [challenges, setChallenges] = useState(serverChallenges);
   const [participated, setParticipated] = useState<Set<number>>(new Set());
 
-  // Fetch fresh challenges client-side to avoid ISR staleness
+  // Fetch fresh challenges client-side to avoid ISR/router-cache staleness
   useEffect(() => {
     const sessionId = getSessionId();
-    if (!sessionId) return;
+    const url = sessionId ? `/api/daily?session_id=${sessionId}` : `/api/daily`;
 
-    fetch(`/api/daily?session_id=${sessionId}`)
+    fetch(url)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setChallenges(data);
-          // Participation is embedded in the response from getDailyChallenges
           const done = new Set<number>(
             data.filter((c: DailyChallenge & { participated?: boolean }) => c.participated).map((c: DailyChallenge) => c.id)
           );

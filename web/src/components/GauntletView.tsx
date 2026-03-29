@@ -5,6 +5,7 @@ import Link from "next/link";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
+import ShowdownSubnav, { ShowdownSidebar } from "./ShowdownSubnav";
 import RecentActivity from "./RecentActivity";
 import { artCropUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
@@ -57,6 +58,7 @@ interface GauntletViewProps {
   cardName?: string;
   filterLabel?: string;
   filters?: CompareFilters;
+  tag?: string;
   dailyChallengeId?: number;
   onComplete?: (champion: GauntletEntry, championWins: number, results: GauntletResult[]) => void;
   hideControls?: boolean;
@@ -71,6 +73,7 @@ export default function GauntletView({
   cardName,
   filterLabel,
   filters,
+  tag,
   dailyChallengeId,
   onComplete,
   hideControls,
@@ -113,9 +116,10 @@ export default function GauntletView({
   // --- localStorage persistence ---
   const storageKey = dailyChallengeId
     ? `mtgink_gauntlet_daily_${dailyChallengeId}`
-    : null; // Only persist daily gauntlets (regular ones get fresh pools)
+    : "mtgink_gauntlet_active";
 
   interface SavedGauntletState {
+    url?: string; // pathname + search — only restore if it matches
     pool: GauntletEntry[];
     championIdx: number;
     challengerIdx: number;
@@ -135,8 +139,15 @@ export default function GauntletView({
       const raw = localStorage.getItem(storageKey);
       if (!raw) { setDidRestore(true); return; }
       const saved: SavedGauntletState = JSON.parse(raw);
+      // For non-daily gauntlets, only restore if the URL matches (avoid
+      // restoring a Dragon gauntlet when the user navigated to Rogues)
+      const currentUrl = window.location.pathname + window.location.search;
+      if (!dailyChallengeId && saved.url && saved.url !== currentUrl) {
+        localStorage.removeItem(storageKey);
+        setDidRestore(true);
+        return;
+      }
       if (saved.phase === "complete") {
-        // Already completed — clear saved state
         localStorage.removeItem(storageKey);
         setDidRestore(true);
         return;
@@ -164,6 +175,7 @@ export default function GauntletView({
       return;
     }
     const state: SavedGauntletState = {
+      url: window.location.pathname + window.location.search,
       pool,
       championIdx,
       challengerIdx,
@@ -371,10 +383,12 @@ export default function GauntletView({
       const params = new URLSearchParams();
       params.set("count", String(count));
       params.set("exclude", excludeIds);
+      if (tag) params.set("tag", tag);
       if (filters?.colors?.length) params.set("colors", filters.colors.join(","));
       if (filters?.type) params.set("type", filters.type);
       if (filters?.subtype) params.set("subtype", filters.subtype);
       if (filters?.set_code) params.set("set_code", filters.set_code);
+      if (filters?.rules_text) params.set("rules_text", filters.rules_text);
 
       const res = await fetch(`/api/showdown/gauntlet?${params}`);
       if (!res.ok) throw new Error("Failed to fetch more cards");
@@ -544,25 +558,23 @@ export default function GauntletView({
     );
   }
 
+  function capitalize(s: string): string {
+    return s.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   const title = themeName
-    ? themeName
+    ? capitalize(themeName)
     : cardName
       ? `${cardName} Gauntlet`
       : filterLabel
-        ? `${filterLabel} Gauntlet`
+        ? `${capitalize(filterLabel)} Gauntlet`
         : "Gauntlet";
 
   // "Another one" button — same type, different random pick
   const repeatUrl = cardName
     ? "/showdown/gauntlet?mode=card"
-    : filterLabel
-      ? "/showdown/gauntlet?mode=group"
-      : "/showdown/gauntlet";
-  const repeatLabel = cardName
-    ? "New Card"
-    : filterLabel
-      ? "New Group"
-      : "New Random";
+    : "/showdown/gauntlet";
+  const repeatLabel = cardName ? "New Card" : "New Theme";
 
   // --- Playing phase ---
 
@@ -586,59 +598,61 @@ export default function GauntletView({
   }
 
   if (phase === "playing" && champion && challenger) {
+    const gauntletSidebarProps = {
+      cardLinks: champion.oracle_id === challenger.oracle_id
+        ? [{ name: champion.name, slug: champion.slug }]
+        : [{ name: champion.name, slug: champion.slug }, { name: challenger.name, slug: challenger.slug }],
+    };
+
     return (
-      <div>
-        {/* Thin title bar with title + counter */}
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-bold text-amber-400 truncate">{title}</span>
-          <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-            {currentMatch + 1}/{pool.length}
-          </span>
+      <div className="md:flex md:gap-6 md:max-w-7xl md:mx-auto">
+        <div className="flex-1 min-w-0">
+          {/* Subnav */}
+          <ShowdownSubnav {...gauntletSidebarProps}>
+            <span className="text-amber-400">{title}</span>
+            <span className="text-gray-500 text-sm ml-2">{currentMatch + 1}/{pool.length}</span>
+          </ShowdownSubnav>
+
+          {/* Segmented progress ticks */}
+          <div className="mb-2">
+            {renderProgressTicks()}
+          </div>
+
+          {/* Main grid */}
+          <div className="relative max-w-4xl mx-auto">
+            <div className={`grid ${imageMode === "card" ? "grid-cols-2" : "grid-cols-1 landscape:grid-cols-2"} md:grid-cols-2 gap-2 md:gap-6`}>
+              {renderEntry(champion, 0, "Champion", championWins)}
+              {renderEntry(challenger, 1, "Challenger")}
+            </div>
+          </div>
+
+          {/* Keyboard hints */}
+          <div className="hidden md:flex justify-center items-center gap-6 mt-3 text-xs text-gray-600">
+            <div className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
+              <span>Vote Left</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Z</kbd>
+              <span>Undo</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Esc</kbd>
+              <span>Reset</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span>Vote Right</span>
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
+            </div>
+          </div>
+
+          {/* Controls removed — nav handles mode switching */}
         </div>
 
-        {/* Segmented progress ticks */}
-        <div className="mb-2">
-          {renderProgressTicks()}
-        </div>
-
-        {/* Main grid */}
-        <div className="relative max-w-4xl mx-auto">
-          <div className={`grid ${imageMode === "card" ? "grid-cols-2" : "grid-cols-1 landscape:grid-cols-2"} md:grid-cols-2 gap-2 md:gap-6`}>
-            {renderEntry(champion, 0, "Champion", championWins)}
-            {renderEntry(challenger, 1, "Challenger")}
-          </div>
-        </div>
-
-
-        {/* Keyboard hints */}
-        <div className="hidden md:flex justify-center items-center gap-6 mt-3 text-xs text-gray-600">
-          <div className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
-            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
-            <span>Vote Left</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Z</kbd>
-            <span>Undo</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Esc</kbd>
-            <span>Reset</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span>Vote Right</span>
-            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">D</kbd>
-            <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&rarr;</kbd>
-          </div>
-        </div>
-
-        {/* Controls */}
-        {!hideControls && (
-          <div className="flex justify-center gap-3 mt-4">
-            {renderModeLinks()}
-            {renderNewGameDropdown()}
-          </div>
-        )}
+        {/* Desktop sidebar */}
+        <ShowdownSidebar {...gauntletSidebarProps} />
       </div>
     );
   }
@@ -648,8 +662,68 @@ export default function GauntletView({
   const finalChampion = pool[championIdx];
   const sortedResults = [...results].sort((a, b) => b.position - a.position);
 
+  function renderCompleteActions() {
+    return (
+      <>
+        <a
+          href={repeatUrl}
+          className="block w-full px-4 py-2 text-sm font-medium rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors text-center cursor-pointer"
+        >
+          {repeatLabel}
+        </a>
+        <button
+          onClick={() => {
+            const newPool = fixedOrder ? [...initialPool] : [...initialPool].sort(() => Math.random() - 0.5);
+            setPool(newPool);
+            setChampionIdx(0);
+            setChallengerIdx(1);
+            setChampionWins(0);
+            setResults([]);
+            setUndoStack([]);
+            eliminationOrder.current = 0;
+            matchups.current = [];
+            setPhase(initialPool.length < 2 ? "complete" : "playing");
+          }}
+          className="w-full px-4 py-2 text-sm font-medium rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
+        >
+          Replay
+        </button>
+        {!isRemix && (
+          <button
+            onClick={() => extendGauntlet(10)}
+            disabled={extending}
+            className="w-full px-4 py-2 text-sm font-medium rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {extending ? "Loading..." : "+10 More"}
+          </button>
+        )}
+        {resultId && (
+          <button
+            onClick={async () => {
+              const url = `${window.location.origin}/gauntlet/result/${resultId}`;
+              try { await navigator.clipboard.writeText(url); } catch {
+                const input = document.createElement("input");
+                input.value = url;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand("copy");
+                document.body.removeChild(input);
+              }
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="w-full px-4 py-2 text-sm font-medium rounded-lg border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
+          >
+            {copied ? "Link copied!" : "Share"}
+          </button>
+        )}
+      </>
+    );
+  }
+
   return (
-    <div>
+    <div className="md:flex md:gap-6 md:max-w-7xl md:mx-auto">
+      <div className="flex-1 min-w-0">
       <h2 className="font-bold text-center mb-1 text-base md:text-lg">
         <span className="text-amber-400">{title}</span>
         <span className="text-gray-400"> — Complete!</span>
@@ -674,6 +748,8 @@ export default function GauntletView({
           <div className="text-center mt-2">
             <a
               href={`/card/${finalChampion.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-sm font-bold text-amber-400 hover:text-amber-300"
             >
               {finalChampion.name}
@@ -685,12 +761,7 @@ export default function GauntletView({
         </div>
       )}
 
-      {/* New gauntlet above results */}
-      {!dailyChallengeId && (
-        <div className="flex justify-center mb-6">
-          {renderNewGameDropdown()}
-        </div>
-      )}
+      {/* Spacer above results */}
 
       {/* Results list */}
       {sortedResults.length > 0 && (
@@ -730,71 +801,36 @@ export default function GauntletView({
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex flex-wrap justify-center gap-3">
-        <a
-          href={repeatUrl}
-          className="px-5 py-2 text-sm font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
-        >
-          {repeatLabel}
-        </a>
-        <button
-          onClick={() => {
-            const newPool = fixedOrder ? [...initialPool] : [...initialPool].sort(() => Math.random() - 0.5);
-            setPool(newPool);
-            setChampionIdx(0);
-            setChallengerIdx(1);
-            setChampionWins(0);
-            setResults([]);
-            setUndoStack([]);
-            eliminationOrder.current = 0;
-            matchups.current = [];
-            setPhase(initialPool.length < 2 ? "complete" : "playing");
-          }}
-          className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-        >
-          Replay
-        </button>
-        {!isRemix && (
-          <>
-            <button
-              onClick={() => extendGauntlet(10)}
-              disabled={extending}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors disabled:opacity-50"
-            >
-              {extending ? "Loading..." : "+10 More"}
-            </button>
-          </>
-        )}
-        {renderNewGameDropdown()}
-        {resultId && (
-          <button
-            onClick={async () => {
-              const url = `${window.location.origin}/gauntlet/result/${resultId}`;
-              try { await navigator.clipboard.writeText(url); } catch {
-                const input = document.createElement("input");
-                input.value = url;
-                document.body.appendChild(input);
-                input.select();
-                document.execCommand("copy");
-                document.body.removeChild(input);
-              }
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 transition-colors"
-          >
-            {copied ? "Link copied!" : "Share"}
-          </button>
-        )}
+      {/* Actions — mobile only */}
+      <div className="flex flex-wrap justify-center gap-3 md:hidden">
+        {renderCompleteActions()}
       </div>
 
-      {/* Mode + view toggles */}
-      <div className="flex justify-center gap-3 mt-4">
-        {renderModeLinks()}
+      {!hideControls && <div className="md:hidden"><RecentActivity /></div>}
       </div>
 
-      {!hideControls && <RecentActivity />}
+      {/* Desktop sidebar */}
+      <aside className="hidden md:block w-[300px] flex-shrink-0">
+        <div className="sticky top-20 space-y-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-2">
+            {finalChampion && (
+              <a
+                href={`/card/${finalChampion.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-gray-800 hover:text-amber-400 transition-colors rounded-lg"
+              >
+                <svg className="w-4 h-4 flex-shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                View {finalChampion.name}
+              </a>
+            )}
+            {renderCompleteActions()}
+          </div>
+          {!hideControls && <RecentActivity />}
+        </div>
+      </aside>
     </div>
   );
 }
