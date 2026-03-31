@@ -332,7 +332,8 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
   // --- Share ---
 
   function shareUrl(): string {
-    return `${window.location.origin}/showdown/${mode}?a=${a.set_code}-${a.collector_number}&b=${b.set_code}-${b.collector_number}`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://mtg.ink";
+    return `${origin}/showdown/${mode}?a=${a.set_code}-${a.collector_number}&b=${b.set_code}-${b.collector_number}`;
   }
 
   // --- Render side ---
