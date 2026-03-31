@@ -18,10 +18,16 @@ export const VS_THEME_TYPES: { value: VsThemeType; label: string }[] = [
   { value: "art_tag", label: "Art Tag" },
 ];
 
+interface ThemeLink {
+  label: string;
+  href: string;
+}
+
 interface ShowdownSubnavProps {
   children: React.ReactNode;
   shareUrl?: string;
   cardLinks?: CardLink[];
+  themeLink?: ThemeLink;
   themeRotation?: ThemeRotation;
   onThemeRotationChange?: (value: ThemeRotation) => void;
   onNewTheme?: () => void;
@@ -40,6 +46,7 @@ const rotationOptions: { value: ThemeRotation; label: string }[] = [
 function OptionsPanel({
   shareUrl,
   cardLinks,
+  themeLink,
   themeRotation,
   onThemeRotationChange,
   onNewTheme,
@@ -91,6 +98,7 @@ function OptionsPanel({
             Card
           </button>
         </div>
+        <p className="text-[10px] text-gray-600 text-center mt-1 hidden md:block">Press <kbd className="text-gray-500">W</kbd> to toggle</p>
       </div>
 
       {/* Theme rotation (VS only) */}
@@ -121,6 +129,16 @@ function OptionsPanel({
             </button>
           )}
         </div>
+      )}
+
+      {/* Standalone new theme button (gauntlet — no rotation selector) */}
+      {!themeRotation && onNewTheme && (
+        <button
+          onClick={onNewTheme}
+          className="w-full px-4 py-2 text-sm font-medium text-gray-300 border border-gray-700 rounded-lg hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
+        >
+          New theme
+        </button>
       )}
 
       {/* Theme type toggles (VS only) */}
@@ -162,6 +180,21 @@ function OptionsPanel({
             })}
           </div>
         </div>
+      )}
+
+      {/* Theme link */}
+      {themeLink && (
+        <a
+          href={themeLink.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 px-3 py-2.5 text-sm text-amber-400 hover:text-amber-300 hover:bg-gray-800 transition-colors rounded-lg"
+        >
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          View {themeLink.label}
+        </a>
       )}
 
       {/* Card links */}
@@ -231,6 +264,7 @@ export default function ShowdownSubnav({
   children,
   shareUrl,
   cardLinks,
+  themeLink,
   themeRotation,
   onThemeRotationChange,
   onNewTheme,
@@ -281,6 +315,7 @@ export default function ShowdownSubnav({
             <OptionsPanel
               shareUrl={shareUrl}
               cardLinks={cardLinks}
+              themeLink={themeLink}
               themeRotation={themeRotation}
               onThemeRotationChange={onThemeRotationChange}
               onNewTheme={onNewTheme}

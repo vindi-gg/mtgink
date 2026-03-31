@@ -612,6 +612,7 @@ export async function getPlayableSets(): Promise<MtgSet[]> {
     .select("*")
     .in("set_type", PLAYABLE_SET_TYPES)
     .eq("digital", false)
+    .gt("card_count", 0)
     .order("released_at", { ascending: false });
   return (data ?? []) as MtgSet[];
 }
@@ -621,6 +622,7 @@ export async function getAllSets(): Promise<MtgSet[]> {
   const { data } = await getAdminClient()
     .from("sets")
     .select("*")
+    .gt("card_count", 0)
     .order("released_at", { ascending: false });
   return (data ?? []) as MtgSet[];
 }
@@ -1540,12 +1542,17 @@ function pickBalancedTheme(themes: GauntletTheme[]): GauntletTheme | null {
 }
 
 /** Get a random active theme */
-export async function getRandomTheme(): Promise<GauntletTheme | null> {
-  const { data } = await getAdminClient()
+export async function getRandomTheme(allowedTypes?: string[]): Promise<GauntletTheme | null> {
+  let query = getAdminClient()
     .from("gauntlet_themes")
     .select("*")
     .eq("is_active", true);
 
+  if (allowedTypes?.length) {
+    query = query.in("theme_type", allowedTypes);
+  }
+
+  const { data } = await query;
   return pickBalancedTheme((data as GauntletTheme[]) ?? []);
 }
 
@@ -1594,6 +1601,26 @@ export async function getRandomCardsByArtTag(tagId: string): Promise<string[]> {
 }
 
 /** Get two random oracle_ids by a specific artist */
+/** Get two random illustration_ids by an artist (for remix mode) */
+export async function getRandomIllustrationsByArtist(artist: string): Promise<string[]> {
+  const { data } = await getAdminClient()
+    .from("printings")
+    .select("illustration_id")
+    .eq("artist", artist)
+    .not("illustration_id", "is", null)
+    .limit(500);
+
+  if (!data || data.length < 2) return [];
+  const unique = [...new Set(data.map((r: { illustration_id: string }) => r.illustration_id))];
+  if (unique.length < 2) return [];
+  for (let i = unique.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [unique[i], unique[j]] = [unique[j], unique[i]];
+  }
+  return unique.slice(0, 2);
+}
+
+/** Get two random oracle_ids by an artist (for VS mode) */
 export async function getRandomCardsByArtist(artist: string): Promise<string[]> {
   const { data } = await getAdminClient()
     .from("printings")

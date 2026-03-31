@@ -101,12 +101,20 @@ export default async function ArtistDetailPage({
           )}
         </div>
         {sorted.length >= 3 && (
-          <div className="flex gap-2 mb-8">
+          <div className="flex gap-2 mb-6 lg:hidden">
             <Link
-              href={`/showdown/gauntlet?artist=${encodeURIComponent(artist.name)}`}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
+              href={`/showdown/gauntlet?artist=${encodeURIComponent(artist.name)}&count=20`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors"
             >
-              Gauntlet
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              Gauntlet (20)
+            </Link>
+            <Link
+              href={`/showdown/gauntlet?artist=${encodeURIComponent(artist.name)}&count=50`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              All
             </Link>
           </div>
         )}

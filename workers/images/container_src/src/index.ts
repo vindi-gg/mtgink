@@ -222,6 +222,45 @@ async function existsInR2(key: string): Promise<boolean> {
 }
 
 async function loadManifest(): Promise<Manifest> {
+  const outputDir = process.env.OUTPUT_DIR || null;
+
+  // Try local manifest first
+  if (outputDir) {
+    const localPath = path.join(outputDir, "_manifest.json");
+    try {
+      if (existsSync(localPath)) {
+        const { readFile } = await import("fs/promises");
+        const body = await readFile(localPath, "utf-8");
+        const manifest = JSON.parse(body) as Manifest;
+        console.log(`  Loaded local manifest with ${Object.keys(manifest).length} entries`);
+        return manifest;
+      }
+    } catch {
+      // fall through
+    }
+    // No local manifest — scan filesystem to build one
+    console.log("  No local manifest found, scanning filesystem...");
+    const manifest: Manifest = {};
+    try {
+      const { readdirSync } = await import("fs");
+      const sets = readdirSync(outputDir, { withFileTypes: true }).filter(d => d.isDirectory());
+      for (const setDir of sets) {
+        const files = readdirSync(path.join(outputDir, setDir.name));
+        for (const file of files) {
+          if (file.endsWith(".jpg")) {
+            const key = `${setDir.name}/${file}`;
+            manifest[key] = "exists";
+          }
+        }
+      }
+      console.log(`  Built manifest from filesystem: ${Object.keys(manifest).length} entries`);
+    } catch {
+      console.log("  Could not scan filesystem, starting fresh");
+    }
+    return manifest;
+  }
+
+  // R2 manifest
   try {
     const { client, GetObjectCommand } = await getS3();
     const resp = await client.send(
@@ -288,8 +327,9 @@ async function processJob(
   const key = r2Key(job.set_code, job.collector_number, job.image_type);
 
   // Check manifest first (fastest — no network call)
-  if (!force && job.image_version) {
-    if (manifest[key] === job.image_version) {
+  if (!force && manifest[key]) {
+    // Skip if manifest has exact version match OR just knows the file exists
+    if (manifest[key] === job.image_version || manifest[key] === "exists") {
       return { uploaded: 0, skipped: 1, failed: 0 };
     }
   }
@@ -451,12 +491,30 @@ function computeSlugs(oracleCards: ScryfallOracleCard[]): Map<string, string> {
   return slugs;
 }
 
-async function importData() {
+interface DataImportResult {
+  newOracleCards: number;
+  newPrintings: number;
+  newSets: number;
+  newSetNames: string[];
+  newCards: { name: string; slug: string }[];
+  summary: string;
+}
+
+async function importData(): Promise<DataImportResult> {
   const startTime = Date.now();
   console.log("MTG Ink card data import starting");
 
   const client = new pg.Client(process.env.SUPABASE_DB_URL);
   await client.connect();
+
+  // Snapshot before import for diff detection
+  const { rows: [before] } = await client.query(`
+    SELECT
+      (SELECT COUNT(*) FROM oracle_cards) as oracle_count,
+      (SELECT COUNT(*) FROM printings) as printing_count,
+      (SELECT COUNT(*) FROM sets) as set_count
+  `);
+  await client.query(`CREATE TEMP TABLE _pre_sync_oracle AS SELECT oracle_id FROM oracle_cards`);
 
   // Log job start
   const { rows: [jobLog] } = await client.query(
@@ -719,7 +777,7 @@ async function importData() {
       console.log("  Artists table not found, skipping");
     }
 
-    // Final stats
+    // Final stats + diff detection
     const { rows: stats } = await client.query(`
       SELECT
         (SELECT COUNT(*) FROM sets) as sets,
@@ -730,18 +788,48 @@ async function importData() {
     `);
     const s = stats[0];
 
+    const newOracleCards = Number(s.oracle_cards) - Number(before.oracle_count);
+    const newPrintings = Number(s.printings) - Number(before.printing_count);
+    const newSets = Number(s.sets) - Number(before.set_count);
+
+    let newSetNames: string[] = [];
+    if (newSets > 0) {
+      const { rows: recentSets } = await client.query(
+        `SELECT name, set_code FROM sets ORDER BY released_at DESC NULLS LAST LIMIT $1`,
+        [newSets]
+      );
+      newSetNames = recentSets.map((r: any) => `${r.name} (${r.set_code.toUpperCase()})`);
+    }
+
+    let newCards: { name: string; slug: string }[] = [];
+    if (newOracleCards > 0) {
+      const { rows } = await client.query(`
+        SELECT o.name, o.slug FROM oracle_cards o
+        LEFT JOIN _pre_sync_oracle p ON o.oracle_id = p.oracle_id
+        WHERE p.oracle_id IS NULL
+        ORDER BY o.name
+      `);
+      newCards = rows.map((r: any) => ({ name: r.name, slug: r.slug }));
+    }
+    await client.query(`DROP TABLE IF EXISTS _pre_sync_oracle`).catch(() => {});
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const summary = `Done in ${elapsed}s — ${s.sets} sets, ${s.oracle_cards} oracle cards, ${s.printings} printings, ${s.card_faces} faces, ${s.illustrations} illustrations`;
-    console.log(`\n${summary}`);
+    const diffMsg = newOracleCards || newPrintings || newSets
+      ? ` | NEW: +${newSets} sets, +${newOracleCards} cards, +${newPrintings} printings`
+      : " | No new data";
+    console.log(`\n${summary}${diffMsg}`);
 
     await client.query(
       `UPDATE job_runs SET status = 'completed', processed_items = $1, message = $2, completed_at = NOW(), updated_at = NOW() WHERE id = $3`,
-      [pCount, summary, jobLogId]
+      [pCount, `${summary}${diffMsg}`, jobLogId]
     );
 
     status.state = "done";
     status.message = summary;
     status.elapsed = elapsed + "s";
+
+    return { newOracleCards, newPrintings, newSets, newSetNames, newCards, summary };
   } catch (err) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const msg = `Data import failed after ${elapsed}s: ${(err as Error).message}`;
@@ -1165,6 +1253,112 @@ async function upsertPriceBatch(
 
 // ── Job dispatcher ───────────────────────────────────────
 
+// ── Notifications ───────────────────────────────────────
+
+async function notifyDiscord(result: DataImportResult): Promise<void> {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  if (result.newOracleCards === 0 && result.newPrintings === 0 && result.newSets === 0) return;
+
+  const lines = ["**MTG Ink Data Sync**"];
+  if (result.newSets > 0) {
+    lines.push(`New sets: ${result.newSetNames.join(", ")}`);
+  }
+  if (result.newCards.length > 0) {
+    lines.push(`+${result.newOracleCards} new cards:`);
+    const cardLines = result.newCards.slice(0, 25).map(
+      (c) => `  [${c.name}](https://mtg.ink/card/${c.slug})`
+    );
+    lines.push(...cardLines);
+    if (result.newCards.length > 25) {
+      lines.push(`  _...and ${result.newCards.length - 25} more_`);
+    }
+  }
+  if (result.newPrintings > 0) {
+    lines.push(`+${result.newPrintings} new printings`);
+  }
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: lines.join("\n") }),
+    });
+    console.log("Discord notification sent");
+  } catch (err) {
+    console.error("Discord notification failed:", (err as Error).message);
+  }
+}
+
+async function revalidateVercel(result: DataImportResult): Promise<void> {
+  const secret = process.env.VERCEL_REVALIDATE_SECRET;
+  const baseUrl = process.env.VERCEL_URL || "https://mtg.ink";
+  if (!secret) return;
+  if (result.newOracleCards === 0 && result.newPrintings === 0 && result.newSets === 0) return;
+
+  const paths = ["/db/expansions", "/db/cards", "/db/tribes", "/db/tags", "/db/art-tags", "/artists", "/"];
+
+  try {
+    const resp = await fetch(`${baseUrl}/api/revalidate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({ paths }),
+    });
+    if (!resp.ok) {
+      console.error(`Vercel revalidation failed: ${resp.status}`);
+    } else {
+      console.log(`Revalidated ${paths.length} paths on Vercel`);
+    }
+  } catch (err) {
+    console.error("Vercel revalidation failed:", (err as Error).message);
+  }
+}
+
+// ── Sync orchestration ──────────────────────────────────
+
+async function runSync() {
+  const startTime = Date.now();
+  console.log("=== MTG Ink hourly sync starting ===");
+
+  // Step 1: Data import
+  console.log("\n--- Step 1/2: Data Import ---");
+  status.message = "Sync: importing card data";
+  const dataResult = await importData();
+
+  const hasNewData = dataResult.newOracleCards > 0 || dataResult.newPrintings > 0 || dataResult.newSets > 0;
+  if (hasNewData) {
+    console.log(`New data detected: +${dataResult.newOracleCards} cards, +${dataResult.newPrintings} printings, +${dataResult.newSets} sets`);
+  } else {
+    console.log("No new data detected");
+  }
+
+  // Step 2: Images (only if new printings)
+  if (dataResult.newPrintings > 0) {
+    console.log("\n--- Step 2/2: Image Scrape ---");
+    status.message = "Sync: downloading new card images";
+    await runJob("images");
+  } else {
+    console.log("\n--- Step 2/2: Image Scrape (skipped, no new printings) ---");
+  }
+
+  // Revalidate Vercel cache then notify Discord (pages + images are ready)
+  if (hasNewData) {
+    await revalidateVercel(dataResult);
+    await notifyDiscord(dataResult);
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`\n=== Sync complete in ${elapsed}s ===`);
+  status.state = "done";
+  status.message = `Sync complete in ${elapsed}s`;
+  status.elapsed = elapsed + "s";
+}
+
+// ── Job dispatcher ──────────────────────────────────────
+
 async function runJob(
   jobType: string,
   opts?: { setCodes?: string; force?: boolean }
@@ -1185,6 +1379,11 @@ async function runJob(
     console.error(`  ${msg}`);
     status.state = "error";
     status.error = msg;
+    return;
+  }
+
+  if (jobType === "sync") {
+    await runSync();
     return;
   }
 
@@ -1216,9 +1415,9 @@ async function runJob(
     console.log(`  Sets: ${requestedSets.join(", ")}`);
   }
 
-  // Load manifest from R2 (for fast skip checks)
+  // Load manifest (R2 or local) for fast skip checks
   status.message = "Loading manifest";
-  const manifest: Manifest = outputDir ? {} : await loadManifest();
+  const manifest: Manifest = await loadManifest();
 
   // Load printings from Supabase Postgres
   status.message = "Loading printings from database";

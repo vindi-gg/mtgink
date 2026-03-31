@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import AdBanner from "@/components/AdBanner";
 import { ImageModeProvider } from "@/lib/image-mode";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -61,6 +62,7 @@ export default function RootLayout({
           {adsEnabled && <AdBanner />}
         </ImageModeProvider>
         <SpeedInsights />
+        <GoogleAnalytics gaId="G-GL3TCYQPGY" />
       </body>
     </html>
   );

@@ -13,7 +13,7 @@ export default function ArtistGallery({
 }: {
   illustrations: ArtistIllustration[];
 }) {
-  const { cardUrl } = useImageMode();
+  const { cardUrl, imageMode } = useImageMode();
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   const hasMore = visible < illustrations.length;
@@ -27,7 +27,7 @@ export default function ArtistGallery({
             href={`/card/${ill.card_slug}`}
             className="group bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-amber-500/50 transition-colors"
           >
-            <div className="aspect-[4/3] bg-gray-800 overflow-hidden">
+            <div className={`${imageMode === "card" ? "aspect-[488/680]" : "aspect-[4/3]"} bg-gray-800 overflow-hidden`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}

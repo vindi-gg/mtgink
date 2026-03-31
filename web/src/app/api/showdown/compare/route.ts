@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
           ...pair,
-          _theme: { filters: themeFilters, label: themeLabel },
+          _theme: { filters: themeFilters, label: themeLabel, type: theme?.theme_type, artist: theme?.artist, tag_id: theme?.tag_id },
         });
       }
 

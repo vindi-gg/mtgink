@@ -1,4 +1,4 @@
-import { getClashPair, getSpecificClashPair, resolvePrintingRef, getRandomVsTheme, getRandomCardsByArtist } from "@/lib/queries";
+import { getClashPair, getSpecificClashPair, resolvePrintingRef, getRandomVsTheme, getRandomCardsByArtist, getRandomCardsByTag, getRandomCardsByArtTag } from "@/lib/queries";
 import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import ShowdownView from "@/components/ShowdownView";
 import type { CompareFilters } from "@/lib/types";
@@ -14,12 +14,14 @@ export const metadata = {
 export default async function VsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ colors?: string; type?: string; subtype?: string; set_code?: string; rules_text?: string; a?: string; b?: string; brew?: string; artist?: string }>;
+  searchParams: Promise<{ colors?: string; type?: string; subtype?: string; set_code?: string; rules_text?: string; a?: string; b?: string; brew?: string; artist?: string; tag?: string; art_tag?: string }>;
 }) {
-  const { colors, type, subtype, set_code, rules_text, a, b, brew: brewSlug, artist: artistParam } = await searchParams;
+  const { colors, type, subtype, set_code, rules_text, a, b, brew: brewSlug, artist: artistParam, tag, art_tag } = await searchParams;
 
   let filters: CompareFilters = {};
   let themeLabel: string | undefined;
+  let randomArtist: string | undefined;
+  let randomTagId: string | undefined;
 
   if (brewSlug) {
     const brew = await getBrewBySlug(brewSlug);
@@ -37,6 +39,10 @@ export default async function VsPage({
     }
   } else if (artistParam) {
     themeLabel = artistParam;
+  } else if (tag) {
+    themeLabel = tag;
+  } else if (art_tag) {
+    themeLabel = art_tag;
   } else if (colors || type || subtype || set_code || rules_text) {
     filters = {
       colors: colors ? colors.split(",").filter(Boolean) : undefined,
@@ -58,6 +64,10 @@ export default async function VsPage({
       filters = { set_code: theme.set_code };
     } else if (theme?.artist) {
       themeLabel = theme.artist;
+      randomArtist = theme.artist;
+    } else if (theme?.tag_id) {
+      themeLabel = theme.label;
+      randomTagId = theme.tag_id;
     }
   }
 
@@ -71,9 +81,24 @@ export default async function VsPage({
         pair = await getSpecificClashPair(refA.oracle_id, refB.oracle_id);
       }
     }
-    if (!pair && themeLabel) {
-      // Artist theme — fetch two random cards by that artist
-      const oracleIds = await getRandomCardsByArtist(themeLabel);
+    // Artist theme — from URL param or random theme pick
+    const artistName = artistParam || randomArtist;
+    if (!pair && artistName) {
+      const oracleIds = await getRandomCardsByArtist(artistName);
+      if (oracleIds.length >= 2) {
+        pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
+      }
+    }
+    // Tag — from URL param or random theme pick
+    const tagId = tag || randomTagId;
+    if (!pair && tagId) {
+      const oracleIds = await getRandomCardsByTag(tagId);
+      if (oracleIds.length >= 2) {
+        pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
+      }
+    }
+    if (!pair && art_tag) {
+      const oracleIds = await getRandomCardsByArtTag(art_tag);
       if (oracleIds.length >= 2) {
         pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
       }

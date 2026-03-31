@@ -2,6 +2,9 @@ name = "mtgink-images"
 main = "src/index.ts"
 compatibility_date = "2025-12-01"
 compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 * * * *"]
 account_id = "7dad892db6ba7c0845a9a8572da362fc"
 
 [observability]

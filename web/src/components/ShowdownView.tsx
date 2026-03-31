@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import CardImage from "./CardImage";
+import VoteGrid from "./VoteGrid";
+import type { VoteGridHandle } from "./VoteGrid";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
 import ShowdownSubnav, { ShowdownSidebar } from "./ShowdownSubnav";
@@ -98,16 +100,15 @@ interface ShowdownViewProps {
 }
 
 export default function ShowdownView({ mode, initialPair, initialFilters, themeLabel }: ShowdownViewProps) {
-  const { imageMode, cardUrl } = useImageMode();
+  const { imageMode, cardUrl, toggleImageMode } = useImageMode();
   const isRemix = mode === "remix";
 
   const [sides, setSides] = useState(() => normalizePair(initialPair, mode));
   const [voting, setVoting] = useState(false);
   const [filters, setFilters] = useState<CompareFilters>(initialFilters ?? {});
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [selectedCard, setSelectedCard] = useState<0 | 1 | null>(null);
   const [currentThemeLabel, setCurrentThemeLabel] = useState(themeLabel);
-  const isMobileCard = typeof window !== "undefined" && window.innerWidth < 768 && imageMode === "card";
+  const voteGridRef = useRef<VoteGridHandle>(null);
 
   // Theme rotation (VS only)
   const [themeRotation, setThemeRotation] = useState<ThemeRotation>(() => {
@@ -153,10 +154,6 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
       url.searchParams.set("set_code", filters.set_code);
       changed = true;
     }
-    if (themeLabel && !url.searchParams.has("artist")) {
-      url.searchParams.set("artist", themeLabel);
-      changed = true;
-    }
     if (changed) window.history.replaceState(null, "", url.toString());
   }, []);
 
@@ -190,7 +187,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
     const next = normalizePair(raw, mode);
     setSides(next);
     sidesRef.current = next;
-    setSelectedCard(null);
+    voteGridRef.current?.resetSelection();
   }
 
   function handleThemeRotationChange(value: ThemeRotation) {
@@ -224,8 +221,10 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
           if (_theme.filters.type) url.searchParams.set("type", _theme.filters.type);
         } else if (_theme?.filters?.set_code) {
           url.searchParams.set("set_code", _theme.filters.set_code);
-        } else if (_theme?.label) {
-          url.searchParams.set("artist", _theme.label);
+        } else if (_theme?.artist) {
+          url.searchParams.set("artist", _theme.artist);
+        } else if (_theme?.tag_id) {
+          url.searchParams.set(_theme.type === "art_tag" ? "art_tag" : "tag", _theme.tag_id);
         }
         window.history.replaceState(null, "", url.toString());
       }
@@ -338,41 +337,20 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
 
   // --- Render side ---
 
-  function renderSide(side: ShowdownSide, sideIdx: 0 | 1) {
+  function renderSide(side: ShowdownSide, sideIdx: 0 | 1, onClick?: () => void) {
     const artUrl = cardUrl(side.set_code, side.collector_number, side.image_version);
-    const isSelected = selectedCard === sideIdx;
-
-    const handleClick = () => {
-      if (isMobileCard) {
-        if (isSelected) {
-          vote(sideIdx);
-        } else {
-          setSelectedCard(sideIdx);
-        }
-      } else {
-        vote(sideIdx);
-      }
-    };
 
     return (
       <div className="flex flex-col items-center">
-        <div className={`relative w-full transition-shadow duration-200 rounded-[5%] ${isSelected && isMobileCard ? "ring-2 ring-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]" : ""}`}>
+        <div className="relative w-full">
           <CardImage
             key={side.illustration_id}
             src={artUrl}
             alt={`${side.name} by ${side.artist}`}
-            onClick={handleClick}
+            onClick={onClick ?? (() => vote(sideIdx))}
             onImageError={skip}
             className="w-full"
           />
-          {isSelected && isMobileCard && (
-            <div className="absolute bottom-0 left-0 right-0 rounded-b-[5%] pointer-events-none">
-              <div className="h-12 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
-              <div className="bg-black/90 px-3 py-1.5 rounded-b-[5%]">
-                <p className="text-center text-xs font-medium text-amber-400">Tap again to vote</p>
-              </div>
-            </div>
-          )}
           {imageMode !== "card" && (
             <CardPreviewOverlay
               setCode={side.set_code}
@@ -409,11 +387,27 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
     );
   }
 
+  // Build theme link based on active filters
+  const themeLink = (() => {
+    if (isRemix) return undefined;
+    if (filters.subtype) {
+      return { label: filters.subtype, href: `/db/tribes/${filters.subtype.toLowerCase()}` };
+    }
+    if (filters.set_code) {
+      return { label: filters.set_code.toUpperCase(), href: `/db/expansions/${filters.set_code}` };
+    }
+    if (currentThemeLabel && !filters.subtype && !filters.set_code) {
+      return { label: currentThemeLabel, href: `/artists/${currentThemeLabel.toLowerCase().replace(/\s+/g, "-")}` };
+    }
+    return undefined;
+  })();
+
   const sidebarProps = {
     shareUrl: shareUrl(),
     cardLinks: sameCard
       ? [{ name: a.name, slug: a.slug }]
       : [{ name: a.name, slug: a.slug }, { name: b.name, slug: b.slug }],
+    themeLink,
     themeRotation: !isRemix ? themeRotation : undefined,
     onThemeRotationChange: !isRemix ? handleThemeRotationChange : undefined,
     onNewTheme: !isRemix ? loadNewTheme : undefined,
@@ -460,28 +454,12 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
               </div>
             </div>
           )}
-          {imageMode === "card" ? (
-            <>
-              {/* Mobile: overlapping cards; Desktop: side-by-side grid */}
-              <div className="hidden md:grid md:grid-cols-2 md:gap-6">
-                {renderSide(a, 0)}
-                {renderSide(b, 1)}
-              </div>
-              <div className="md:hidden relative w-[90%] mx-auto" style={{ aspectRatio: "488 / 830" }}>
-                <div className={`absolute top-0 left-0 w-[75%] transition-all duration-200 ${selectedCard === 0 ? "z-30" : "z-10"}`}>
-                  {renderSide(a, 0)}
-                </div>
-                <div className={`absolute bottom-[5%] right-0 w-[75%] transition-all duration-200 ${selectedCard === 1 || selectedCard === null ? "z-20" : "z-10"}`}>
-                  {renderSide(b, 1)}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
-              {renderSide(a, 0)}
-              {renderSide(b, 1)}
-            </div>
-          )}
+          <VoteGrid
+            ref={voteGridRef}
+            renderLeft={(onClick) => renderSide(a, 0, onClick)}
+            renderRight={(onClick) => renderSide(b, 1, onClick)}
+            onVote={vote}
+          />
         </div>
 
         {filterError && (

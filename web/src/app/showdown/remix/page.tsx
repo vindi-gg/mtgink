@@ -1,4 +1,4 @@
-import { getComparisonPair, getSpecificComparisonPair, resolvePrintingRef } from "@/lib/queries";
+import { getComparisonPair, getSpecificComparisonPair, resolvePrintingRef, getRandomIllustrationsByArtist } from "@/lib/queries";
 import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import ShowdownView from "@/components/ShowdownView";
 import type { CompareFilters } from "@/lib/types";
@@ -14,9 +14,9 @@ export const metadata = {
 export default async function RemixPage({
   searchParams,
 }: {
-  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; set_code?: string; a?: string; b?: string; brew?: string }>;
+  searchParams: Promise<{ oracle_id?: string; colors?: string; type?: string; subtype?: string; set_code?: string; a?: string; b?: string; brew?: string; artist?: string }>;
 }) {
-  const { oracle_id, colors, type, subtype, set_code, a, b, brew: brewSlug } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, a, b, brew: brewSlug, artist } = await searchParams;
 
   let resolvedOracleId = oracle_id;
   let filters: CompareFilters = {};
@@ -44,6 +44,12 @@ export default async function RemixPage({
       const [refA, refB] = await Promise.all([resolvePrintingRef(a), resolvePrintingRef(b)]);
       if (refA && refB) {
         pair = await getSpecificComparisonPair(refA.illustration_id, refB.illustration_id);
+      }
+    }
+    if (!pair && artist) {
+      const illIds = await getRandomIllustrationsByArtist(artist);
+      if (illIds.length >= 2) {
+        pair = await getSpecificComparisonPair(illIds[0], illIds[1]);
       }
     }
     if (!pair) {

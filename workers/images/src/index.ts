@@ -6,6 +6,9 @@ interface Env {
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
   SUPABASE_DB_URL: string;
+  DISCORD_WEBHOOK_URL: string;
+  VERCEL_REVALIDATE_SECRET: string;
+  VERCEL_URL: string;
 }
 
 export class ImageScraper extends Container {
@@ -23,6 +26,9 @@ export class ImageScraper extends Container {
       R2_BUCKET: "mtgink-cdn",
       SUPABASE_DB_URL: env.SUPABASE_DB_URL || "",
       CONCURRENCY: "8",
+      DISCORD_WEBHOOK_URL: env.DISCORD_WEBHOOK_URL || "",
+      VERCEL_REVALIDATE_SECRET: env.VERCEL_REVALIDATE_SECRET || "",
+      VERCEL_URL: env.VERCEL_URL || "https://mtg.ink",
     };
   }
 
@@ -240,6 +246,6 @@ export default {
       const status = await fetchContainerStatus(container);
       if (status) break;
     }
-    await triggerJob(container, "images");
+    await triggerJob(container, "sync");
   },
 };

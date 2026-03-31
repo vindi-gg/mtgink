@@ -3,9 +3,12 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import CardImage from "./CardImage";
+import VoteGrid from "./VoteGrid";
+import type { VoteGridHandle } from "./VoteGrid";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import FavoriteButton from "./FavoriteButton";
-import ShowdownSubnav, { ShowdownSidebar } from "./ShowdownSubnav";
+import ShowdownSubnav, { ShowdownSidebar, VS_THEME_TYPES } from "./ShowdownSubnav";
+import type { VsThemeType } from "./ShowdownSubnav";
 import RecentActivity from "./RecentActivity";
 import { artCropUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
@@ -52,6 +55,11 @@ interface GauntletMatchup {
   loser_oracle_id?: string;
 }
 
+interface ThemeLink {
+  label: string;
+  href: string;
+}
+
 interface GauntletViewProps {
   mode: "remix" | "vs";
   pool: GauntletEntry[];
@@ -65,6 +73,7 @@ interface GauntletViewProps {
   themeName?: string;
   fixedOrder?: boolean;
   brewId?: string;
+  themeLink?: ThemeLink;
 }
 
 export default function GauntletView({
@@ -80,8 +89,9 @@ export default function GauntletView({
   themeName,
   fixedOrder,
   brewId,
+  themeLink: themeLinkProp,
 }: GauntletViewProps) {
-  const { imageMode, cardUrl } = useImageMode();
+  const { imageMode, cardUrl, toggleImageMode } = useImageMode();
   const isRemix = mode === "remix";
 
   const [pool, setPool] = useState(() =>
@@ -99,7 +109,22 @@ export default function GauntletView({
   const [resultId, setResultId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Theme type preferences (persisted to localStorage)
+  const isRandomTheme = !cardName && !filterLabel && !brewId && !dailyChallengeId;
+  const [themeTypes, setThemeTypes] = useState<VsThemeType[]>(() => {
+    if (typeof window === "undefined") return VS_THEME_TYPES.map((t) => t.value);
+    const stored = localStorage.getItem("mtgink_gauntlet_theme_types");
+    if (stored) return stored.split(",").filter(Boolean) as VsThemeType[];
+    return VS_THEME_TYPES.map((t) => t.value);
+  });
+
+  function handleThemeTypesChange(types: VsThemeType[]) {
+    setThemeTypes(types);
+    localStorage.setItem("mtgink_gauntlet_theme_types", types.join(","));
+  }
+
   const votingRef = useRef(false);
+  const voteGridRef = useRef<VoteGridHandle>(null);
   const eliminationOrder = useRef(0);
   const matchups = useRef<GauntletMatchup[]>([]);
 
@@ -298,6 +323,7 @@ export default function GauntletView({
   function vote(winnerSide: 0 | 1) {
     if (votingRef.current || phase !== "playing") return;
     votingRef.current = true;
+    voteGridRef.current?.resetSelection();
 
     // Save snapshot for undo
     setUndoStack((prev) => [...prev, {
@@ -498,7 +524,7 @@ export default function GauntletView({
     );
   }
 
-  function renderEntry(entry: GauntletEntry, side: 0 | 1, label: string, wins?: number) {
+  function renderEntry(entry: GauntletEntry, side: 0 | 1, label: string, wins?: number, onClick?: () => void) {
     const imgSrc = cardUrl(entry.set_code, entry.collector_number, entry.image_version);
 
     return (
@@ -508,7 +534,7 @@ export default function GauntletView({
             key={entry.illustration_id}
             src={imgSrc}
             alt={`${entry.name} by ${entry.artist}`}
-            onClick={() => vote(side)}
+            onClick={onClick ?? (() => vote(side))}
             className="w-full"
           />
           {imageMode !== "card" && (
@@ -526,7 +552,7 @@ export default function GauntletView({
             />
           )}
           {/* Champion/Challenger label — top left */}
-          <div className="absolute top-1.5 left-1.5 z-10">
+          <div className={`absolute top-2 left-0 z-10 px-2.5 py-0.5 rounded-r-full ${label === "Champion" ? "bg-amber-500/50" : "bg-black/50"}`}>
             <span className={`text-[10px] font-bold uppercase drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] ${label === "Champion" ? "text-amber-400" : "text-gray-400"}`}>
               {label}
               {wins !== undefined && wins > 0 && (
@@ -571,9 +597,12 @@ export default function GauntletView({
         : "Gauntlet";
 
   // "Another one" button — same type, different random pick
+  const themeTypesParam = isRandomTheme && themeTypes.length < VS_THEME_TYPES.length
+    ? `?theme_types=${themeTypes.join(",")}`
+    : "";
   const repeatUrl = cardName
     ? "/showdown/gauntlet?mode=card"
-    : "/showdown/gauntlet";
+    : `/showdown/gauntlet${themeTypesParam}`;
   const repeatLabel = cardName ? "New Card" : "New Theme";
 
   // --- Playing phase ---
@@ -598,10 +627,41 @@ export default function GauntletView({
   }
 
   if (phase === "playing" && champion && challenger) {
+    // Build theme link from prop or active filters
+    const themeLink = themeLinkProp ?? (() => {
+      if (isRemix && cardName) {
+        return { label: cardName, href: `/card/${champion.slug}` };
+      }
+      if (filterLabel && isRemix && !filters) {
+        // Artist remix — filterLabel is the artist name
+        const slug = filterLabel.toLowerCase().replace(/'/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        return { label: filterLabel, href: `/artists/${slug}` };
+      }
+      if (filters?.subtype) {
+        return { label: filters.subtype, href: `/db/tribes/${filters.subtype.toLowerCase()}` };
+      }
+      if (filters?.set_code) {
+        return { label: filters.set_code.toUpperCase(), href: `/db/expansions/${filters.set_code}` };
+      }
+      if (tag) {
+        return { label: filterLabel || tag, href: `/db/tags/${tag}` };
+      }
+      if (filterLabel && !filters) {
+        // Artist VS theme — filterLabel is the artist name
+        const slug = filterLabel.toLowerCase().replace(/'/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        return { label: filterLabel, href: `/artists/${slug}` };
+      }
+      return undefined;
+    })();
+
     const gauntletSidebarProps = {
+      themeLink,
       cardLinks: champion.oracle_id === challenger.oracle_id
         ? [{ name: champion.name, slug: champion.slug }]
         : [{ name: champion.name, slug: champion.slug }, { name: challenger.name, slug: challenger.slug }],
+      onNewTheme: isRandomTheme ? () => { window.location.href = repeatUrl; } : undefined,
+      themeTypes: isRandomTheme ? themeTypes : undefined,
+      onThemeTypesChange: isRandomTheme ? handleThemeTypesChange : undefined,
     };
 
     return (
@@ -620,10 +680,12 @@ export default function GauntletView({
 
           {/* Main grid */}
           <div className="relative max-w-4xl mx-auto">
-            <div className={`grid ${imageMode === "card" ? "grid-cols-2" : "grid-cols-1 landscape:grid-cols-2"} md:grid-cols-2 gap-2 md:gap-6`}>
-              {renderEntry(champion, 0, "Champion", championWins)}
-              {renderEntry(challenger, 1, "Challenger")}
-            </div>
+            <VoteGrid
+              ref={voteGridRef}
+              renderLeft={(onClick) => renderEntry(champion, 0, "Champion", championWins, onClick)}
+              renderRight={(onClick) => renderEntry(challenger, 1, "Challenger", undefined, onClick)}
+              onVote={vote}
+            />
           </div>
 
           {/* Keyboard hints */}
@@ -632,6 +694,10 @@ export default function GauntletView({
               <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">&larr;</kbd>
               <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">A</kbd>
               <span>Vote Left</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">W</kbd>
+              <span>Art/Card</span>
             </div>
             <div className="flex items-center gap-1.5">
               <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400 font-mono">Z</kbd>

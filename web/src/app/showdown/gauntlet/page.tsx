@@ -9,6 +9,8 @@ import {
   getRandomGauntletGroup,
   getRandomTheme,
   getTheme,
+  getArtistBySlug,
+  getTagBySlug,
 } from "@/lib/queries";
 import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import GauntletView from "@/components/GauntletView";
@@ -37,12 +39,15 @@ export default async function GauntletPage({
     mode?: string;
     artist?: string;
     tag?: string;
+    art_tag?: string;
     theme?: string;
+    theme_types?: string;
     rules_text?: string;
     brew?: string;
   }>;
 }) {
-  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag, theme: themeId, rules_text, brew: brewSlug } = await searchParams;
+  const { oracle_id, colors, type, subtype, set_code, count, mode, artist, tag, art_tag, theme: themeId, theme_types, rules_text, brew: brewSlug } = await searchParams;
+  const allowedThemeTypes = theme_types?.split(",").filter(Boolean);
 
   const poolSize = Math.min(parseInt(count ?? String(DEFAULT_POOL_SIZE)), 50);
 
@@ -152,15 +157,37 @@ export default async function GauntletPage({
         gauntletMode = "remix";
       }
     } else if (artist) {
-      // Artist gauntlet — all illustrations by this artist
-      filterLabel = artist;
-      pool = await getGauntletIllustrationsByArtist(artist, poolSize);
+      // Artist gauntlet — resolve slug to real name if needed
+      let artistName = artist;
+      const resolved = await getArtistBySlug(artist);
+      if (resolved) artistName = resolved.name;
+      filterLabel = artistName;
+      pool = await getGauntletIllustrationsByArtist(artistName, poolSize);
       gauntletMode = "remix";
     } else if (tag) {
-      // Tag gauntlet — cards with this tag
-      tagId = tag;
-      filterLabel = tag;
-      pool = await getGauntletCardsByTag(tag, poolSize);
+      // Tag gauntlet — resolve slug to tag_id if needed
+      let resolvedTagId = tag;
+      const resolvedTag = await getTagBySlug(tag);
+      if (resolvedTag) {
+        resolvedTagId = resolvedTag.tag_id;
+        filterLabel = resolvedTag.label;
+      } else {
+        filterLabel = tag;
+      }
+      tagId = resolvedTagId;
+      pool = await getGauntletCardsByTag(resolvedTagId, poolSize);
+    } else if (art_tag) {
+      // Art tag gauntlet — resolve slug to tag_id if needed
+      let resolvedTagId = art_tag;
+      const resolvedTag = await getTagBySlug(art_tag);
+      if (resolvedTag) {
+        resolvedTagId = resolvedTag.tag_id;
+        filterLabel = resolvedTag.label;
+      } else {
+        filterLabel = art_tag;
+      }
+      tagId = resolvedTagId;
+      pool = await getGauntletCardsByTag(resolvedTagId, poolSize);
     } else if (mode === "group") {
       // Random creature tribe with 10+ cards
       const group = await getRandomGauntletGroup();
@@ -188,7 +215,7 @@ export default async function GauntletPage({
       pool = await getGauntletCards(poolSize, explicitFilters);
     } else {
       // No params — pick a random theme
-      const t = await getRandomTheme();
+      const t = await getRandomTheme(allowedThemeTypes);
       if (t) {
         themeName = t.label;
         gauntletMode = t.pool_mode;
