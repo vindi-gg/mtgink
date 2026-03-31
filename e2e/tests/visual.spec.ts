@@ -8,7 +8,7 @@ test.describe("Visual regression", () => {
       await visitPage(page, path);
       // Wait for images and animations to settle
       await page.waitForTimeout(2000);
-      await expect(page).toHaveScreenshot(`${name}.png`, {
+      await expect(page).toHaveScreenshot({
         fullPage: true,
         maxDiffPixelRatio: 0.05,
       });
