@@ -112,14 +112,14 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
 
   // Theme rotation (VS only)
   const [themeRotation, setThemeRotation] = useState<ThemeRotation>(() => {
-    if (typeof window === "undefined") return "manual";
-    return (localStorage.getItem("mtgink_theme_rotation") as ThemeRotation) || "manual";
+    if (typeof window === "undefined") return "every";
+    return (localStorage.getItem("mtgink_theme_rotation") as ThemeRotation) || "every";
   });
   const [themeTypes, setThemeTypes] = useState<VsThemeType[]>(() => {
-    if (typeof window === "undefined") return VS_THEME_TYPES.map((t) => t.value);
+    if (typeof window === "undefined") return ["tribe"];
     const saved = localStorage.getItem("mtgink_theme_types");
     if (saved) try { return JSON.parse(saved); } catch { /* ignore */ }
-    return VS_THEME_TYPES.map((t) => t.value);
+    return ["tribe"];
   });
   const themeTypesRef = useRef(themeTypes);
   themeTypesRef.current = themeTypes;
@@ -278,8 +278,8 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
       const data = await res.json();
       updateSides(isRemix ? (data as VoteResponse).next : (data as CardVoteResponse).next);
 
-      // Theme rotation (VS only)
-      if (!isRemix && themeRotation !== "manual") {
+      // Theme rotation (VS only — skip when page was loaded with explicit filters)
+      if (!isRemix && themeRotation !== "manual" && !initialFilters) {
         voteCountRef.current++;
         const threshold = themeRotation === "every" ? 1 : 5;
         if (voteCountRef.current >= threshold) {

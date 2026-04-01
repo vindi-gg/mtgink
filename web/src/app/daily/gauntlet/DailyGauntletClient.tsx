@@ -40,9 +40,10 @@ interface DailyGauntletClientProps {
   challenge: DailyChallenge;
   pool: GauntletEntry[];
   mode: "remix" | "vs";
+  themeLink?: { label: string; href: string };
 }
 
-export default function DailyGauntletClient({ challenge, pool, mode }: DailyGauntletClientProps) {
+export default function DailyGauntletClient({ challenge, pool, mode, themeLink }: DailyGauntletClientProps) {
   const router = useRouter();
   const [alreadyDone, setAlreadyDone] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -143,6 +144,7 @@ export default function DailyGauntletClient({ challenge, pool, mode }: DailyGaun
         pool={pool}
         cardName={cardName}
         themeName={themeLabel}
+        themeLink={themeLink}
         dailyChallengeId={challenge.id}
         onComplete={handleComplete}
         hideControls

@@ -87,7 +87,7 @@ export default function CardSearch() {
 
       {!loading && query.trim().length >= 2 && results.length === 0 && (
         <p className="text-gray-500 text-sm mt-4">
-          No cards found with multiple art versions.
+          No cards found.
         </p>
       )}
     </div>

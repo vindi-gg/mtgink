@@ -90,6 +90,23 @@ export async function POST(req: NextRequest) {
     ]);
     if (statsErr) console.error("Failed to update daily stats:", statsErr);
     if (partErr) console.error("Failed to record participation:", partErr);
+
+    // Insert giveaway entry for April 2026 daily challenges (logged-in users only)
+    const challengeDate = new Date();
+    if (userId && challengeDate.getFullYear() === 2026 && challengeDate.getMonth() === 3) {
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+      const ua = req.headers.get("user-agent") || null;
+      const { error: giveawayErr } = await admin.from("giveaway_entries").upsert({
+        giveaway_id: "april-2026",
+        session_id,
+        user_id: userId,
+        daily_challenge_id,
+        gauntlet_result_id: inserted?.id ?? null,
+        ip_address: ip,
+        user_agent: ua,
+      }, { onConflict: "giveaway_id,session_id,daily_challenge_id" });
+      if (giveawayErr) console.error("Failed to insert giveaway entry:", giveawayErr);
+    }
   }
 
   // Apply ELO updates from matchups in a single DB call (fire-and-forget)

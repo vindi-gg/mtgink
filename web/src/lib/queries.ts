@@ -1821,8 +1821,10 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
       .select("illustration_id")
       .eq("tag_id", tagId)
       .limit(count * 10);
-    const illIds = [...new Set((itRows ?? []).map((r) => r.illustration_id))];
+    let illIds = [...new Set((itRows ?? []).map((r) => r.illustration_id))];
     if (illIds.length === 0) return [];
+    // Shuffle and cap to avoid oversized .in() queries (PostgREST URL limit)
+    illIds = illIds.sort(() => Math.random() - 0.5).slice(0, Math.max(count * 3, 100));
     const { data: pRows } = await getAdminClient()
       .from("printings")
       .select("oracle_id")
@@ -1841,8 +1843,8 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
 
   if (oracleIds.length === 0) return [];
 
-  // Shuffle and take count
-  const shuffled = oracleIds.sort(() => Math.random() - 0.5).slice(0, count);
+  // Shuffle and take extra to account for filtering (excluded layouts, digital-only sets)
+  const shuffled = oracleIds.sort(() => Math.random() - 0.5).slice(0, Math.max(count * 2, 100));
 
   // Get card data + representative printing (exclude non-standard layouts)
   const { data: cards } = await getAdminClient()
@@ -1888,7 +1890,8 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
         mana_cost: card.mana_cost,
       };
     })
-    .filter((e): e is GauntletEntry => e !== null);
+    .filter((e): e is GauntletEntry => e !== null)
+    .slice(0, count);
 }
 
 // =============================================================================

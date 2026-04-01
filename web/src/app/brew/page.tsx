@@ -84,7 +84,7 @@ export default async function BrewListPage({
                 className="group bg-gray-900 rounded-xl overflow-hidden border border-gray-800 hover:border-gray-700 transition-colors"
               >
                 {/* Preview image */}
-                <div className="relative aspect-[3/2] bg-gray-800">
+                <div className="relative aspect-[3/2] bg-gray-800 overflow-hidden">
                   {brew.preview_set_code && brew.preview_collector_number ? (
                     <img
                       src={artCropUrl(brew.preview_set_code, brew.preview_collector_number, brew.preview_image_version)}

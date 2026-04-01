@@ -274,20 +274,22 @@ export default async function CardPage({
         </section>
       </main>
       <Sidebar>
-        <div className="space-y-2">
-          <a
-            href={`/showdown/remix?oracle_id=${card.oracle_id}`}
-            className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors cursor-pointer"
-          >
-            Remix
-          </a>
-          <a
-            href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}
-            className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
-          >
-            Gauntlet
-          </a>
-        </div>
+        {illustrations.length >= 2 && (
+          <div className="space-y-2">
+            <a
+              href={`/showdown/remix?oracle_id=${card.oracle_id}`}
+              className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors cursor-pointer"
+            >
+              Remix
+            </a>
+            <a
+              href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}
+              className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
+            >
+              Gauntlet
+            </a>
+          </div>
+        )}
         {tags.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
             {oracleTags.length > 0 && (

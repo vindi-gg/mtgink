@@ -144,7 +144,7 @@ function OptionsPanel({
       {/* Theme type toggles (VS only) */}
       {themeTypes && onThemeTypesChange && (
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">Theme types</p>
+          <p className="text-xs text-gray-500 mb-1.5">Theme types included</p>
           <div className="space-y-1">
             {VS_THEME_TYPES.map((t) => {
               const enabled = themeTypes.includes(t.value);

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import SearchModal from "./SearchModal";
+import { PLAY_MODES, DB_MODES, PlayModeIcon } from "@/lib/play-modes";
 
 function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/showdown/remix" && (pathname.startsWith("/showdown/remix") || pathname === "/showdown")) return true;
@@ -28,11 +29,33 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [playMenuOpen, setPlayMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [betaDismissed, setBetaDismissed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("mtgink_beta_dismissed") === "1";
-  });
+  const [betaDismissed, setBetaDismissed] = useState(true);
+  const [dbMenuOpen, setDbMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const playMenuRef = useRef<HTMLDivElement>(null);
+  const dbMenuRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+
+  useEffect(() => {
+    setBetaDismissed(localStorage.getItem("mtgink_beta_dismissed") === "1");
+  }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen && !playMenuOpen && !dbMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+      if (playMenuOpen && playMenuRef.current && !playMenuRef.current.contains(e.target as Node)) {
+        setPlayMenuOpen(false);
+      }
+      if (dbMenuOpen && dbMenuRef.current && !dbMenuRef.current.contains(e.target as Node)) {
+        setDbMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [userMenuOpen, playMenuOpen, dbMenuOpen]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -93,17 +116,11 @@ export default function Navbar() {
   }
 
   // Primary links — always visible on desktop and mobile
-  const primaryLinks = [
-    { href: "/showdown/remix", label: "Remix" },
-    { href: "/showdown/vs", label: "VS" },
-  ];
+  const primaryLinks: { href: string; label: string }[] = [];
 
   // Secondary links — visible on desktop, in hamburger on mobile
   const secondaryLinks = [
-    { href: "/artists", label: "Artists" },
-    { href: "/brew", label: "Brew" },
     { href: "/deck-import", label: "Decks" },
-    { href: "/db", label: "DB" },
   ];
 
   // User menu links — shown in avatar dropdown and mobile menu when logged in
@@ -144,6 +161,50 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-6">
+          {/* Play mega menu */}
+          <div
+            className="relative"
+            ref={playMenuRef}
+            onMouseEnter={() => setPlayMenuOpen(true)}
+            onMouseLeave={() => setPlayMenuOpen(false)}
+          >
+            <button
+              className={`flex items-center gap-1 text-sm font-medium transition-colors cursor-pointer ${
+                PLAY_MODES.some((l) => isActiveLink(pathname, l.href))
+                  ? "text-white"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Play
+              <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {playMenuOpen && (
+              <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2 z-[71]">
+                <div className="w-[420px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-3 grid grid-cols-2 gap-2">
+                  {PLAY_MODES.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-start gap-3 px-3 py-3 rounded-lg transition-colors ${
+                        isActiveLink(pathname, item.href)
+                          ? "bg-amber-500/10 border border-amber-500/30"
+                          : "hover:bg-gray-800"
+                      }`}
+                    >
+                      <PlayModeIcon d={item.icon} className="w-5 h-5 mt-0.5 text-amber-400 shrink-0" />
+                      <div>
+                        <span className={`text-sm font-bold ${isActiveLink(pathname, item.href) ? "text-amber-400" : "text-white"}`}>{item.label}</span>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-tight">{item.desc}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {allLinks.map((link) => (
             <Link
               key={link.href}
@@ -158,6 +219,50 @@ export default function Navbar() {
             </Link>
           ))}
 
+          {/* Database mega menu */}
+          <div
+            className="relative"
+            ref={dbMenuRef}
+            onMouseEnter={() => setDbMenuOpen(true)}
+            onMouseLeave={() => setDbMenuOpen(false)}
+          >
+            <button
+              className={`flex items-center gap-1 text-sm font-medium transition-colors cursor-pointer ${
+                DB_MODES.some((l) => isActiveLink(pathname, l.href))
+                  ? "text-white"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Database
+              <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {dbMenuOpen && (
+              <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2 z-[71]">
+                <div className="w-[420px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-3 grid grid-cols-2 gap-2">
+                  {DB_MODES.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-start gap-3 px-3 py-3 rounded-lg transition-colors ${
+                        isActiveLink(pathname, item.href)
+                          ? "bg-amber-500/10 border border-amber-500/30"
+                          : "hover:bg-gray-800"
+                      }`}
+                    >
+                      <PlayModeIcon d={item.icon} className="w-5 h-5 mt-0.5 text-amber-400 shrink-0" />
+                      <div>
+                        <span className={`text-sm font-bold ${isActiveLink(pathname, item.href) ? "text-amber-400" : "text-white"}`}>{item.label}</span>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-tight">{item.desc}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Search */}
           <button
             onClick={() => setSearchOpen(true)}
@@ -171,7 +276,7 @@ export default function Navbar() {
           </button>
 
           {user ? (
-            <div className="relative">
+            <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-1.5 cursor-pointer"
@@ -192,12 +297,11 @@ export default function Navbar() {
                 </svg>
               </button>
               {userMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 py-1">
-                    <div className="px-3 py-2 border-b border-gray-800">
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-[71] py-1">
+                    <Link href="/settings" className="block px-3 py-2 border-b border-gray-800 hover:bg-gray-800 transition-colors cursor-pointer">
                       <p className="text-sm font-medium text-white truncate">{displayName}</p>
-                    </div>
+                      <p className="text-[11px] text-gray-500">Settings</p>
+                    </Link>
                     {userMenuLinks.map((link) => (
                       <Link
                         key={link.href}
@@ -220,7 +324,6 @@ export default function Navbar() {
                       </button>
                     </div>
                   </div>
-                </>
               )}
             </div>
           ) : supabase ? (
@@ -238,31 +341,31 @@ export default function Navbar() {
         </div>
 
         {/* Mobile nav */}
-        <div className="flex md:hidden items-center gap-3">
+        <div className="flex md:hidden items-center gap-4">
           {/* Play button */}
           <button
             data-play-btn
-            onClick={() => { setPlayMenuOpen(!playMenuOpen); setMenuOpen(false); }}
-            className={`text-sm font-bold transition-colors cursor-pointer ${
+            onClick={() => { setPlayMenuOpen(!playMenuOpen); setMenuOpen(false); setDbMenuOpen(false); }}
+            className={`px-3 py-1 text-sm font-bold rounded-lg transition-colors cursor-pointer ${
               playMenuOpen || pathname.startsWith("/showdown") || pathname.startsWith("/daily")
-                ? "text-white"
-                : "text-gray-400"
+                ? "bg-amber-500 text-gray-900"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
             }`}
           >
             Play
           </button>
 
-          {/* DB link */}
-          <Link
-            href="/db"
-            className={`text-sm font-bold transition-colors ${
-              pathname.startsWith("/db") || pathname.startsWith("/artists")
+          {/* DB button */}
+          <button
+            onClick={() => { setDbMenuOpen(!dbMenuOpen); setPlayMenuOpen(false); setMenuOpen(false); }}
+            className={`text-sm font-bold transition-colors cursor-pointer ${
+              dbMenuOpen || pathname.startsWith("/db") || pathname.startsWith("/artists")
                 ? "text-white"
                 : "text-gray-400"
             }`}
           >
             DB
-          </Link>
+          </button>
 
           {/* Deck import icon */}
           <Link
@@ -359,6 +462,22 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <div className="border-t border-gray-800 my-2" />
+            <p className="px-3 text-[11px] text-gray-600 uppercase tracking-wider font-bold">Database</p>
+            {DB_MODES.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActiveLink(pathname, item.href)
+                    ? "text-white bg-gray-800"
+                    : "text-gray-400 hover:text-white hover:bg-gray-900"
+                }`}
+              >
+                <PlayModeIcon d={item.icon} className="w-4 h-4 text-amber-400 shrink-0" />
+                {item.label}
+              </Link>
+            ))}
             {user && (
               <>
                 <div className="border-t border-gray-800 my-2" />
@@ -400,32 +519,58 @@ export default function Navbar() {
         </button>
       </div>
     )}
+    {/* Mobile DB panel */}
+    {dbMenuOpen && (
+      <>
+        <div className="fixed inset-0 z-[59] md:hidden bg-black/50" onClick={() => setDbMenuOpen(false)} />
+        <div className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
+          <div className="px-4 py-4 space-y-2">
+            {DB_MODES.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-start gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  isActiveLink(pathname, item.href)
+                    ? "bg-amber-500/10 border border-amber-500/30"
+                    : "bg-gray-900 border border-gray-800 hover:border-gray-700"
+                }`}
+              >
+                <PlayModeIcon d={item.icon} className="w-5 h-5 mt-0.5 text-amber-400 shrink-0" />
+                <div>
+                  <span className={`text-sm font-bold ${
+                    isActiveLink(pathname, item.href) ? "text-amber-400" : "text-white"
+                  }`}>{item.label}</span>
+                  <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </>
+    )}
     {/* Mobile Play panel — outside nav so backdrop-blur doesn't trap fixed overlay */}
     {playMenuOpen && (
       <>
         <div className="fixed inset-0 z-[59] md:hidden bg-black/50" onClick={() => setPlayMenuOpen(false)} />
         <div data-play-panel className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
           <div className="px-4 py-4 space-y-2">
-            {[
-              { href: "/showdown/remix", label: "Remix", desc: "Same card, pick the best art" },
-              { href: "/showdown/vs", label: "VS", desc: "Different cards compared by theme" },
-              { href: "/showdown/gauntlet", label: "Gauntlet", desc: "Winner stays, faces the next challenger" },
-              { href: "/daily/gauntlet", label: "Daily Challenge", desc: "Today's community gauntlet" },
-              { href: "/brew", label: "Brew", desc: "Create custom matchups" },
-            ].map((item) => (
+            {PLAY_MODES.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`block px-4 py-3 rounded-lg transition-colors ${
+                className={`flex items-start gap-3 px-4 py-3 rounded-lg transition-colors ${
                   isActiveLink(pathname, item.href)
                     ? "bg-amber-500/10 border border-amber-500/30"
                     : "bg-gray-900 border border-gray-800 hover:border-gray-700"
                 }`}
               >
-                <span className={`text-sm font-bold ${
-                  isActiveLink(pathname, item.href) ? "text-amber-400" : "text-white"
-                }`}>{item.label}</span>
-                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                <PlayModeIcon d={item.icon} className="w-5 h-5 mt-0.5 text-amber-400 shrink-0" />
+                <div>
+                  <span className={`text-sm font-bold ${
+                    isActiveLink(pathname, item.href) ? "text-amber-400" : "text-white"
+                  }`}>{item.label}</span>
+                  <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                </div>
               </Link>
             ))}
           </div>

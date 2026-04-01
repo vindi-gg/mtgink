@@ -27,11 +27,18 @@ function AuthForm() {
 
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) return;
+    if (!supabase) {
+      setError("Supabase client not configured — check env vars");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
     setError(null);
     setLoading(true);
 
-    const { error: authError } = isSignUp
+    const { data, error: authError } = isSignUp
       ? await supabase.auth.signUp({ email, password })
       : await supabase.auth.signInWithPassword({ email, password });
 
@@ -42,7 +49,7 @@ function AuthForm() {
       return;
     }
 
-    if (isSignUp) {
+    if (isSignUp && !data.session) {
       setError("Check your email for a confirmation link.");
       return;
     }
@@ -136,7 +143,6 @@ function AuthForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
               className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
               placeholder="At least 6 characters"
             />
@@ -149,7 +155,7 @@ function AuthForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer"
+className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
           </button>
