@@ -78,6 +78,7 @@ export default function Navbar() {
     setMenuOpen(false);
     setUserMenuOpen(false);
     setPlayMenuOpen(false);
+    setDbMenuOpen(false);
     setSearchOpen(false);
   }, [pathname]);
 
@@ -446,10 +447,10 @@ export default function Navbar() {
       </div>
 
       {/* Mobile dropdown menu */}
-      {menuOpen && (
+      {menuOpen && user && (
         <div className="md:hidden border-t border-gray-800 bg-gray-950/95 backdrop-blur-sm">
           <div className="max-w-7xl mx-auto px-4 py-3 space-y-1">
-            {secondaryLinks.map((link) => (
+            {userMenuLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -462,46 +463,23 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <Link
+              href="/settings"
+              className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isActiveLink(pathname, "/settings")
+                  ? "text-white bg-gray-800"
+                  : "text-gray-400 hover:text-white hover:bg-gray-900"
+              }`}
+            >
+              Settings
+            </Link>
             <div className="border-t border-gray-800 my-2" />
-            <p className="px-3 text-[11px] text-gray-600 uppercase tracking-wider font-bold">Database</p>
-            {DB_MODES.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActiveLink(pathname, item.href)
-                    ? "text-white bg-gray-800"
-                    : "text-gray-400 hover:text-white hover:bg-gray-900"
-                }`}
-              >
-                <PlayModeIcon d={item.icon} className="w-4 h-4 text-amber-400 shrink-0" />
-                {item.label}
-              </Link>
-            ))}
-            {user && (
-              <>
-                <div className="border-t border-gray-800 my-2" />
-                {userMenuLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActiveLink(pathname, link.href)
-                        ? "text-white bg-gray-800"
-                        : "text-gray-400 hover:text-white hover:bg-gray-900"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-                <button
-                  onClick={handleSignOut}
-                  className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-900 transition-colors"
-                >
-                  Sign Out
-                </button>
-              </>
-            )}
+            <button
+              onClick={handleSignOut}
+              className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-900 transition-colors"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       )}
@@ -521,14 +499,13 @@ export default function Navbar() {
     )}
     {/* Mobile DB panel */}
     {dbMenuOpen && (
-      <>
-        <div className="fixed inset-0 z-[59] md:hidden bg-black/50" onClick={() => setDbMenuOpen(false)} />
-        <div className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
+        <div ref={dbMenuRef} className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
           <div className="px-4 py-4 space-y-2">
             {DB_MODES.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setDbMenuOpen(false)}
                 className={`flex items-start gap-3 px-4 py-3 rounded-lg transition-colors ${
                   isActiveLink(pathname, item.href)
                     ? "bg-amber-500/10 border border-amber-500/30"
@@ -546,7 +523,6 @@ export default function Navbar() {
             ))}
           </div>
         </div>
-      </>
     )}
     {/* Mobile Play panel — outside nav so backdrop-blur doesn't trap fixed overlay */}
     {playMenuOpen && (
