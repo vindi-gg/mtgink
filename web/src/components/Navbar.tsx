@@ -494,7 +494,7 @@ export default function Navbar() {
     )}
     {/* Mobile DB panel */}
     {dbMenuOpen && (
-        <div ref={dbMenuRef} className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
+        <div className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
           <div className="px-4 py-4 space-y-2">
             {DB_MODES.map((item) => (
               <Link

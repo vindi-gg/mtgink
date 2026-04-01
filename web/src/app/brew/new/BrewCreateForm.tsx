@@ -229,10 +229,8 @@ export default function BrewCreateForm() {
     clearPreview();
   };
 
-  // Show filters for all non-remix modes (and remix artist)
-  const showFilters = mode !== "remix" || source === "artist";
-  // Show pool size for gauntlet and remix-artist
-  const showPoolSize = mode === "gauntlet" || (mode === "remix" && source === "artist");
+  const showFilters = true;
+  const showPoolSize = true;
 
   // Auto-generated title: "Lorwyn Eclipsed Red Creature Gauntlet"
   const generatedName = (() => {
