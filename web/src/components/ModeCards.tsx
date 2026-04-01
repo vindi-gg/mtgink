@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PLAY_MODES, PlayModeIcon } from "@/lib/play-modes";
 
-const MODES = PLAY_MODES.filter((m) => m.createHref);
+const MODES = PLAY_MODES.filter((m): m is typeof PLAY_MODES[number] & { createHref: string } => "createHref" in m);
 
 interface ModeCardsProps {
   images?: string[];
@@ -40,7 +40,7 @@ export default function ModeCards({ images = [] }: ModeCardsProps) {
                     Random Play
                   </Link>
                   <Link
-                    href={mode.createHref!}
+                    href={mode.createHref}
                     className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-600 text-gray-300 hover:border-gray-400 hover:text-white transition-colors whitespace-nowrap"
                   >
                     Create
