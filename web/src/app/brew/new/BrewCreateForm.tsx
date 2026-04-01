@@ -22,7 +22,7 @@ const SOURCE_LABELS: Record<Source, string> = {
 
 /** Which sources are available per mode */
 const MODE_SOURCES: Record<Mode, Source[]> = {
-  remix: ["card", "artist"],
+  remix: ["card"],
   vs: ["all", "expansion", "tribe"],
   gauntlet: ["all", "card", "expansion", "tribe", "tag", "art_tag", "artist"],
 };
@@ -45,11 +45,11 @@ interface SelectedItem {
   label: string;
 }
 
-export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) {
+export default function BrewCreateForm() {
   const router = useRouter();
 
   // Core state
-  const [mode, setMode] = useState<Mode>(initialMode ?? "gauntlet");
+  const mode: Mode = "gauntlet";
   const [source, setSource] = useState<Source>("all");
   const [selected, setSelected] = useState<SelectedItem | null>(null);
 
@@ -91,22 +91,6 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
   const needsSelection = source !== "all";
 
   const clearPreview = () => setPreviewPool(null);
-
-  const handleModeChange = (m: Mode) => {
-    setMode(m);
-    clearPreview();
-    const available = MODE_SOURCES[m];
-    if (!available.includes(source)) {
-      setSource(available[0]);
-      setSelected(null);
-      setQuery("");
-    }
-    if (m === "remix") {
-      setSelectedColors([]);
-      setSelectedType("");
-      setSelectedSubtype("");
-    }
-  };
 
   const handleSourceChange = (s: Source) => {
     setSource(s);
@@ -368,26 +352,6 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
         </div>
       )}
 
-      {/* Mode toggle */}
-      <div>
-        <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Mode</label>
-        <div className="flex gap-2">
-          {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => handleModeChange(m)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === m
-                  ? "bg-amber-500 text-gray-900"
-                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-              }`}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Source tabs */}
       <div>
         <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Source</label>
@@ -399,7 +363,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 source === s
                   ? "bg-gray-700 text-white"
-                  : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-300"
+                  : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-300 cursor-pointer"
               }`}
             >
               {SOURCE_LABELS[s]}
@@ -439,7 +403,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
                     setQuery(item.label);
                     setShowDropdown(false);
                   }}
-                  className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-700 transition-colors text-gray-200 first:rounded-t-lg last:rounded-b-lg"
+                  className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-700 transition-colors text-gray-200 first:rounded-t-lg last:rounded-b-lg cursor-pointer"
                 >
                   {item.label}
                 </button>
@@ -456,7 +420,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
                     setSelected(null);
                     setQuery("");
                   }}
-                  className="hover:text-amber-200 ml-1"
+                  className="hover:text-amber-200 ml-1 cursor-pointer"
                 >
                   &times;
                 </button>
@@ -476,7 +440,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-gray-500">Colors</label>
               {selectedColors.length > 0 && (
-                <button onClick={() => { setSelectedColors([]); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+                <button onClick={() => { setSelectedColors([]); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">&times; Clear</button>
               )}
             </div>
             <div className="flex gap-2">
@@ -485,7 +449,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
                   key={c}
                   onClick={() => toggleColor(c)}
                   title={COLOR_LABELS[c]}
-                  className={`w-10 h-10 rounded-lg text-sm font-bold transition-colors ${
+                  className={`w-10 h-10 rounded-lg text-sm font-bold transition-colors cursor-pointer ${
                     selectedColors.includes(c)
                       ? "bg-amber-500 text-gray-900"
                       : "bg-gray-800 text-gray-400 hover:bg-gray-700"
@@ -502,13 +466,13 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-gray-500">Type</label>
               {selectedType && (
-                <button onClick={() => { setSelectedType(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+                <button onClick={() => { setSelectedType(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">&times; Clear</button>
               )}
             </div>
             <select
               value={selectedType}
               onChange={(e) => { setSelectedType(e.target.value); clearPreview(); }}
-              className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500/50"
+              className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500/50 cursor-pointer"
             >
               <option value="">Any type</option>
               {CARD_TYPES.map((t) => (
@@ -524,7 +488,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-gray-500">Subtype</label>
               {selectedSubtype && (
-                <button onClick={() => { setSelectedSubtype(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+                <button onClick={() => { setSelectedSubtype(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">&times; Clear</button>
               )}
             </div>
             <input
@@ -549,7 +513,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
                       setShowSubtypeDropdown(false);
                       clearPreview();
                     }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 transition-colors text-gray-200 first:rounded-t-lg last:rounded-b-lg"
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-700 transition-colors text-gray-200 first:rounded-t-lg last:rounded-b-lg cursor-pointer"
                   >
                     {st}
                   </button>
@@ -563,7 +527,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-gray-500">Rules text contains</label>
               {rulesText && (
-                <button onClick={() => { setRulesText(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400">&times; Clear</button>
+                <button onClick={() => { setRulesText(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">&times; Clear</button>
               )}
             </div>
             <input
@@ -634,7 +598,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
             disabled={!canCreate || previewing}
             className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
               canCreate && !previewing
-                ? "bg-amber-500 text-gray-900 hover:bg-amber-400"
+                ? "bg-amber-500 text-gray-900 hover:bg-amber-400 cursor-pointer"
                 : "bg-gray-800 text-gray-600 cursor-not-allowed"
             }`}
           >
@@ -653,7 +617,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
             <button
               onClick={handlePreview}
               disabled={previewing}
-              className="text-sm text-amber-400 hover:text-amber-300 transition-colors disabled:text-gray-600"
+              className="text-sm text-amber-400 hover:text-amber-300 transition-colors disabled:text-gray-600 cursor-pointer"
             >
               {previewing ? "Rolling..." : "Re-roll"}
             </button>
@@ -683,7 +647,7 @@ export default function BrewCreateForm({ initialMode }: { initialMode?: Mode }) 
               disabled={submitting}
               className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
                 !submitting
-                  ? "bg-amber-500 text-gray-900 hover:bg-amber-400"
+                  ? "bg-amber-500 text-gray-900 hover:bg-amber-400 cursor-pointer"
                   : "bg-gray-800 text-gray-600 cursor-not-allowed"
               }`}
             >

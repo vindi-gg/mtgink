@@ -4,6 +4,7 @@ import { artCropUrl } from "@/lib/image-utils";
 import { websiteJsonLd, JsonLd } from "@/lib/jsonld";
 import DailyChallengesSection from "@/components/DailyChallengesSection";
 import ModeCards from "@/components/ModeCards";
+import { DB_MODES, PlayModeIcon } from "@/lib/play-modes";
 import type { DailyChallenge, DailyChallengeStats } from "@/lib/types";
 
 export const revalidate = 60;
@@ -93,21 +94,15 @@ export default async function HomePage() {
 
           {/* DB Links */}
           <div className="grid gap-3 sm:grid-cols-2 text-left mt-2 mb-4">
-            {[
-              { href: "/artists", title: "Artists", desc: "Browse by popularity and illustration count" },
-              { href: "/db/expansions", title: "Expansions", desc: "Sets, expansions, and products" },
-              { href: "/db/cards", title: "Cards", desc: "Top cards by popularity and prints" },
-              { href: "/db/tribes", title: "Tribes", desc: "Goblins, Elves, Dragons, and more" },
-              { href: "/db/tags", title: "Tags", desc: "Scryfall community tags" },
-              { href: "/deck", title: "Deck Explorer", desc: "Import and customize deck art" },
-            ].map((s) => (
+            {[...DB_MODES, { href: "/deck", label: "Deck Explorer", desc: "Import and customize deck art", icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" }].map((s) => (
               <Link
                 key={s.href}
                 href={s.href}
                 className="flex items-center gap-3 p-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
               >
+                <PlayModeIcon d={s.icon} className="w-5 h-5 text-amber-400 shrink-0" />
                 <div>
-                  <span className="text-sm font-bold text-gray-200">{s.title}</span>
+                  <span className="text-sm font-bold text-gray-200">{s.label}</span>
                   <p className="text-xs text-gray-500">{s.desc}</p>
                 </div>
               </Link>
