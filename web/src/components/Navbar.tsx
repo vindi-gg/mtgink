@@ -450,6 +450,11 @@ export default function Navbar() {
       {menuOpen && user && (
         <div className="md:hidden border-t border-gray-800 bg-gray-950/95 backdrop-blur-sm">
           <div className="max-w-7xl mx-auto px-4 py-3 space-y-1">
+            <Link href="/settings" className="block px-3 py-2 hover:bg-gray-800 rounded-lg transition-colors">
+              <p className="text-sm font-medium text-white truncate">{displayName}</p>
+              <p className="text-[11px] text-gray-500">Settings</p>
+            </Link>
+            <div className="border-t border-gray-800 my-2" />
             {userMenuLinks.map((link) => (
               <Link
                 key={link.href}
@@ -463,16 +468,6 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
-            <Link
-              href="/settings"
-              className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActiveLink(pathname, "/settings")
-                  ? "text-white bg-gray-800"
-                  : "text-gray-400 hover:text-white hover:bg-gray-900"
-              }`}
-            >
-              Settings
-            </Link>
             <div className="border-t border-gray-800 my-2" />
             <button
               onClick={handleSignOut}

@@ -1,14 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+
+interface Identity {
+  id: string;
+  identity_id: string;
+  provider: string;
+  email?: string;
+  name?: string;
+}
 
 interface Props {
   email: string;
   provider: string;
+  providers: string[];
   createdAt: string;
   displayName: string;
+  hasPasswordFlag: boolean;
+  identities: Identity[];
 }
 
 function providerLabel(provider: string) {
@@ -17,9 +28,23 @@ function providerLabel(provider: string) {
   return "Email";
 }
 
-export default function SettingsClient({ email, provider, createdAt, displayName: initialDisplayName }: Props) {
+export default function SettingsClient({ email, provider, providers, createdAt, displayName: initialDisplayName, hasPasswordFlag, identities: initialIdentities }: Props) {
   const supabase = createClient();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.push("/");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [supabase, router]);
+
+  const hasEmailPassword = initialIdentities.some((i) => i.provider === "email") || hasPasswordFlag;
+  const socialIdentities = initialIdentities.filter((i) => i.provider !== "email");
+  const isOAuthUser = socialIdentities.length > 0 && !hasEmailPassword;
 
   // Display name
   const [displayName, setDisplayName] = useState(initialDisplayName);
@@ -31,6 +56,11 @@ export default function SettingsClient({ email, provider, createdAt, displayName
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [hasPassword, setHasPassword] = useState(hasEmailPassword);
+
+  // Unlink
+  const [unlinking, setUnlinking] = useState<string | null>(null);
+  const [unlinkMessage, setUnlinkMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Delete
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -51,7 +81,7 @@ export default function SettingsClient({ email, provider, createdAt, displayName
     }
   }
 
-  async function handleChangePassword() {
+  async function handlePasswordAction() {
     if (!supabase) return;
     if (newPassword.length < 6) {
       setPasswordMessage({ type: "error", text: "Password must be at least 6 characters" });
@@ -68,10 +98,55 @@ export default function SettingsClient({ email, provider, createdAt, displayName
     if (error) {
       setPasswordMessage({ type: "error", text: error.message });
     } else {
-      setPasswordMessage({ type: "success", text: "Password updated" });
+      if (!hasPassword) {
+        // Create email identity in DB + mark in user metadata
+        await Promise.all([
+          fetch("/api/account/create-password", { method: "POST" }),
+          supabase.auth.updateUser({ data: { has_password: true } }),
+        ]);
+      }
+      setPasswordMessage({ type: "success", text: hasPassword ? "Password updated" : "Password created — you can now sign in with email" });
       setNewPassword("");
       setConfirmPassword("");
+      setHasPassword(true);
     }
+  }
+
+  async function handleUnlink(identity: Identity) {
+    if (!hasPassword) {
+      setUnlinkMessage({ type: "error", text: "Create a password first before unlinking" });
+      return;
+    }
+    setUnlinking(identity.provider);
+    setUnlinkMessage(null);
+    try {
+      const res = await fetch("/api/account/unlink", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity_id: identity.identity_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUnlinkMessage({ type: "error", text: data.error || "Failed to unlink" });
+      } else {
+        setUnlinkMessage({ type: "success", text: `${providerLabel(identity.provider)} unlinked` });
+        router.refresh();
+      }
+    } catch {
+      setUnlinkMessage({ type: "error", text: "Failed to unlink" });
+    }
+    setUnlinking(null);
+  }
+
+  async function handleLink(provider: "google" | "discord") {
+    if (!supabase) return;
+    await supabase.auth.linkIdentity({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?returnTo=/settings`,
+        queryParams: { prompt: "consent" },
+      },
+    });
   }
 
   async function handleDeleteAccount() {
@@ -109,7 +184,7 @@ export default function SettingsClient({ email, provider, createdAt, displayName
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Sign-in method</span>
-            <span>{providerLabel(provider)}</span>
+            <span>{initialIdentities.map((i) => providerLabel(i.provider)).join(", ")}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Member since</span>
@@ -145,40 +220,86 @@ export default function SettingsClient({ email, provider, createdAt, displayName
         )}
       </section>
 
-      {/* Change Password — email users only */}
-      {provider === "email" && (
-        <section className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
-          <h2 className="text-lg font-semibold">Change Password</h2>
-          <div className="space-y-2">
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password"
-              className={inputClass}
-            />
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              className={inputClass}
-            />
-          </div>
-          <button
-            onClick={handleChangePassword}
-            disabled={passwordSaving || !newPassword}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            {passwordSaving ? "Updating..." : "Update Password"}
-          </button>
-          {passwordMessage && (
-            <p className={`text-sm ${passwordMessage.type === "error" ? "text-red-400" : "text-green-400"}`}>
-              {passwordMessage.text}
-            </p>
-          )}
-        </section>
-      )}
+      {/* Password */}
+      <section className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
+        <h2 className="text-lg font-semibold">
+          {isOAuthUser && !hasPassword ? "Create Password" : "Change Password"}
+        </h2>
+        {isOAuthUser && !hasPassword && (
+          <p className="text-sm text-gray-400">
+            Add a password so you can also sign in with your email.
+          </p>
+        )}
+        <div className="space-y-2">
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder={hasPassword ? "New password" : "Create a password"}
+            className={inputClass}
+          />
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm password"
+            className={inputClass}
+          />
+        </div>
+        <button
+          onClick={handlePasswordAction}
+          disabled={passwordSaving || !newPassword}
+          className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {passwordSaving ? "Saving..." : hasPassword ? "Update Password" : "Create Password"}
+        </button>
+        {passwordMessage && (
+          <p className={`text-sm ${passwordMessage.type === "error" ? "text-red-400" : "text-green-400"}`}>
+            {passwordMessage.text}
+          </p>
+        )}
+      </section>
+
+      {/* Linked Accounts */}
+      <section className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-3">
+        <h2 className="text-lg font-semibold">Linked Accounts</h2>
+        <div className="space-y-2">
+          {socialIdentities.map((identity) => (
+            <div key={identity.id} className="flex items-center justify-between py-2">
+              <div>
+                <span className="text-sm text-white">{providerLabel(identity.provider)}</span>
+                <p className="text-xs text-gray-500">{identity.name || identity.email}</p>
+              </div>
+              <button
+                onClick={() => handleUnlink(identity)}
+                disabled={unlinking === identity.provider || (!hasPassword && socialIdentities.length <= 1)}
+                className="px-3 py-1 text-xs font-medium rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {unlinking === identity.provider ? "Unlinking..." : "Unlink"}
+              </button>
+            </div>
+          ))}
+          {(["google", "discord"] as const).filter((p) => !socialIdentities.some((i) => i.provider === p)).map((p) => (
+            <div key={p} className="flex items-center justify-between py-2">
+              <span className="text-sm text-gray-500">{providerLabel(p)}</span>
+              <button
+                onClick={() => handleLink(p)}
+                className="px-3 py-1 text-xs font-medium rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors cursor-pointer"
+              >
+                Link
+              </button>
+            </div>
+          ))}
+        </div>
+        {!hasPassword && socialIdentities.length > 0 && (
+          <p className="text-xs text-gray-500">Create a password before unlinking your social account.</p>
+        )}
+        {unlinkMessage && (
+          <p className={`text-sm ${unlinkMessage.type === "error" ? "text-red-400" : "text-green-400"}`}>
+            {unlinkMessage.text}
+          </p>
+        )}
+      </section>
 
       {/* Delete Account */}
       <section className="bg-gray-900 border border-red-900/50 rounded-lg p-5 space-y-3">

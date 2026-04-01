@@ -21,8 +21,11 @@ export default async function SettingsPage() {
         <SettingsClient
           email={user.email ?? ""}
           provider={user.app_metadata.provider ?? "email"}
+          providers={user.app_metadata.providers ?? []}
           createdAt={user.created_at}
           displayName={user.user_metadata?.display_name ?? ""}
+          hasPasswordFlag={!!user.user_metadata?.has_password}
+          identities={(user.identities ?? []).map((i) => ({ id: i.id, identity_id: i.identity_id, provider: i.provider, email: (i.identity_data as Record<string, string>)?.email, name: (i.identity_data as Record<string, string>)?.full_name }))}
         />
       </div>
     </main>
