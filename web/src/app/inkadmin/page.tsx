@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import AdminJobs from "./AdminJobs";
 
 export const metadata = {
   title: "Admin",
@@ -32,6 +33,8 @@ export default async function InkAdminPage() {
             </div>
           </Link>
         </div>
+
+        <AdminJobs />
       </div>
     </main>
   );
