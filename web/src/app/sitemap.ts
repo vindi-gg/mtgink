@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 import { getAdminClient } from "@/lib/supabase/admin";
 
+export const dynamic = "force-dynamic";
+
 const BASE_URL = "https://mtg.ink";
 const CARDS_PER_CHUNK = 5000;
 
