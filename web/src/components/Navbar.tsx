@@ -35,6 +35,7 @@ export default function Navbar() {
   const playMenuRef = useRef<HTMLDivElement>(null);
   const playMobileRef = useRef<HTMLDivElement>(null);
   const dbMenuRef = useRef<HTMLDivElement>(null);
+  const dbMobileRef = useRef<HTMLDivElement>(null);
   // Stable ref — survives HMR module resets without triggering re-renders
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
@@ -52,7 +53,7 @@ export default function Navbar() {
       if (playMenuOpen && playMenuRef.current && !playMenuRef.current.contains(e.target as Node) && (!playMobileRef.current || !playMobileRef.current.contains(e.target as Node))) {
         setPlayMenuOpen(false);
       }
-      if (dbMenuOpen && dbMenuRef.current && !dbMenuRef.current.contains(e.target as Node)) {
+      if (dbMenuOpen && dbMenuRef.current && !dbMenuRef.current.contains(e.target as Node) && (!dbMobileRef.current || !dbMobileRef.current.contains(e.target as Node))) {
         setDbMenuOpen(false);
       }
     }
@@ -484,7 +485,7 @@ export default function Navbar() {
     )}
     {/* Mobile DB panel */}
     {dbMenuOpen && (
-        <div className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
+        <div ref={dbMobileRef} className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
           <div className="px-4 py-4 space-y-2">
             {DB_MODES.map((item) => (
               <Link
