@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/showdown", "/auth", "/brew", "/deck-import", "/api/"],
     },
-    sitemap: "https://mtg.ink/sitemap.xml",
+    sitemap: "https://mtg.ink/sitemap-index.xml",
   };
 }
