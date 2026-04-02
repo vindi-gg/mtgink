@@ -36,20 +36,21 @@ export async function generateMetadata({
   const topIll = illustrations[0];
 
   const title = `${card.name} - Best Card Art`;
-  const description = `Browse all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art across every printing and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
+  const ogTitle = `${card.name} - Best Card Art | MTG Ink`;
+  const description = `Browse all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art across every printing and vote for your favorite.`;
 
   return {
     title,
     description,
     openGraph: {
-      title,
+      title: ogTitle,
       description,
       type: "website",
       url: `/card/${card.slug}`,
     },
     twitter: {
       card: "summary_large_image",
-      title,
+      title: ogTitle,
       description,
     },
   };
