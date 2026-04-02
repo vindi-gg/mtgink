@@ -17,7 +17,7 @@ import FavoriteCardButton from "@/components/FavoriteCardButton";
 import PrintingCard from "@/components/PrintingCard";
 import Sidebar from "@/components/Sidebar";
 import TagList from "@/components/TagList";
-import { normalCardUrl, artCropUrl } from "@/lib/image-utils";
+import { normalCardUrl } from "@/lib/image-utils";
 import { imageGalleryJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import { notFound } from "next/navigation";
 
@@ -38,10 +38,6 @@ export async function generateMetadata({
   const title = `${card.name} - Best Card Art`;
   const description = `Browse all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art across every printing and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
 
-  const ogImage = topIll
-    ? artCropUrl(topIll.set_code, topIll.collector_number, topIll.image_version)
-    : undefined;
-
   return {
     title,
     description,
@@ -50,13 +46,11 @@ export async function generateMetadata({
       description,
       type: "website",
       url: `/card/${card.slug}`,
-      ...(ogImage ? { images: [{ url: ogImage, width: 626, height: 457, alt: `${card.name} art by ${topIll.artist}` }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      ...(ogImage ? { images: [ogImage] } : {}),
     },
   };
 }
