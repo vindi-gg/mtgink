@@ -101,38 +101,38 @@ export default async function OGImage({
           position: "relative",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <div style={{ display: "flex", fontSize: 52, fontWeight: 700, color: "#ffffff", lineHeight: 1.1 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", fontSize: 64, fontWeight: 700, color: "#ffffff", lineHeight: 1.1 }}>
             {card.name}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             {card.type_line && (
-              <div style={{ display: "flex", fontSize: 24, color: "#9ca3af" }}>
+              <div style={{ display: "flex", fontSize: 32, color: "#9ca3af" }}>
                 {card.type_line}
               </div>
             )}
             {card.mana_cost && (
-              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                 {parseMana(card.mana_cost).map((sym, i) => (
                   <img
                     key={i}
                     src={manaSymbolUrl(sym)}
-                    width={26}
-                    height={26}
+                    width={34}
+                    height={34}
                     style={{ borderRadius: "50%" }}
                   />
                 ))}
               </div>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", marginTop: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "18px", marginTop: "4px" }}>
             {illustrations.length > 1 && (
-              <div style={{ display: "flex", fontSize: 20, color: "#f59e0b" }}>
+              <div style={{ display: "flex", fontSize: 26, color: "#f59e0b" }}>
                 {illustrations.length} illustrations
               </div>
             )}
             {top?.artist && (
-              <div style={{ display: "flex", fontSize: 20, color: "#6b7280" }}>
+              <div style={{ display: "flex", fontSize: 26, color: "#6b7280" }}>
                 Art by {top.artist}
               </div>
             )}
@@ -152,24 +152,28 @@ export default async function OGImage({
             fontFamily: "Jost",
           }}
         >
-          <span style={{ fontSize: 24, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
-          <span style={{ fontSize: 54, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
+          <span style={{ fontSize: 28, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
+          <span style={{ fontSize: 64, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
         </div>
 
         {/* URL bottom-right */}
         <div
           style={{
             display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
             position: "absolute",
             bottom: "40px",
             right: "60px",
-            fontSize: 20,
-            color: "rgba(255,255,255,0.6)",
             fontFamily: "Jost",
-            letterSpacing: "0.05em",
           }}
         >
-          https://mtg.ink
+          <span style={{ fontSize: 36, color: "rgba(255,255,255,0.6)", letterSpacing: "0.05em" }}>
+            https://mtg.ink
+          </span>
+          <span style={{ fontSize: 14, color: "rgba(255,255,255,0.25)", marginTop: "4px" }}>
+            Card art © Wizards of the Coast
+          </span>
         </div>
       </div>
     </div>,

@@ -52,14 +52,58 @@ export default function OGTestPage() {
           </button>
         </div>
 
-        <div className="border border-gray-700 rounded-xl overflow-hidden">
-          <img
-            key={slug + ts}
-            src={`/card/${slug}/opengraph-image`}
-            alt={`OG image for ${slug}`}
-            className="w-full"
-            style={{ aspectRatio: "1200/630" }}
-          />
+        <div className="space-y-6">
+          {/* Full size */}
+          <div>
+            <p className="text-xs text-gray-500 mb-2">Full size (1200×630)</p>
+            <div className="border border-gray-700 rounded-xl overflow-hidden">
+              <img
+                key={slug + ts}
+                src={`/card/${slug}/opengraph-image`}
+                alt={`OG image for ${slug}`}
+                className="w-full"
+                style={{ aspectRatio: "1200/630" }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            {/* Discord embed */}
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Discord embed (~400px wide)</p>
+              <div className="bg-[#2f3136] rounded-lg p-3 border-l-4 border-amber-500" style={{ maxWidth: 420 }}>
+                <p className="text-xs text-blue-400 mb-1">mtg.ink</p>
+                <p className="text-sm text-white font-medium mb-2">{slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())} - Best Card Art | MTG Ink</p>
+                <div className="rounded overflow-hidden">
+                  <img
+                    src={`/card/${slug}/opengraph-image`}
+                    alt=""
+                    className="w-full"
+                    style={{ aspectRatio: "1200/630" }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Phone / iMessage */}
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Phone / iMessage (~300px wide)</p>
+              <div className="bg-gray-800 rounded-2xl p-2" style={{ maxWidth: 300 }}>
+                <div className="rounded-xl overflow-hidden">
+                  <img
+                    src={`/card/${slug}/opengraph-image`}
+                    alt=""
+                    className="w-full"
+                    style={{ aspectRatio: "1200/630" }}
+                  />
+                  <div className="bg-gray-700 px-3 py-2">
+                    <p className="text-[10px] text-gray-400">mtg.ink</p>
+                    <p className="text-xs text-white">{slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())} - Best Card Art</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <p className="text-xs text-gray-600">

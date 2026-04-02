@@ -27,7 +27,22 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 301);
   }
 
-  return await updateSession(request);
+  // Skip session refresh on public content pages so Vercel can ISR cache them
+  // Only refresh session on pages that need auth state
+  const needsAuth =
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/favorites") ||
+    pathname.startsWith("/history") ||
+    pathname.startsWith("/deck") ||
+    pathname.startsWith("/inkadmin") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/api/");
+
+  if (needsAuth) {
+    return await updateSession(request);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

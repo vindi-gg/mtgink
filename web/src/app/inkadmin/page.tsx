@@ -32,6 +32,18 @@ export default async function InkAdminPage() {
               <p className="text-xs text-gray-500">Manage daily gauntlet themes</p>
             </div>
           </Link>
+          <Link
+            href="/inkadmin/og-test"
+            className="flex items-center gap-3 p-4 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
+          >
+            <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+            </svg>
+            <div>
+              <span className="text-sm font-bold text-white">OG Image Preview</span>
+              <p className="text-xs text-gray-500">Test Open Graph images for card pages</p>
+            </div>
+          </Link>
         </div>
 
         <AdminJobs />
