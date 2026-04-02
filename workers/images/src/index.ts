@@ -26,6 +26,7 @@ export class ImageScraper extends Container {
       R2_BUCKET: "mtgink-cdn",
       SUPABASE_DB_URL: env.SUPABASE_DB_URL || "",
       CONCURRENCY: "8",
+      NODE_TLS_REJECT_UNAUTHORIZED: "0",
       DISCORD_WEBHOOK_URL: env.DISCORD_WEBHOOK_URL || "",
       VERCEL_REVALIDATE_SECRET: env.VERCEL_REVALIDATE_SECRET || "",
       VERCEL_URL: env.VERCEL_URL || "https://mtg.ink",
