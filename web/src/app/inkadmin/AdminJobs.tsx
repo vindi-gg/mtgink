@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 
-const WORKER_URL = "https://mtgink-images.vindi-llc.workers.dev";
-
 const JOBS = [
-  { id: "sync", label: "Full Sync", desc: "Data + images + tags (what cron runs hourly)", icon: "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" },
-  { id: "data", label: "Card Data", desc: "Import latest card data from Scryfall", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" },
-  { id: "images", label: "Images", desc: "Download missing card art to R2", icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  { id: "sync", label: "Full Sync", desc: "Data + images + tags + prices (what cron runs hourly)", icon: "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" },
+  { id: "cards", label: "Scrape Cards", desc: "Card data + images (bundled)", icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" },
+  { id: "data", label: "Card Data", desc: "Import card data from Scryfall only", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" },
+  { id: "images", label: "Images", desc: "Download missing card art", icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" },
   { id: "prices", label: "Prices", desc: "Import prices from Scryfall", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
   { id: "tags", label: "Tags", desc: "Import Scryfall tagger tags", icon: "M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" },
 ];
@@ -20,7 +19,11 @@ export default function AdminJobs() {
     setRunning(jobId);
     setResult(null);
     try {
-      const res = await fetch(`${WORKER_URL}?job=${jobId}`);
+      const res = await fetch("/api/admin/worker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job: jobId }),
+      });
       const data = await res.json();
       setResult({ job: jobId, ok: res.ok, message: data.message || data.error || "Done" });
     } catch (err) {
@@ -33,7 +36,11 @@ export default function AdminJobs() {
     setRunning("status");
     setResult(null);
     try {
-      const res = await fetch(`${WORKER_URL}?status=1`);
+      const res = await fetch("/api/admin/worker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: true }),
+      });
       const data = await res.json();
       setResult({ job: "status", ok: res.ok, message: JSON.stringify(data, null, 2) });
     } catch (err) {
