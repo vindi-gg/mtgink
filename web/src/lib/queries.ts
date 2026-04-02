@@ -355,7 +355,7 @@ export async function getBackFaceUrls(oracleId: string): Promise<Map<string, str
 }
 
 /** Record a vote and update ELO ratings */
-export async function recordVote(payload: VotePayload, kFactor?: number): Promise<{
+export async function recordVote(payload: VotePayload, kFactor?: number, scope = "remix"): Promise<{
   winnerRating: ArtRating;
   loserRating: ArtRating;
 }> {
@@ -367,6 +367,7 @@ export async function recordVote(payload: VotePayload, kFactor?: number): Promis
     p_user_id: payload.user_id ?? null,
     p_vote_source: payload.vote_source ?? null,
     p_k_factor: kFactor ?? null,
+    p_scope: scope,
   });
 
   if (error) throw new Error(`Failed to record vote: ${error.message}`);

@@ -264,6 +264,8 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
             mode: "vs",
             winner_oracle_id: winner.oracle_id,
             loser_oracle_id: loser.oracle_id,
+            winner_illustration_id: winner.illustration_id,
+            loser_illustration_id: loser.illustration_id,
             session_id: getSessionId(),
             filters: hasActiveFilters(filtersRef.current) ? filtersRef.current : undefined,
           };

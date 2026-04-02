@@ -44,11 +44,6 @@ export default function ArtistGallery({
                 <span className="text-xs text-gray-500 truncate">
                   {ill.set_name}
                 </span>
-                {ill.elo_rating != null && (
-                  <span className="text-xs text-amber-400 flex-shrink-0 ml-1">
-                    {Math.round(ill.elo_rating)}
-                  </span>
-                )}
               </div>
             </div>
           </Link>

@@ -123,16 +123,13 @@ export default function Navbar() {
   const primaryLinks: { href: string; label: string }[] = [];
 
   // Secondary links — visible on desktop, in hamburger on mobile
-  const secondaryLinks = [
-    { href: "/deck-import", label: "Decks" },
-  ];
+  const secondaryLinks: { href: string; label: string }[] = [];
 
   // User menu links — shown in avatar dropdown and mobile menu when logged in
   const isAdmin = !!user?.user_metadata?.is_admin;
   const userMenuLinks = [
     { href: "/favorites", label: "Favorites" },
     { href: "/history", label: "Vote History" },
-    { href: "/deck", label: "My Decks" },
     ...(isAdmin ? [{ href: "/inkadmin", label: "Admin" }] : []),
   ];
 
@@ -372,19 +369,6 @@ export default function Navbar() {
           >
             DB
           </button>
-
-          {/* Deck import icon */}
-          <Link
-            href="/deck-import"
-            className={`transition-colors ${
-              pathname.startsWith("/deck") ? "text-white" : "text-gray-400"
-            }`}
-            title="Import Deck"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </Link>
 
           {/* Search (mobile) */}
           <button

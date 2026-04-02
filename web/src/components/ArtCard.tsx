@@ -49,11 +49,6 @@ export default function ArtCard({
         <div className="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded text-xs font-bold">
           #{rank}
         </div>
-        {rating && (
-          <div className="absolute top-2 right-10 bg-amber-500/90 text-black px-2 py-1 rounded text-xs font-bold">
-            {Math.round(rating.elo_rating)}
-          </div>
-        )}
         <div className="absolute top-2 right-2">
           <FavoriteButton
             illustrationId={illustration.illustration_id}

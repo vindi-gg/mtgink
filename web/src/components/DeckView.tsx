@@ -223,11 +223,6 @@ function DeckCardRow({
                     <div className="absolute top-1 left-1 bg-black/70 px-1.5 py-0.5 rounded text-xs font-bold">
                       #{i + 1}
                     </div>
-                    {ill.rating && (
-                      <div className="absolute top-1 right-1 bg-amber-500/90 text-black px-1.5 py-0.5 rounded text-xs font-bold">
-                        {Math.round(ill.rating.elo_rating)}
-                      </div>
-                    )}
                     {isSelected && (
                       <div className="absolute bottom-1 right-1 bg-amber-500 text-black px-1.5 py-0.5 rounded text-xs font-bold">
                         &#10003;
@@ -384,11 +379,6 @@ function ArtSelectModal({
                       className="w-full rounded-lg"
                       loading="lazy"
                     />
-                    {ill.rating && (
-                      <div className="absolute top-1.5 right-1.5 bg-amber-500/90 text-black px-1.5 py-0.5 rounded text-xs font-bold">
-                        {Math.round(ill.rating.elo_rating)}
-                      </div>
-                    )}
                     {isSelected && (
                       <div className="absolute top-1.5 left-1.5 bg-amber-500 text-black px-1.5 py-0.5 rounded text-xs font-bold">
                         &#10003; Selected

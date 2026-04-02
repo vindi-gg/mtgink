@@ -6,10 +6,12 @@ const CARDS_PER_CHUNK = 5000;
 
 // Chunk IDs:
 // 0 = static pages
-// 1-8 = card slugs (split into ~5K chunks)
-// 9 = sets
-// 10 = tags (oracle only)
-// 11 = tribes
+// 1-N = card slugs (split into ~5K chunks)
+// N+1 = sets
+// N+2 = tags (oracle only)
+// N+3 = tribes
+// N+4 = artists
+// N+5 = art tags
 
 export async function generateSitemaps() {
   const admin = getAdminClient();
@@ -26,9 +28,9 @@ export async function generateSitemaps() {
 
   const cardChunks = Math.ceil((cardCount ?? 37000) / CARDS_PER_CHUNK);
 
-  // 0=static, 1..N=cards, N+1=sets, N+2=tags, N+3=tribes
+  // 0=static, 1..N=cards, N+1=sets, N+2=tags, N+3=tribes, N+4=artists, N+5=art tags
   const ids: { id: number }[] = [];
-  for (let i = 0; i <= cardChunks + 3; i++) {
+  for (let i = 0; i <= cardChunks + 5; i++) {
     ids.push({ id: i });
   }
   // Store counts for sitemap() to use — encoded in IDs:
@@ -54,6 +56,7 @@ export default async function sitemap({
       { url: `${BASE_URL}/db/tags`, lastModified: now, changeFrequency: "weekly", priority: 0.6 },
       { url: `${BASE_URL}/db/tribes`, lastModified: now, changeFrequency: "weekly", priority: 0.6 },
       { url: `${BASE_URL}/db/cards`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+      { url: `${BASE_URL}/db/art-tags`, lastModified: now, changeFrequency: "weekly", priority: 0.6 },
       { url: `${BASE_URL}/artists`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
     ];
   }
@@ -118,6 +121,37 @@ export default async function sitemap({
 
     return (tribes ?? []).map((t: { slug: string }) => ({
       url: `${BASE_URL}/db/tribes/${t.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.5,
+    }));
+  }
+
+  // Artists (cardChunks + 4)
+  if (id === cardChunks + 4) {
+    const { data: artists } = await admin
+      .from("artists")
+      .select("slug")
+      .order("name");
+
+    return (artists ?? []).map((a) => ({
+      url: `${BASE_URL}/artists/${a.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
+  }
+
+  // Art tags (cardChunks + 5)
+  if (id === cardChunks + 5) {
+    const { data: artTags } = await admin
+      .from("tags")
+      .select("slug")
+      .eq("type", "illustration")
+      .order("label");
+
+    return (artTags ?? []).map((t) => ({
+      url: `${BASE_URL}/db/art-tags/${t.slug}`,
       lastModified: now,
       changeFrequency: "monthly" as const,
       priority: 0.5,

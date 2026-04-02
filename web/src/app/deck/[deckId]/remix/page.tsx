@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { normalCardUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import CardFaceToggle from "@/components/CardFaceToggle";
 import type { DeckDetail, DeckCardDetail, Illustration, ArtRating } from "@/lib/types";
 
@@ -15,7 +15,6 @@ interface RemixCard {
 
 const INITIAL_SHOW = 16;
 
-/** Find the default illustration: user selection > original import printing > top-rated */
 function defaultIllId(card: RemixCard): string | null {
   if (card.card.selected_illustration_id) return card.card.selected_illustration_id;
   if (card.card.original_set_code) {
@@ -52,6 +51,7 @@ export default function DeckRemixPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const startCard = searchParams.get("card");
+  const { imageMode, toggleImageMode, cardUrl } = useImageMode();
 
   const [loading, setLoading] = useState(true);
   const [deck, setDeck] = useState<DeckDetail | null>(null);
@@ -73,7 +73,6 @@ export default function DeckRemixPage() {
             const sorted = [...c.illustrations].sort(
               (a, b) => (b.rating?.elo_rating ?? 0) - (a.rating?.elo_rating ?? 0)
             );
-            // Move selected/default illustration to front
             const defId = c.selected_illustration_id
               || (c.original_set_code && sorted.find(
                   (i) => i.set_code === c.original_set_code && i.collector_number === c.original_collector_number
@@ -95,7 +94,6 @@ export default function DeckRemixPage() {
           });
         setRemixCards(cards);
         if (cards.length > 0) {
-          // Jump to specific card if query param provided
           let startIdx = 0;
           if (startCard) {
             const idx = cards.findIndex((c) => c.card.card.oracle_id === startCard);
@@ -110,7 +108,6 @@ export default function DeckRemixPage() {
       .finally(() => setLoading(false));
   }, [deckId]);
 
-  // Scroll to top when card changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [cardIndex]);
@@ -118,7 +115,6 @@ export default function DeckRemixPage() {
   const saveSelection = useCallback(async () => {
     if (!selected || !remixCards[cardIndex]) return;
     const card = remixCards[cardIndex];
-    // Only save if the user actually changed from the default
     if (selected === defaultIllId(card)) return;
     await fetch(`/api/deck/${deckId}/card/${card.card.card.oracle_id}`, {
       method: "PUT",
@@ -133,27 +129,23 @@ export default function DeckRemixPage() {
     if (selected !== defaultIllId(card)) {
       setChangedCount((c) => c + 1);
     }
-
     await saveSelection();
-
     const nextCard = cardIndex + 1;
     if (nextCard < remixCards.length) {
       setCardIndex(nextCard);
       setShowAll(false);
-      const next = remixCards[nextCard];
-      setSelected(defaultIllId(next));
+      setSelected(defaultIllId(remixCards[nextCard]));
     } else {
       setDone(true);
     }
-  }, [selected, remixCards, cardIndex, deckId, saveSelection]);
+  }, [selected, remixCards, cardIndex, saveSelection]);
 
   const skipCard = useCallback(() => {
     const nextCard = cardIndex + 1;
     if (nextCard < remixCards.length) {
       setCardIndex(nextCard);
       setShowAll(false);
-      const next = remixCards[nextCard];
-      setSelected(defaultIllId(next));
+      setSelected(defaultIllId(remixCards[nextCard]));
     } else {
       setDone(true);
     }
@@ -164,12 +156,10 @@ export default function DeckRemixPage() {
       const prev = cardIndex - 1;
       setCardIndex(prev);
       setShowAll(false);
-      const prevCard = remixCards[prev];
-      setSelected(defaultIllId(prevCard));
+      setSelected(defaultIllId(remixCards[prev]));
     }
   }, [cardIndex, remixCards]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (done) return;
@@ -216,7 +206,7 @@ export default function DeckRemixPage() {
           )}
           <button
             onClick={() => router.push(`/deck/${deckId}`)}
-            className="mt-6 px-6 py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 transition-colors"
+            className="mt-6 px-6 py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 transition-colors cursor-pointer"
           >
             View Deck
           </button>
@@ -230,147 +220,195 @@ export default function DeckRemixPage() {
   const hasMore = allIlls.length > INITIAL_SHOW;
   const visibleIlls = showAll ? allIlls : allIlls.slice(0, INITIAL_SHOW);
   const deckProgress = (cardIndex + 1) / remixCards.length;
+  const section = derivedSection(card.card.section, card.card.card.type_line ?? "");
 
   return (
-    <div className="px-3 md:px-4 py-3 md:py-4 max-w-5xl mx-auto">
-      {/* Deck progress */}
-      <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
-        <span>Card {cardIndex + 1} of {remixCards.length}</span>
-        <button
-          onClick={async () => {
-            await saveSelection();
-            router.push(`/deck/${deckId}`);
-          }}
-          className="text-gray-600 hover:text-gray-400 transition-colors"
-        >
-          Exit
-        </button>
-      </div>
-      <div className="w-full h-1.5 bg-gray-800 rounded-full mb-4 overflow-hidden">
-        <div
-          className="h-full bg-amber-500 rounded-full transition-all duration-300"
-          style={{ width: `${deckProgress * 100}%` }}
-        />
-      </div>
+    <div className="min-h-screen bg-gray-950 text-white">
+      <div className="flex max-w-7xl mx-auto px-3 md:px-4 py-3 md:py-6 gap-6">
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          {/* Mobile header */}
+          <div className="lg:hidden mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span>{cardIndex + 1} / {remixCards.length}</span>
+                <span className="text-gray-700">·</span>
+                <span className="text-gray-600">{section}</span>
+              </div>
+              <button
+                onClick={async () => { await saveSelection(); router.push(`/deck/${deckId}`); }}
+                className="text-xs text-gray-600 hover:text-gray-400 transition-colors cursor-pointer"
+              >
+                Exit
+              </button>
+            </div>
+            <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${deckProgress * 100}%` }} />
+            </div>
+            <h2 className="text-base font-bold text-white mt-2">
+              <a href={`/card/${card.card.card.slug}`} className="text-amber-400 hover:text-amber-300">{card.card.card.name}</a>
+            </h2>
+            <p className="text-[11px] text-gray-500">{card.card.card.type_line} · {allIlls.length} art{allIlls.length !== 1 ? "s" : ""}</p>
+          </div>
 
-      {/* Card info */}
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h2 className="text-lg font-bold text-white">
-            <a href={`/card/${card.card.card.slug}`} className="text-amber-400 hover:text-amber-300">
-              {card.card.card.name}
-            </a>
-          </h2>
-          <p className="text-xs text-gray-500">
-            {card.card.card.type_line}
-            <span className="text-gray-700 ml-2">{allIlls.length} art{allIlls.length !== 1 ? "s" : ""}</span>
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {cardIndex > 0 && (
+          {/* Art grid */}
+          <div className={`grid gap-2 md:gap-3 ${imageMode === "card" ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4"}`}>
+            {visibleIlls.map((ill) => {
+              const isSelected = ill.illustration_id === selected;
+              return (
+                <button
+                  key={ill.illustration_id}
+                  onClick={() => setSelected(ill.illustration_id)}
+                  className={`relative rounded-lg overflow-hidden text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? "ring-3 ring-amber-500 scale-[1.02]"
+                      : "ring-1 ring-gray-800 hover:ring-gray-600 opacity-80 hover:opacity-100"
+                  }`}
+                >
+                  {card.card.back_face_url && imageMode === "card" ? (
+                    <CardFaceToggle
+                      frontSrc={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
+                      backSrc={card.card.back_face_url}
+                      alt={`${ill.artist} — ${ill.set_name}`}
+                    />
+                  ) : (
+                    <img
+                      src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
+                      alt={`${ill.artist} — ${ill.set_name}`}
+                      className="w-full rounded-lg"
+                      loading="lazy"
+                    />
+                  )}
+                  {/* Price badge */}
+                  {ill.cheapest_price != null && (
+                    <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-sm text-green-400 text-xs font-bold px-2 py-1 rounded-md">
+                      ${ill.cheapest_price.toFixed(2)}
+                    </div>
+                  )}
+                  {/* Set + artist */}
+                  <div className="absolute bottom-2 left-2 bg-black/70 text-[10px] text-gray-300 px-1.5 py-0.5 rounded">
+                    {ill.set_code.toUpperCase()} · {ill.artist}
+                  </div>
+                  {/* Selected check */}
+                  {isSelected && (
+                    <div className="absolute top-2 right-2">
+                      <svg className="w-7 h-7 text-amber-400 drop-shadow-lg" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Show more */}
+          {hasMore && !showAll && (
             <button
-              onClick={goBack}
-              className="px-3 py-1.5 text-xs text-gray-500 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
-              title="Back (A)"
+              onClick={() => setShowAll(true)}
+              className="mt-3 w-full py-2 text-xs text-gray-500 hover:text-gray-300 border border-gray-800 rounded-lg hover:border-gray-700 transition-colors cursor-pointer"
             >
-              Back
+              Show all {allIlls.length} arts
             </button>
           )}
-          <button
-            onClick={skipCard}
-            className="px-3 py-1.5 text-xs text-gray-500 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors"
-            title="Skip (S)"
-          >
-            Skip
-          </button>
-          <button
-            onClick={saveAndAdvance}
-            className="px-4 py-1.5 text-sm font-bold bg-amber-500 text-gray-900 rounded-lg hover:bg-amber-400 transition-colors"
-            title="Next (D)"
-          >
-            Next
-          </button>
-        </div>
-      </div>
 
-      {/* Art grid — full card images */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
-        {visibleIlls.map((ill) => {
-          const isSelected = ill.illustration_id === selected;
-          return (
-            <button
-              key={ill.illustration_id}
-              onClick={() => setSelected(ill.illustration_id)}
-              className={`relative rounded-lg overflow-hidden text-left transition-all ${
-                isSelected
-                  ? "ring-3 ring-amber-500 scale-[1.02]"
-                  : "ring-1 ring-gray-800 hover:ring-gray-600 opacity-80 hover:opacity-100"
-              }`}
-            >
-              {card.card.back_face_url ? (
-                <CardFaceToggle
-                  frontSrc={normalCardUrl(ill.set_code, ill.collector_number, ill.image_version)}
-                  backSrc={card.card.back_face_url}
-                  alt={`${ill.artist} — ${ill.set_name}`}
-                />
-              ) : (
-                <img
-                  src={normalCardUrl(ill.set_code, ill.collector_number, ill.image_version)}
-                  alt={`${ill.artist} — ${ill.set_name}`}
-                  className="w-full rounded-lg"
-                  loading="lazy"
-                />
+          {/* Mobile bottom bar */}
+          <div className="lg:hidden sticky bottom-0 mt-4 pb-3 pt-2 bg-gradient-to-t from-gray-950 via-gray-950 to-transparent">
+            <div className="flex items-center gap-2">
+              {cardIndex > 0 && (
+                <button onClick={goBack} className="px-3 py-2.5 text-sm text-gray-400 border border-gray-700 rounded-lg hover:text-white hover:border-gray-500 transition-colors cursor-pointer" title="A / ←">
+                  ← Back
+                </button>
               )}
-              {/* Price badge — prominent */}
-              {ill.cheapest_price != null && (
-                <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-sm text-green-400 text-xs font-bold px-2 py-1 rounded-md">
-                  ${ill.cheapest_price.toFixed(2)}
-                </div>
-              )}
-              {/* ELO badge */}
-              {ill.rating && (
-                <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-sm text-amber-400 text-xs font-bold px-1.5 py-0.5 rounded-md">
-                  {Math.round(ill.rating.elo_rating)}
-                </div>
-              )}
-              {/* Set code */}
-              <div className="absolute bottom-2 left-2 bg-black/70 text-[10px] text-gray-300 px-1.5 py-0.5 rounded">
-                {ill.set_code.toUpperCase()} · {ill.artist}
+              <button onClick={skipCard} className="px-3 py-2.5 text-sm text-gray-400 border border-gray-700 rounded-lg hover:text-white hover:border-gray-500 transition-colors cursor-pointer flex-1" title="S">
+                Skip
+              </button>
+              <button onClick={saveAndAdvance} className="px-6 py-2.5 text-sm font-bold bg-amber-500 text-gray-900 rounded-lg hover:bg-amber-400 transition-colors cursor-pointer flex-1" title="D / →">
+                Next →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop sidebar */}
+        <aside className="hidden lg:block w-[260px] shrink-0 pt-2">
+          <div className="sticky top-20 space-y-4">
+            {/* Progress */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>Card {cardIndex + 1} of {remixCards.length}</span>
+                <span className="text-gray-600">{section}</span>
               </div>
-              {/* Selected check */}
-              {isSelected && (
-                <div className="absolute top-2 right-2">
-                  <svg className="w-7 h-7 text-amber-400 drop-shadow-lg" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                </div>
+              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${deckProgress * 100}%` }} />
+              </div>
+
+              {/* Card info */}
+              <div>
+                <a href={`/card/${card.card.card.slug}`} className="text-sm font-bold text-amber-400 hover:text-amber-300">
+                  {card.card.card.name}
+                </a>
+                <p className="text-xs text-gray-500 mt-0.5">{card.card.card.type_line}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{allIlls.length} illustration{allIlls.length !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+
+            {/* Image mode toggle */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+              <div className="flex rounded-lg border border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => { if (imageMode !== "art") toggleImageMode(); }}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    imageMode === "art" ? "bg-amber-500 text-gray-900" : "text-gray-400 hover:text-white hover:bg-gray-800"
+                  }`}
+                >
+                  Art
+                </button>
+                <button
+                  onClick={() => { if (imageMode !== "card") toggleImageMode(); }}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    imageMode === "card" ? "bg-amber-500 text-gray-900" : "text-gray-400 hover:text-white hover:bg-gray-800"
+                  }`}
+                >
+                  Card
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-600 mt-2 text-center">Press W to toggle</p>
+            </div>
+
+            {/* Navigation */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-2">
+              <button onClick={saveAndAdvance} className="w-full px-4 py-2 text-sm font-bold bg-amber-500 text-gray-900 rounded-lg hover:bg-amber-400 transition-colors cursor-pointer">
+                Next →
+              </button>
+              <button onClick={skipCard} className="w-full px-4 py-2 text-sm text-gray-400 border border-gray-700 rounded-lg hover:text-white hover:border-gray-500 transition-colors cursor-pointer">
+                Skip
+              </button>
+              {cardIndex > 0 && (
+                <button onClick={goBack} className="w-full px-4 py-2 text-sm text-gray-500 border border-gray-800 rounded-lg hover:text-gray-300 hover:border-gray-700 transition-colors cursor-pointer">
+                  ← Back
+                </button>
               )}
-            </button>
-          );
-        })}
+              <div className="pt-2 border-t border-gray-800">
+                <button
+                  onClick={async () => { await saveSelection(); router.push(`/deck/${deckId}`); }}
+                  className="w-full px-4 py-2 text-sm text-gray-600 hover:text-gray-400 transition-colors cursor-pointer"
+                >
+                  Exit Remix
+                </button>
+              </div>
+            </div>
+
+            {/* Keyboard hints */}
+            <div className="text-[10px] text-gray-600 space-y-1 px-1">
+              <div className="flex justify-between"><span>← / A</span><span>Back</span></div>
+              <div className="flex justify-between"><span>S</span><span>Skip</span></div>
+              <div className="flex justify-between"><span>→ / D</span><span>Next</span></div>
+              <div className="flex justify-between"><span>W</span><span>Toggle art/card</span></div>
+            </div>
+          </div>
+        </aside>
       </div>
-
-      {/* Show more */}
-      {hasMore && !showAll && (
-        <button
-          onClick={() => setShowAll(true)}
-          className="mt-3 w-full py-2 text-xs text-gray-500 hover:text-gray-300 border border-gray-800 rounded-lg hover:border-gray-700 transition-colors"
-        >
-          Show all {allIlls.length} arts
-        </button>
-      )}
-
-      {/* Bottom next button for scrolled pages */}
-      {visibleIlls.length > 9 && (
-        <div className="sticky bottom-4 mt-4 flex justify-center">
-          <button
-            onClick={saveAndAdvance}
-            className="px-6 py-2.5 text-sm font-bold bg-amber-500 text-gray-900 rounded-lg hover:bg-amber-400 transition-colors shadow-lg shadow-black/50"
-          >
-            Next →
-          </button>
-        </div>
-      )}
     </div>
   );
 }

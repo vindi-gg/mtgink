@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { recordVote, getComparisonPair, recordCardVote, getClashPair } from "@/lib/queries";
+import { recordVote, getComparisonPair, getClashPair } from "@/lib/queries";
 import { checkArtVote, checkCardVote } from "@/lib/vote-protection";
 import { createClient } from "@/lib/supabase/server";
 import type { CompareFilters } from "@/lib/types";
@@ -81,9 +81,9 @@ async function handleVsVote(
   userId: string | undefined,
   filters: CompareFilters | undefined,
 ) {
-  const { winner_oracle_id, loser_oracle_id } = body;
+  const { winner_oracle_id, loser_oracle_id, winner_illustration_id, loser_illustration_id } = body;
 
-  if (!winner_oracle_id || !loser_oracle_id) {
+  if (!winner_oracle_id || !loser_oracle_id || !winner_illustration_id || !loser_illustration_id) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
@@ -98,20 +98,21 @@ async function handleVsVote(
     return NextResponse.json({ error: protection.reason }, { status: 429 });
   }
 
-  const [result, next] = await Promise.all([
-    recordCardVote({
-      winner_oracle_id: winner_oracle_id as string,
-      loser_oracle_id: loser_oracle_id as string,
+  const [voteResult, next] = await Promise.all([
+    recordVote({
+      oracle_id: winner_oracle_id as string,
+      winner_illustration_id: winner_illustration_id as string,
+      loser_illustration_id: loser_illustration_id as string,
       session_id: sessionId,
       user_id: userId,
       vote_source: "showdown_vs",
-    }, protection.kFactor),
+    }, protection.kFactor, "vs"),
     getClashPair(filters),
   ]);
 
   return NextResponse.json({
-    winner_rating: result.winner_rating,
-    loser_rating: result.loser_rating,
+    winner_rating: voteResult.winnerRating,
+    loser_rating: voteResult.loserRating,
     next,
   });
 }
