@@ -33,6 +33,7 @@ export default function Navbar() {
   const [dbMenuOpen, setDbMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const playMenuRef = useRef<HTMLDivElement>(null);
+  const playMobileRef = useRef<HTMLDivElement>(null);
   const dbMenuRef = useRef<HTMLDivElement>(null);
   // Stable ref — survives HMR module resets without triggering re-renders
   const supabaseRef = useRef(createClient());
@@ -48,7 +49,7 @@ export default function Navbar() {
       if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
       }
-      if (playMenuOpen && playMenuRef.current && !playMenuRef.current.contains(e.target as Node)) {
+      if (playMenuOpen && playMenuRef.current && !playMenuRef.current.contains(e.target as Node) && (!playMobileRef.current || !playMobileRef.current.contains(e.target as Node))) {
         setPlayMenuOpen(false);
       }
       if (dbMenuOpen && dbMenuRef.current && !dbMenuRef.current.contains(e.target as Node)) {
@@ -512,7 +513,7 @@ export default function Navbar() {
     {playMenuOpen && (
       <>
         <div className="fixed inset-0 z-[59] md:hidden bg-black/50" onClick={() => setPlayMenuOpen(false)} />
-        <div data-play-panel className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
+        <div ref={playMobileRef} data-play-panel className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
           <div className="px-4 py-4 space-y-2">
             {PLAY_MODES.map((item) => (
               <Link
