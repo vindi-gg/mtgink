@@ -72,6 +72,37 @@ export default function AdminJobs() {
       >
         {running === "status" ? "Checking..." : "Check Container Status"}
       </button>
+
+      <h2 className="text-lg font-semibold pt-4">Themes</h2>
+      <div className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-lg">
+        <div className="flex items-center gap-3">
+          <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M2.985 19.644l3.181-3.183" />
+          </svg>
+          <div>
+            <span className="text-sm font-bold text-white">Regenerate Themes</span>
+            <p className="text-xs text-gray-500">Rebuild all gauntlet/VS themes from current data</p>
+          </div>
+        </div>
+        <button
+          onClick={async () => {
+            setRunning("themes");
+            setResult(null);
+            try {
+              const res = await fetch("/api/admin/themes/regenerate", { method: "POST" });
+              const data = await res.json();
+              setResult({ job: "themes", ok: res.ok, message: data.message || data.error });
+            } catch (err) {
+              setResult({ job: "themes", ok: false, message: (err as Error).message });
+            }
+            setRunning(null);
+          }}
+          disabled={running !== null}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {running === "themes" ? "Regenerating..." : "Regenerate"}
+        </button>
+      </div>
       {result && (
         <div className={`p-3 rounded-lg text-sm ${result.ok ? "bg-green-900/20 border border-green-800 text-green-400" : "bg-red-900/20 border border-red-800 text-red-400"}`}>
           <pre className="whitespace-pre-wrap break-words">{result.message}</pre>
