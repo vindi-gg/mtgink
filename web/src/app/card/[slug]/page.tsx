@@ -274,7 +274,7 @@ export default async function CardPage({
         </section>
       </main>
       <Sidebar>
-        {illustrations.length >= 2 && (
+        {illustrations.length >= 3 && (
           <div className="space-y-2">
             <a
               href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}

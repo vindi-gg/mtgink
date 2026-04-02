@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { artCropUrl } from "@/lib/image-utils";
 
 interface SearchResult {
   oracle_id: string;
@@ -11,6 +12,9 @@ interface SearchResult {
   type_line: string | null;
   illustration_count?: number;
   matched_flavor_name?: string | null;
+  set_code?: string;
+  collector_number?: string;
+  image_version?: string | null;
 }
 
 export default function SearchModal({
@@ -159,7 +163,7 @@ export default function SearchModal({
 
               {!loading && query.trim().length >= 2 && results.length === 0 && (
                 <p className="px-4 py-3 text-sm text-gray-500">
-                  No cards found with multiple art versions.
+                  No cards found.
                 </p>
               )}
 
@@ -168,31 +172,38 @@ export default function SearchModal({
                   key={card.oracle_id}
                   onClick={() => navigate(card.slug)}
                   onMouseEnter={() => setSelectedIndex(i)}
-                  className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                  className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors cursor-pointer ${
                     i === selectedIndex
                       ? "bg-gray-800"
                       : "hover:bg-gray-800/50"
                   }`}
                 >
-                  <div className="min-w-0">
+                  {card.set_code && card.collector_number && (
+                    <img
+                      src={artCropUrl(card.set_code, card.collector_number, card.image_version)}
+                      alt=""
+                      className="w-16 h-12 rounded object-cover flex-shrink-0"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
                     {card.matched_flavor_name ? (
                       <>
-                        <span className="text-white text-sm font-medium">
+                        <p className="text-white text-sm font-medium truncate">
                           {card.matched_flavor_name}
-                        </span>
-                        <span className="text-gray-500 text-xs ml-2">
+                        </p>
+                        <p className="text-gray-500 text-xs truncate">
                           {card.name}
-                        </span>
+                        </p>
                       </>
                     ) : (
                       <>
-                        <span className="text-white text-sm font-medium">
+                        <p className="text-white text-sm font-medium truncate">
                           {card.name}
-                        </span>
+                        </p>
                         {card.type_line && (
-                          <span className="text-gray-500 text-xs ml-2 hidden sm:inline">
+                          <p className="text-gray-500 text-xs truncate">
                             {card.type_line}
-                          </span>
+                          </p>
                         )}
                       </>
                     )}
