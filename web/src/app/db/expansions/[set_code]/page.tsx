@@ -16,7 +16,7 @@ export async function generateMetadata({
   const set = await getSetByCode(set_code);
   if (!set) return { title: "Set Not Found" };
   return {
-    title: `${set.name} (${set.set_code.toUpperCase()}) — All ${set.card_count ?? ""} Cards`,
+    title: `${set.name} (${set.set_code.toUpperCase()}) - All Cards`,
     description: `Browse all ${set.card_count ?? ""} cards in ${set.name}. Compare card art and find the best illustrations.${set.released_at ? ` Released ${set.released_at}.` : ""}`,
   };
 }

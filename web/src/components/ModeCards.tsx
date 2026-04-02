@@ -35,12 +35,14 @@ export default function ModeCards({ images = [] }: ModeCardsProps) {
                 <div className="flex shrink-0 gap-2">
                   <Link
                     href={mode.href}
+                    rel="nofollow"
                     className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors whitespace-nowrap"
                   >
                     Random Play
                   </Link>
                   <Link
                     href={mode.createHref}
+                    rel="nofollow"
                     className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-600 text-gray-300 hover:border-gray-400 hover:text-white transition-colors whitespace-nowrap"
                   >
                     Create

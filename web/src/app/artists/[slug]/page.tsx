@@ -20,7 +20,7 @@ export async function generateMetadata({
   const artist = await getArtistBySlug(slug);
   if (!artist) return { title: "Artist Not Found" };
 
-  const title = `${artist.name} — MTG Artist`;
+  const title = `${artist.name} - MTG Art`;
   const description = `Browse all ${artist.illustration_count} MTG card illustrations by ${artist.name}. View artwork, ratings, and printings.`;
 
   return {

@@ -28,8 +28,8 @@ export async function generateMetadata({
   const tribe = await getTribeBySlug(type);
   if (!tribe) return { title: "Tribe Not Found" };
   return {
-    title: `${tribe.tribe} — All MTG ${tribe.tribe} Creatures`,
-    description: `Browse all ${tribe.card_count.toLocaleString()} MTG ${tribe.tribe} creatures. Compare art versions and rank illustrations.`,
+    title: `${tribe.tribe} - MTG Creatures`,
+    description: `Browse all ${tribe.card_count.toLocaleString()} MTG ${tribe.tribe} creatures. Compare art across every printing.`,
   };
 }
 

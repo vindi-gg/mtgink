@@ -1,16 +1,34 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useImageMode } from "@/lib/image-mode";
 import { useGridDensity, GRID_CLASSES } from "@/lib/grid-density";
 import GridDensitySelector from "./GridDensitySelector";
+import CardLightbox from "./CardLightbox";
 import type { BrowseCard } from "@/lib/types";
 
-export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
+interface CardGridProps {
+  cards: BrowseCard[];
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+}
+
+export default function CardGrid({ cards, onLoadMore, hasMore, loadingMore }: CardGridProps) {
   const { cardUrl } = useImageMode();
   const { density, setDensity } = useGridDensity();
   const [showInfo, setShowInfo] = useState(false);
+  const [lightboxCard, setLightboxCard] = useState<BrowseCard | null>(null);
+  const prevLenRef = useRef(cards.length);
+
+  // When cards grow (load more), advance lightbox to first new card
+  useEffect(() => {
+    if (cards.length > prevLenRef.current && lightboxCard) {
+      const oldLen = prevLenRef.current;
+      setLightboxCard(cards[oldLen]);
+    }
+    prevLenRef.current = cards.length;
+  }, [cards.length]);
 
   return (
     <>
@@ -34,10 +52,10 @@ export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
 
       <div className={GRID_CLASSES[density]} suppressHydrationWarning>
         {cards.map((card) => (
-          <Link
+          <button
             key={card.oracle_id}
-            href={`/card/${card.slug}`}
-            className="group relative"
+            onClick={() => setLightboxCard(card)}
+            className="group relative text-left cursor-pointer"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -57,9 +75,30 @@ export default function CardGrid({ cards }: { cards: BrowseCard[] }) {
                 )}
               </div>
             )}
-          </Link>
+          </button>
         ))}
       </div>
+
+      {lightboxCard && (() => {
+        const idx = cards.findIndex((c) => c.oracle_id === lightboxCard.oracle_id);
+        const isLast = idx === cards.length - 1;
+        return (
+          <CardLightbox
+            card={lightboxCard}
+            imageUrl={cardUrl(lightboxCard.set_code, lightboxCard.collector_number, lightboxCard.image_version)}
+            index={idx}
+            total={cards.length}
+            onClose={() => setLightboxCard(null)}
+            onPrev={idx > 0 ? () => setLightboxCard(cards[idx - 1]) : undefined}
+            onNext={isLast && hasMore && onLoadMore
+              ? () => { onLoadMore(); }
+              : idx < cards.length - 1
+                ? () => setLightboxCard(cards[idx + 1])
+                : undefined
+            }
+          />
+        );
+      })()}
     </>
   );
 }

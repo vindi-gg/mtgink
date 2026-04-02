@@ -22,23 +22,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://mtg.ink"),
   title: {
-    default: "MTG Ink — Compare & Rank Every MTG Card Art",
+    default: "MTG Ink — Discover the Art of Magic",
     template: "%s | MTG Ink",
   },
   description:
-    "Compare and rank every Magic: The Gathering card art. Browse 37,000+ cards, discover illustrations across all printings, and vote for the best MTG art.",
+    "Discover and rank every Magic: The Gathering card art. Browse 37,000+ cards, compare illustrations across all printings, and vote for the best MTG art.",
   openGraph: {
     type: "website",
     siteName: "MTG Ink",
-    title: "MTG Ink — Compare & Rank Every MTG Card Art",
-    description:
-      "Compare and rank every Magic: The Gathering card art. Browse 37,000+ cards, discover illustrations across all printings, and vote for the best MTG art.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "MTG Ink — Compare & Rank Every MTG Card Art",
-    description:
-      "Compare and rank every Magic: The Gathering card art. Browse 37,000+ cards and vote for the best MTG art.",
   },
 };
 

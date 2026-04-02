@@ -192,6 +192,7 @@ export default function Navbar() {
                     <Link
                       key={item.href}
                       href={item.href}
+                      rel="nofollow"
                       className={`flex items-start gap-3 px-3 py-3 rounded-lg transition-colors ${
                         isActiveLink(pathname, item.href)
                           ? "bg-amber-500/10 border border-amber-500/30"
@@ -474,7 +475,7 @@ export default function Navbar() {
     {/* Beta banner */}
     {!betaDismissed && (
       <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-400/80">
-        MTG Ink is in beta — we&apos;ll do our best not to reset favorites and decks, but we may have to!
+        MTG Ink is in beta — we&apos;ll do our best not to reset data, but we may have to!
         <button
           onClick={() => { setBetaDismissed(true); localStorage.setItem("mtgink_beta_dismissed", "1"); }}
           className="ml-2 text-amber-500/50 hover:text-amber-400 cursor-pointer"
@@ -520,6 +521,7 @@ export default function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                rel="nofollow"
                 className={`flex items-start gap-3 px-4 py-3 rounded-lg transition-colors ${
                   isActiveLink(pathname, item.href)
                     ? "bg-amber-500/10 border border-amber-500/30"

@@ -19,8 +19,8 @@ export async function generateMetadata({
   const tag = await getTagBySlug(slug);
   if (!tag) return { title: "Art Tag Not Found" };
   return {
-    title: `${tag.label} — Art Tags`,
-    description: `Browse all MTG cards tagged "${tag.label}". Compare art and discover illustrations.`,
+    title: `${tag.label} Art - Art Tag`,
+    description: `Browse all MTG illustrations tagged "${tag.label}". Compare art across printings.`,
   };
 }
 

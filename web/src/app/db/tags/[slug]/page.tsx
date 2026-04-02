@@ -20,7 +20,7 @@ export async function generateMetadata({
   const tag = await getTagBySlug(slug);
   if (!tag) return { title: "Tag Not Found" };
   return {
-    title: `${tag.label} — MTG Cards Tagged ${tag.label}`,
+    title: `${tag.label} Art - Card Tag`,
     description: `Browse all MTG cards tagged "${tag.label}". Compare art and discover illustrations.`,
   };
 }

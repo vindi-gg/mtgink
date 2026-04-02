@@ -49,6 +49,7 @@ function PlayButtons({ links }: { links: { label: string; href: string; style: "
           <Link
             key={link.label}
             href={link.href}
+            rel="nofollow"
             className={`flex items-center justify-center gap-1.5 w-full px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${styles[link.style]}`}
           >
             {link.label.startsWith("Gauntlet") && (

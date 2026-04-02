@@ -35,8 +35,8 @@ export async function generateMetadata({
   const illustrations = await getIllustrationsForCard(card.oracle_id);
   const topIll = illustrations[0];
 
-  const title = `${card.name} — All Art Versions Ranked`;
-  const description = `See all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}, ranked by community votes. Compare art versions and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
+  const title = `${card.name} - Best Card Art`;
+  const description = `Browse all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art across every printing and vote for your favorite.${card.type_line ? ` ${card.type_line}.` : ""}`;
 
   const ogImage = topIll
     ? artCropUrl(topIll.set_code, topIll.collector_number, topIll.image_version)
@@ -172,7 +172,7 @@ export default async function CardPage({
           </div>
         </div>
 
-        <ArtGallery illustrations={illustrationsWithRatings} oracleId={card.oracle_id} />
+        <ArtGallery illustrations={illustrationsWithRatings} oracleId={card.oracle_id} cardName={card.name} cardSlug={card.slug} typeLine={card.type_line} />
 
         <section className="mt-10">
           <h2 className="text-xl font-bold mb-4">
@@ -277,14 +277,9 @@ export default async function CardPage({
         {illustrations.length >= 2 && (
           <div className="space-y-2">
             <a
-              href={`/showdown/remix?oracle_id=${card.oracle_id}`}
-              className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors cursor-pointer"
-            >
-              Remix
-            </a>
-            <a
               href={`/showdown/gauntlet?oracle_id=${card.oracle_id}`}
-              className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
+              rel="nofollow"
+              className="flex items-center justify-center w-full px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors cursor-pointer"
             >
               Gauntlet
             </a>
