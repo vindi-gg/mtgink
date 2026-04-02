@@ -11,17 +11,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import psycopg2
+import psycopg2.extras
 import requests
-
-from models import get_connection
 
 IMAGES_DIR = Path(__file__).parent.parent / "data" / "images"
 HEADERS = {
     "User-Agent": "MTGInk/1.0 (card art popularity tracker)",
 }
-
-# Track progress
-stats = {"downloaded": 0, "skipped": 0, "failed": 0, "total": 0}
 
 
 def download_image(url: str, dest: Path) -> bool:
@@ -44,9 +41,15 @@ def download_image(url: str, dest: Path) -> bool:
 
 def image_path(set_code: str, collector_number: str, image_type: str) -> Path:
     """Build local path for a card image."""
-    # Sanitize collector number for filesystem (some have / or *)
     safe_num = collector_number.replace("/", "_").replace("*", "star")
     return IMAGES_DIR / set_code / f"{safe_num}_{image_type}.jpg"
+
+
+def scryfall_image_url(scryfall_id: str, image_type: str) -> str:
+    """Build Scryfall CDN URL from scryfall_id."""
+    # Scryfall CDN uses first two chars of UUID as directory
+    d1, d2 = scryfall_id[0], scryfall_id[1]
+    return f"https://cards.scryfall.io/{image_type}/front/{d1}/{d2}/{scryfall_id}.jpg"
 
 
 def download_card_images(row, image_types):
@@ -57,11 +60,7 @@ def download_card_images(row, image_types):
     scryfall_id = row["scryfall_id"]
 
     for img_type in image_types:
-        col = f"image_uri_{img_type}"
-        url = row[col]
-        if not url:
-            continue
-
+        url = scryfall_image_url(scryfall_id, img_type)
         dest = image_path(set_code, collector_number, img_type)
         result = download_image(url, dest)
 
@@ -80,7 +79,7 @@ def main():
     parser.add_argument(
         "--types", nargs="+", default=["normal", "art_crop"],
         choices=["small", "normal", "large", "png", "art_crop", "border_crop"],
-        help="Image types to download (default: normal art_crop)"
+        help="Image types to download (default: art_crop)"
     )
     parser.add_argument(
         "--set", dest="set_code", help="Only download images for a specific set"
@@ -93,44 +92,66 @@ def main():
         help="Number of parallel download workers (default: 4)"
     )
     parser.add_argument(
-        "--paper-only", action="store_true", default=True,
-        help="Only download paper cards (default: True)"
-    )
-    parser.add_argument(
         "--all", action="store_true",
         help="Include digital-only cards"
     )
     args = parser.parse_args()
 
-    conn = get_connection()
+    db_url = os.environ.get("SUPABASE_DB_URL")
+    if not db_url:
+        # Try loading from .env.development.local
+        env_file = Path(__file__).parent.parent / "web" / ".env.development.local"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("SUPABASE_DB_URL="):
+                    db_url = line.split("=", 1)[1]
+                    break
+    if not db_url:
+        env_file = Path(__file__).parent.parent / "web" / ".env.local"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("SUPABASE_DB_URL="):
+                    db_url = line.split("=", 1)[1]
+                    break
+    if not db_url:
+        print("ERROR: Set SUPABASE_DB_URL environment variable")
+        sys.exit(1)
+
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Build query
-    conditions = []
+    conditions = ["p.illustration_id IS NOT NULL"]
     params = []
 
     if not args.all:
-        conditions.append("digital = 0")
+        conditions.append("s.digital = FALSE")
 
     if args.set_code:
-        conditions.append("set_code = ?")
+        conditions.append("p.set_code = %s")
         params.append(args.set_code)
 
-    # Only cards that have at least one image URL
-    image_conditions = " OR ".join(f"image_uri_{t} IS NOT NULL" for t in args.types)
-    conditions.append(f"({image_conditions})")
-
-    where = " AND ".join(conditions) if conditions else "1=1"
-    query = f"SELECT scryfall_id, set_code, collector_number, {', '.join(f'image_uri_{t}' for t in args.types)} FROM printings WHERE {where}"
+    where = " AND ".join(conditions)
+    query = f"""
+        SELECT p.scryfall_id, p.set_code, p.collector_number
+        FROM printings p
+        JOIN sets s ON s.set_code = p.set_code
+        WHERE {where}
+        ORDER BY p.set_code, p.collector_number
+    """
 
     if args.limit:
         query += f" LIMIT {args.limit}"
 
-    rows = conn.execute(query).fetchall()
+    cur.execute(query, params)
+    rows = cur.fetchall()
     total = len(rows)
     print(f"Found {total:,} cards to process for image types: {', '.join(args.types)}")
 
     if total == 0:
         print("No cards to download.")
+        cur.close()
+        conn.close()
         return
 
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -140,7 +161,6 @@ def main():
     failed = 0
     start_time = time.time()
 
-    # Process with thread pool for parallel downloads
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {}
         for row in rows:
@@ -174,26 +194,26 @@ def main():
     print(f"  Failed: {failed:,}")
     print(f"  Time: {elapsed:.1f}s ({elapsed/60:.1f} min)")
 
-    # Update local_image paths in database
+    # Update has_image flag for successfully downloaded cards
     if downloaded > 0:
-        print("\nUpdating database with local image paths...")
-        update_count = 0
+        print("\nUpdating has_image flags...")
+        update_ids = []
         for row in rows:
             for img_type in args.types:
                 dest = image_path(row["set_code"], row["collector_number"], img_type)
                 if dest.exists():
-                    col = f"local_image_{img_type}"
-                    # Only update columns that exist
-                    if img_type in ("normal", "art_crop"):
-                        conn.execute(
-                            f"UPDATE printings SET {col} = ? WHERE scryfall_id = ?",
-                            (str(dest.relative_to(IMAGES_DIR.parent.parent)), row["scryfall_id"])
-                        )
-                        update_count += 1
+                    update_ids.append(row["scryfall_id"])
+                    break
 
-        conn.commit()
-        print(f"  Updated {update_count:,} image paths in database")
+        if update_ids:
+            cur.execute(
+                "UPDATE printings SET has_image = TRUE WHERE scryfall_id = ANY(%s::uuid[])",
+                (update_ids,)
+            )
+            conn.commit()
+            print(f"  Updated {len(update_ids):,} has_image flags")
 
+    cur.close()
     conn.close()
 
 
