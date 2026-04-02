@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AdBanner from "@/components/AdBanner";
 import { ImageModeProvider } from "@/lib/image-mode";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
@@ -61,6 +62,7 @@ export default function RootLayout({
           </div>
           {adsEnabled && <AdBanner />}
         </ImageModeProvider>
+        <Analytics />
         <SpeedInsights />
         <GoogleAnalytics gaId="G-GL3TCYQPGY" />
       </body>
