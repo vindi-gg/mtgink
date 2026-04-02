@@ -32,6 +32,7 @@ export interface Illustration {
   collector_number: string;
   released_at: string | null;
   image_version: string | null;
+  cheapest_price?: number | null;
 }
 
 export interface ArtRating {
