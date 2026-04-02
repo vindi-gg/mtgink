@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const JOBS = [
   { id: "sync", label: "Full Sync", desc: "Data + images + tags + prices (what cron runs hourly)", icon: "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" },
@@ -11,13 +11,55 @@ const JOBS = [
   { id: "tags", label: "Tags", desc: "Import Scryfall tagger tags", icon: "M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" },
 ];
 
+interface JobStatus {
+  id?: number;
+  job_type?: string;
+  status?: string;
+  message?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
 export default function AdminJobs() {
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState<{ job: string; ok: boolean; message: string } | null>(null);
+  const [liveStatus, setLiveStatus] = useState<JobStatus | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  // Poll for job progress while running
+  useEffect(() => {
+    if (!running || running === "themes" || running === "status") return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/admin/worker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: true }),
+        });
+        const data = await res.json();
+        setLiveStatus(data);
+
+        if (data.status === "done" || data.status === "error") {
+          clearInterval(pollRef.current);
+          setRunning(null);
+          setResult({
+            job: data.job_type || "job",
+            ok: data.status === "done",
+            message: data.message || data.status,
+          });
+          setLiveStatus(null);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 2000);
+
+    return () => clearInterval(pollRef.current);
+  }, [running]);
 
   async function triggerJob(jobId: string) {
     setRunning(jobId);
     setResult(null);
+    setLiveStatus(null);
     try {
       const res = await fetch("/api/admin/worker", {
         method: "POST",
@@ -25,11 +67,15 @@ export default function AdminJobs() {
         body: JSON.stringify({ job: jobId }),
       });
       const data = await res.json();
-      setResult({ job: jobId, ok: res.ok, message: data.message || data.error || "Done" });
+      if (!res.ok) {
+        setRunning(null);
+        setResult({ job: jobId, ok: false, message: data.error || "Failed" });
+      }
+      // Don't clear running — polling will handle it
     } catch (err) {
+      setRunning(null);
       setResult({ job: jobId, ok: false, message: (err as Error).message });
     }
-    setRunning(null);
   }
 
   async function checkStatus() {
@@ -52,6 +98,18 @@ export default function AdminJobs() {
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold">Data Pipeline</h2>
+
+      {/* Live progress bar */}
+      {liveStatus && liveStatus.status === "running" && (
+        <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-800 text-amber-400 text-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="font-medium">{liveStatus.job_type} running...</span>
+          </div>
+          <p className="text-xs text-amber-400/70 truncate">{liveStatus.message}</p>
+        </div>
+      )}
+
       {JOBS.map((job) => (
         <div key={job.id} className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-lg">
           <div className="flex items-center gap-3">
@@ -77,7 +135,7 @@ export default function AdminJobs() {
         disabled={running !== null}
         className="w-full px-3 py-2 text-xs font-medium rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors disabled:opacity-50 cursor-pointer"
       >
-        {running === "status" ? "Checking..." : "Check Container Status"}
+        {running === "status" ? "Checking..." : "Check Status"}
       </button>
 
       <h2 className="text-lg font-semibold pt-4">Themes</h2>
