@@ -397,6 +397,7 @@ export interface BrowseCard {
   set_code: string;
   collector_number: string;
   image_version: string | null;
+  cheapest_price?: number | null;
 }
 
 // --- Gauntlet types ---

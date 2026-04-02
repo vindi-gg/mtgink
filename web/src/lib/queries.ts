@@ -722,16 +722,36 @@ export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
   matched: DeckCardWithArt[];
   unmatched: DecklistEntry[];
 }> {
+  // Step 1: Batch lookup all card names at once
+  const uniqueNames = [...new Set(entries.map((e) => e.name))];
+  const { data: allCards } = await getAdminClient()
+    .from("oracle_cards")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .in("name", uniqueNames);
+
+  const cardsByName = new Map<string, OracleCard>();
+  for (const row of allCards ?? []) {
+    cardsByName.set(row.name.toLowerCase(), { ...row, colors: row.colors ? JSON.stringify(row.colors) : null });
+  }
+
+  // Split card fallback for unmatched names
+  const unmatchedNames = uniqueNames.filter((n) => !cardsByName.has(n.toLowerCase()));
+  if (unmatchedNames.length > 0) {
+    for (const name of unmatchedNames) {
+      const card = await lookupCardByName(name);
+      if (card) cardsByName.set(name.toLowerCase(), card);
+    }
+  }
+
+  // Step 2: Deduplicate entries by oracle_id
   const matched: DeckCardWithArt[] = [];
   const unmatched: DecklistEntry[] = [];
   const seen = new Map<string, number>();
+  const entryByOracleId: { entry: DecklistEntry; card: OracleCard }[] = [];
 
   for (const entry of entries) {
-    const card = await lookupCardByName(entry.name);
-    if (!card) {
-      unmatched.push(entry);
-      continue;
-    }
+    const card = cardsByName.get(entry.name.toLowerCase());
+    if (!card) { unmatched.push(entry); continue; }
 
     const existingIdx = seen.get(card.oracle_id);
     if (existingIdx !== undefined) {
@@ -739,33 +759,24 @@ export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
       continue;
     }
 
-    const [illustrations, ratings] = await Promise.all([
-      getIllustrationsForCard(card.oracle_id),
-      getRatingsForCard(card.oracle_id),
-    ]);
-    const ratingMap = new Map(ratings.map((r) => [r.illustration_id, r]));
-
-    const illustrationsWithRatings = illustrations
-      .map((ill) => ({
-        ...ill,
-        rating: ratingMap.get(ill.illustration_id) ?? null,
-      }))
-      .sort((a, b) => {
-        const aElo = a.rating?.elo_rating ?? 1500;
-        const bElo = b.rating?.elo_rating ?? 1500;
-        return bElo - aElo;
-      });
-
     seen.set(card.oracle_id, matched.length);
-    matched.push({
+    entryByOracleId.push({ entry, card });
+    matched.push(null as unknown as DeckCardWithArt); // placeholder
+  }
+
+  // Step 3: Assemble results (illustrations loaded on-demand by deck page, not here)
+  for (let i = 0; i < entryByOracleId.length; i++) {
+    const { entry, card } = entryByOracleId[i];
+    const idx = seen.get(card.oracle_id)!;
+    matched[idx] = {
       card,
       quantity: entry.quantity,
       section: entry.section,
-      illustrations: illustrationsWithRatings,
+      illustrations: [],
       original_set_code: entry.original_set_code,
       original_collector_number: entry.original_collector_number,
       original_is_foil: entry.original_is_foil,
-    });
+    };
   }
 
   return { matched, unmatched };

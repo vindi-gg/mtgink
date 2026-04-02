@@ -65,7 +65,7 @@ async function handleRemixVote(
       user_id: userId,
       vote_source: "showdown_remix",
     }, protection.kFactor),
-    getComparisonPair(oracle_id as string, filters).catch(() => getComparisonPair()),
+    getComparisonPair(undefined, filters).catch(() => getComparisonPair()),
   ]);
 
   return NextResponse.json({

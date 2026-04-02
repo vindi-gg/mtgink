@@ -34,7 +34,9 @@ export default function Navbar() {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const playMenuRef = useRef<HTMLDivElement>(null);
   const dbMenuRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  // Stable ref — survives HMR module resets without triggering re-renders
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   useEffect(() => {
     setBetaDismissed(localStorage.getItem("mtgink_beta_dismissed") === "1");
@@ -71,7 +73,8 @@ export default function Navbar() {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Close menus on navigation
   useEffect(() => {
@@ -125,10 +128,12 @@ export default function Navbar() {
   ];
 
   // User menu links — shown in avatar dropdown and mobile menu when logged in
+  const isAdmin = !!user?.user_metadata?.is_admin;
   const userMenuLinks = [
     { href: "/favorites", label: "Favorites" },
     { href: "/history", label: "Vote History" },
     { href: "/deck", label: "My Decks" },
+    ...(isAdmin ? [{ href: "/inkadmin", label: "Admin" }] : []),
   ];
 
   const allLinks = [...primaryLinks, ...secondaryLinks];

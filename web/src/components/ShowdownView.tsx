@@ -104,6 +104,11 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
   const isRemix = mode === "remix";
 
   const [sides, setSides] = useState(() => normalizePair(initialPair, mode));
+  // Card-specific remix: both sides share the same oracle_id — lock next pairs to that card
+  const lockOracleId = isRemix && (() => {
+    const s = normalizePair(initialPair, mode);
+    return s[0].oracle_id === s[1].oracle_id;
+  })();
   const [voting, setVoting] = useState(false);
   const [filters, setFilters] = useState<CompareFilters>(initialFilters ?? {});
   const [filterError, setFilterError] = useState<string | null>(null);
@@ -253,6 +258,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
             loser_illustration_id: loser.illustration_id,
             session_id: getSessionId(),
             filters: hasActiveFilters(filtersRef.current) ? filtersRef.current : undefined,
+            lock_oracle_id: lockOracleId,
           }
         : {
             mode: "vs",

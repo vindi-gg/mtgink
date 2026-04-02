@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npx concurrently -n next,images \"next dev\" \"npx serve ../data/images -p 3333 --cors -L -l tcp://0.0.0.0:3333\"",
+    "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

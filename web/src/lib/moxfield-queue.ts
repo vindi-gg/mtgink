@@ -4,6 +4,7 @@ import { createAnonymousDeck, syncDeckCards } from "@/lib/deck-queries";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 export async function tryProcessQueue() {
+  const tq = Date.now();
   const admin = getAdminClient();
 
   // Recover stuck jobs (processing > 30s = crashed)
@@ -22,7 +23,7 @@ export async function tryProcessQueue() {
     .select("locked_by")
     .single();
 
-  if (!lock) return;
+  if (!lock) { console.log(`[moxfield] no lock acquired: ${Date.now() - tq}ms`); return; }
 
   // Find oldest pending entry
   const { data: pending } = await admin
@@ -33,7 +34,8 @@ export async function tryProcessQueue() {
     .limit(1)
     .single();
 
-  if (!pending) return;
+  if (!pending) { console.log(`[moxfield] no pending jobs: ${Date.now() - tq}ms`); return; }
+  console.log(`[moxfield] queue overhead: ${Date.now() - tq}ms`);
 
   // Mark it processing
   await admin
@@ -42,6 +44,7 @@ export async function tryProcessQueue() {
     .eq("id", pending.id);
 
   try {
+    const t0 = Date.now();
     const moxUA = process.env.MOXFIELD_USER_AGENT;
     if (!moxUA) throw new Error("MOXFIELD_USER_AGENT not configured");
 
@@ -49,19 +52,24 @@ export async function tryProcessQueue() {
       `https://api2.moxfield.com/v3/decks/all/${pending.moxfield_deck_id}`,
       { headers: { "User-Agent": moxUA, Accept: "application/json" } }
     );
+    console.log(`[moxfield] fetch: ${Date.now() - t0}ms`);
 
     if (!res.ok) {
       throw new Error(`Moxfield returned ${res.status}`);
     }
 
     const moxData = await res.json();
+    const t1 = Date.now();
     const entries = parseMoxfieldResponse(moxData);
+    console.log(`[moxfield] parse ${entries.length} entries: ${Date.now() - t1}ms`);
 
     if (entries.length === 0) {
       throw new Error("No cards found in Moxfield deck");
     }
 
+    const t2 = Date.now();
     const { matched, unmatched } = await lookupDeckCards(entries);
+    console.log(`[moxfield] lookupDeckCards (${matched.length} matched, ${unmatched.length} unmatched): ${Date.now() - t2}ms`);
 
     const deckCards = matched.map((card) => ({
       oracleId: card.card.oracle_id,
@@ -74,12 +82,12 @@ export async function tryProcessQueue() {
 
     let deckId: string;
 
+    const t3 = Date.now();
     if (pending.target_deck_id) {
-      // Re-sync existing deck: update cards, preserve art selections
       deckId = pending.target_deck_id;
       await syncDeckCards(deckId, deckCards);
+      console.log(`[moxfield] syncDeckCards: ${Date.now() - t3}ms`);
     } else {
-      // New import
       deckId = await createAnonymousDeck({
         name: moxData.name || "Imported Deck",
         format: moxData.format || undefined,
@@ -87,8 +95,10 @@ export async function tryProcessQueue() {
         userId: pending.user_id,
         cards: deckCards,
       });
+      console.log(`[moxfield] createDeck: ${Date.now() - t3}ms`);
     }
 
+    const t4 = Date.now();
     await admin
       .from("moxfield_queue")
       .update({
@@ -100,6 +110,7 @@ export async function tryProcessQueue() {
         },
       })
       .eq("id", pending.id);
+    console.log(`[moxfield] update status: ${Date.now() - t4}ms | total: ${Date.now() - t0}ms`);
   } catch (err) {
     await admin
       .from("moxfield_queue")

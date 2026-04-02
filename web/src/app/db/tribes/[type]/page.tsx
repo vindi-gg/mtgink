@@ -116,24 +116,6 @@ export default async function TribeDetailPage({
                 A–Z
               </Link>
             </div>
-            <Link
-              href={`/showdown/remix?subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}`}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors"
-            >
-              Remix
-            </Link>
-            <Link
-              href={`/showdown/vs?subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}`}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
-            >
-              VS
-            </Link>
-            <Link
-              href={`/showdown/gauntlet?subtype=${encodeURIComponent(tribe.tribe.toLowerCase())}&type=Creature`}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500 text-amber-400 hover:bg-amber-500/10 transition-colors"
-            >
-              Gauntlet
-            </Link>
           </div>
         </div>
 

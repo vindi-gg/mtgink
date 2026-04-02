@@ -75,18 +75,26 @@ export default async function GauntletPage({
           cardName = card?.name;
         }
 
+        // Always reconstruct filters from brew metadata for +10 more
+        const brewFilters: CompareFilters = {
+          colors: brew.colors ?? undefined,
+          type: brew.card_type ?? undefined,
+          subtype: brew.subtype ?? undefined,
+          rules_text: brew.rules_text ?? undefined,
+        };
+        if (brew.source === "expansion") brewFilters.set_code = brew.source_id;
+        if (brew.source === "tribe") {
+          brewFilters.type = "Creature";
+          brewFilters.subtype = brew.source_id;
+        }
+        filters = brewFilters;
+
         if (brew.pool?.length) {
           // Use the snapshotted pool — consistent across plays
           pool = brew.pool;
         } else {
           // Legacy brews without a snapshot — resolve dynamically
           const ps = brew.pool_size ?? DEFAULT_POOL_SIZE;
-          const brewFilters: CompareFilters = {
-            colors: brew.colors ?? undefined,
-            type: brew.card_type ?? undefined,
-            subtype: brew.subtype ?? undefined,
-            rules_text: brew.rules_text ?? undefined,
-          };
 
           if (brew.source === "card") {
             pool = await getGauntletIllustrations(brew.source_id);
@@ -106,12 +114,6 @@ export default async function GauntletPage({
             }
             pool = pool.sort(() => Math.random() - 0.5).slice(0, ps);
           } else {
-            if (brew.source === "expansion") brewFilters.set_code = brew.source_id;
-            if (brew.source === "tribe") {
-              brewFilters.type = "Creature";
-              brewFilters.subtype = brew.source_id;
-            }
-            filters = brewFilters;
             pool = await getGauntletCards(ps, brewFilters);
           }
         }
