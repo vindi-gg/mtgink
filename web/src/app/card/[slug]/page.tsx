@@ -8,9 +8,9 @@ import {
   getCardFaces,
   getBackFaceUrls,
   getTagsForCard,
+  getBestPricesForCard,
   slugify,
 } from "@/lib/queries";
-import { getAdminClient } from "@/lib/supabase/admin";
 import ArtGallery from "@/components/ArtGallery";
 import CardFaceToggle from "@/components/CardFaceToggle";
 import FavoriteCardButton from "@/components/FavoriteCardButton";
@@ -22,6 +22,11 @@ import { imageGalleryJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import { notFound } from "next/navigation";
 
 export const revalidate = 3600; // Re-generate card pages hourly
+export const dynamicParams = true; // Allow slugs not returned by generateStaticParams
+
+export async function generateStaticParams() {
+  return []; // All pages generated on-demand, cached via ISR
+}
 
 export async function generateMetadata({
   params,
@@ -68,30 +73,20 @@ export default async function CardPage({
 
   const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
 
-  const [illustrations, ratings, printingsMap, { data: allPrices }, cardFaces, tags] = await Promise.all([
+  const [illustrations, ratings, printingsMap, allPrices, cardFaces, tags] = await Promise.all([
     getIllustrationsForCard(card.oracle_id),
     getRatingsForCard(card.oracle_id),
     getPrintingsForCard(card.oracle_id),
-    getAdminClient()
-      .from("best_prices")
-      .select("scryfall_id, marketplace_display_name, market_price, currency, product_url")
-      .in(
-        "scryfall_id",
-        // Will be filtered after printings load — fetch all for this card
-        (await getAdminClient()
-          .from("printings")
-          .select("scryfall_id")
-          .eq("oracle_id", card.oracle_id)).data?.map((p) => p.scryfall_id) ?? []
-      ),
+    getBestPricesForCard(card.oracle_id),
     isDFC ? getCardFaces(card.oracle_id) : Promise.resolve([]),
     getTagsForCard(card.oracle_id),
   ]);
 
-  const backFaceUrls = isDFC ? await getBackFaceUrls(card.oracle_id) : new Map<string, string>();
+  const backFaceUrls = isDFC ? await getBackFaceUrls(card.oracle_id) : {} as Record<string, string>;
 
   // Map scryfall_id -> cheapest price
   const priceMap = new Map<string, { price: number; currency: string; url: string; marketplace: string }>();
-  for (const p of allPrices ?? []) {
+  for (const p of allPrices) {
     if (p.market_price == null) continue;
     const existing = priceMap.get(p.scryfall_id);
     if (!existing || (p.currency === "USD" && (existing.currency !== "USD" || p.market_price < existing.price))) {
@@ -118,7 +113,7 @@ export default async function CardPage({
       return 0;
     });
 
-  const totalPrintings = Array.from(printingsMap.values()).reduce(
+  const totalPrintings = Object.values(printingsMap).reduce(
     (sum, ps) => sum + ps.length,
     0
   );
@@ -178,7 +173,7 @@ export default async function CardPage({
           </h2>
           <div className="space-y-8">
             {illustrationsWithRatings.map((ill) => {
-              const printings = printingsMap.get(ill.illustration_id) ?? [];
+              const printings = printingsMap[ill.illustration_id] ?? [];
               if (printings.length === 0) return null;
               return (
                 <div key={ill.illustration_id}>
@@ -192,7 +187,7 @@ export default async function CardPage({
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     {printings.map((p) => {
                       const price = priceMap.get(p.scryfall_id);
-                      const backFaceUrl = backFaceUrls.get(p.scryfall_id);
+                      const backFaceUrl = backFaceUrls[p.scryfall_id];
                       return (
                         <div key={p.scryfall_id} className="group">
                           {backFaceUrl ? (

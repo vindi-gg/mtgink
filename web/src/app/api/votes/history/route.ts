@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserVoteHistory } from "@/lib/queries";
+import { getUserVoteHistory } from "@/lib/user-queries";
 
 export async function GET(request: NextRequest) {
   try {

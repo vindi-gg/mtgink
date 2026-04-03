@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { addFavorite, removeFavorite } from "@/lib/queries";
+import { addFavorite, removeFavorite } from "@/lib/user-queries";
 
 const FAVORITE_ELO_BOOST = 25;
 

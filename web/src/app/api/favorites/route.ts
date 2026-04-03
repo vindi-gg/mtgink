@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getFavoritedIllustrations, getUserFavorites } from "@/lib/queries";
+import { getFavoritedIllustrations, getUserFavorites } from "@/lib/user-queries";
 
 export async function GET(request: NextRequest) {
   try {

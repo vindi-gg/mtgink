@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { unstable_cache } from "next/cache";
 import { getAdminClient } from "@/lib/supabase/admin";
 import type {
   OracleCard,
@@ -8,8 +8,6 @@ import type {
   ComparisonPair,
   CompareFilters,
   VotePayload,
-  VoteHistoryEntry,
-  FavoriteEntry,
   MtgSet,
   SetCard,
   DecklistEntry,
@@ -154,13 +152,14 @@ export async function getCrossCardPair(filters?: CompareFilters): Promise<Compar
 }
 
 /** Get all distinct illustrations for a card, picking one representative printing per illustration */
-export async function getIllustrationsForCard(oracleId: string): Promise<(Illustration & { cheapest_price: number | null })[]> {
+const _getIllustrationsForCard = async (oracleId: string): Promise<(Illustration & { cheapest_price: number | null })[]> => {
   const { data, error } = await getAdminClient().rpc("get_illustrations_for_card", {
     p_oracle_id: oracleId,
   });
   if (error) throw new Error(`Failed to get illustrations: ${error.message}`);
   return (data as any[]).map((row) => ({ ...row, cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null }));
-}
+};
+export const getIllustrationsForCard = unstable_cache(_getIllustrationsForCard, ["illustrations-for-card"], { revalidate: 3600 });
 
 /** Get ELO rating for an illustration, or null if unrated */
 export async function getRating(illustrationId: string): Promise<ArtRating | null> {
@@ -212,7 +211,7 @@ export async function getCardByOracleId(oracleId: string): Promise<OracleCard | 
 }
 
 /** Get a card by URL slug, with UUID fallback */
-export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
+const _getCardBySlug = async (slug: string): Promise<OracleCard | null> => {
   // UUID fallback
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(slug)) {
     return getCardByOracleId(slug);
@@ -273,13 +272,14 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
   if (matches.length === 0) return null;
   const m = matches[0];
   return { ...m, colors: m.colors ? JSON.stringify(m.colors) : null };
-}
+};
+export const getCardBySlug = unstable_cache(_getCardBySlug, ["card-by-slug"], { revalidate: 3600 });
 
 /** Get all printings for a card, grouped by illustration_id (excludes digital-only sets) */
 /** Non-English reprint sets to exclude from printings display */
 const NON_ENGLISH_SETS = ["psal", "ps11", "ren", "rin", "fbb", "4bb", "bchr"];
 
-export async function getPrintingsForCard(oracleId: string): Promise<Map<string, Printing[]>> {
+const _getPrintingsForCard = async (oracleId: string): Promise<Record<string, Printing[]>> => {
   const { data, error } = await getAdminClient()
     .from("printings")
     .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, image_version, sets!inner(name, digital)")
@@ -291,11 +291,11 @@ export async function getPrintingsForCard(oracleId: string): Promise<Map<string,
 
   if (error) throw new Error(`Failed to get printings: ${error.message}`);
 
-  const grouped = new Map<string, Printing[]>();
+  const grouped: Record<string, Printing[]> = {};
   for (const row of data ?? []) {
     const illId = row.illustration_id as string;
-    if (!grouped.has(illId)) grouped.set(illId, []);
-    grouped.get(illId)!.push({
+    if (!grouped[illId]) grouped[illId] = [];
+    grouped[illId].push({
       scryfall_id: row.scryfall_id,
       set_code: row.set_code,
       set_name: (row.sets as unknown as { name: string }).name,
@@ -307,10 +307,11 @@ export async function getPrintingsForCard(oracleId: string): Promise<Map<string,
     });
   }
   return grouped;
-}
+};
+export const getPrintingsForCard = unstable_cache(_getPrintingsForCard, ["printings-for-card"], { revalidate: 3600 });
 
 /** Get card faces for a DFC (one representative printing) */
-export async function getCardFaces(oracleId: string): Promise<CardFace[]> {
+const _getCardFaces = async (oracleId: string): Promise<CardFace[]> => {
   // Get one printing for this card
   const { data: printing } = await getAdminClient()
     .from("printings")
@@ -328,15 +329,16 @@ export async function getCardFaces(oracleId: string): Promise<CardFace[]> {
     .order("face_index", { ascending: true });
 
   return (data ?? []) as CardFace[];
-}
+};
+export const getCardFaces = unstable_cache(_getCardFaces, ["card-faces"], { revalidate: 3600 });
 
 /** Get back face image URLs for all printings of a DFC, keyed by scryfall_id */
-export async function getBackFaceUrls(oracleId: string): Promise<Map<string, string>> {
+const _getBackFaceUrls = async (oracleId: string): Promise<Record<string, string>> => {
   const { data: printings } = await getAdminClient()
     .from("printings")
     .select("scryfall_id")
     .eq("oracle_id", oracleId);
-  if (!printings || printings.length === 0) return new Map();
+  if (!printings || printings.length === 0) return {};
 
   const { data } = await getAdminClient()
     .from("card_faces")
@@ -344,15 +346,16 @@ export async function getBackFaceUrls(oracleId: string): Promise<Map<string, str
     .in("scryfall_id", printings.map((p) => p.scryfall_id))
     .eq("face_index", 1);
 
-  const map = new Map<string, string>();
+  const map: Record<string, string> = {};
   for (const row of data ?? []) {
     const uris = row.image_uris as { normal?: string } | null;
     if (uris?.normal) {
-      map.set(row.scryfall_id, uris.normal);
+      map[row.scryfall_id] = uris.normal;
     }
   }
   return map;
-}
+};
+export const getBackFaceUrls = unstable_cache(_getBackFaceUrls, ["back-face-urls"], { revalidate: 3600 });
 
 /** Record a vote and update ELO ratings */
 export async function recordVote(payload: VotePayload, kFactor?: number, scope = "remix"): Promise<{
@@ -396,14 +399,40 @@ export async function recordVote(payload: VotePayload, kFactor?: number, scope =
 }
 
 /** Get all ratings for a card's illustrations, sorted by ELO desc */
-export async function getRatingsForCard(oracleId: string): Promise<ArtRating[]> {
+const _getRatingsForCard = async (oracleId: string): Promise<ArtRating[]> => {
   const { data } = await getAdminClient()
     .from("art_ratings")
     .select("*")
     .eq("oracle_id", oracleId)
     .order("elo_rating", { ascending: false });
   return (data ?? []) as ArtRating[];
+};
+export const getRatingsForCard = unstable_cache(_getRatingsForCard, ["ratings-for-card"], { revalidate: 3600 });
+
+interface BestPrice {
+  scryfall_id: string;
+  marketplace_display_name: string;
+  market_price: number | null;
+  currency: string;
+  product_url: string;
 }
+
+const _getBestPricesForCard = async (oracleId: string): Promise<BestPrice[]> => {
+  const { data: printings } = await getAdminClient()
+    .from("printings")
+    .select("scryfall_id")
+    .eq("oracle_id", oracleId);
+
+  if (!printings || printings.length === 0) return [];
+
+  const { data } = await getAdminClient()
+    .from("best_prices")
+    .select("scryfall_id, marketplace_display_name, market_price, currency, product_url")
+    .in("scryfall_id", printings.map((p) => p.scryfall_id));
+
+  return (data ?? []) as BestPrice[];
+};
+export const getBestPricesForCard = unstable_cache(_getBestPricesForCard, ["best-prices-for-card"], { revalidate: 3600 });
 
 /** Search cards by name, limited to those with 2+ illustrations, sorted by popularity */
 export async function searchCards(query: string, limit = 20): Promise<(OracleCard & { matched_flavor_name?: string | null })[]> {
@@ -420,189 +449,6 @@ export async function searchCards(query: string, limit = 20): Promise<(OracleCar
   }));
 }
 
-/** Get vote history for a user */
-export async function getUserVoteHistory(
-  userId: string,
-  limit = 50,
-  offset = 0
-): Promise<{ votes: VoteHistoryEntry[]; total: number }> {
-  const supabase = await createClient();
-  if (!supabase) throw new Error("Supabase not configured");
-
-  // Get total count
-  const { count } = await supabase
-    .from("votes")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId);
-
-  // Get paginated votes with card info
-  const { data: rawVotes } = await supabase
-    .from("votes")
-    .select("id, oracle_id, winner_illustration_id, loser_illustration_id, voted_at")
-    .eq("user_id", userId)
-    .order("voted_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (!rawVotes || rawVotes.length === 0) return { votes: [], total: count ?? 0 };
-
-  // Batch lookup card names and printings
-  const oracleIds = [...new Set(rawVotes.map((v) => v.oracle_id))];
-  const illustrationIds = [
-    ...new Set(rawVotes.flatMap((v) => [v.winner_illustration_id, v.loser_illustration_id])),
-  ];
-
-  const [{ data: cards }, { data: printingRows }] = await Promise.all([
-    getAdminClient()
-      .from("oracle_cards")
-      .select("oracle_id, name, slug, type_line")
-      .in("oracle_id", oracleIds),
-    getAdminClient()
-      .from("printings")
-      .select("illustration_id, set_code, collector_number, image_version")
-      .in("illustration_id", illustrationIds),
-  ]);
-
-  const cardMap = new Map((cards ?? []).map((c) => [c.oracle_id, c]));
-  const printingMap = new Map((printingRows ?? []).map((p) => [p.illustration_id, p]));
-
-  const votes: VoteHistoryEntry[] = rawVotes.map((v) => {
-    const card = cardMap.get(v.oracle_id);
-    const winner = printingMap.get(v.winner_illustration_id);
-    const loser = printingMap.get(v.loser_illustration_id);
-
-    return {
-      vote_id: v.id,
-      card_name: card?.name ?? "Unknown",
-      card_slug: card?.slug ?? "unknown",
-      oracle_id: v.oracle_id,
-      winner_illustration_id: v.winner_illustration_id,
-      loser_illustration_id: v.loser_illustration_id,
-      winner_set_code: winner?.set_code ?? "",
-      winner_collector_number: winner?.collector_number ?? "",
-      winner_image_version: winner?.image_version ?? null,
-      loser_set_code: loser?.set_code ?? "",
-      loser_collector_number: loser?.collector_number ?? "",
-      loser_image_version: loser?.image_version ?? null,
-      voted_at: v.voted_at,
-    };
-  });
-
-  return { votes, total: count ?? 0 };
-}
-
-/** Add an illustration to a user's favorites */
-export async function addFavorite(
-  userId: string,
-  illustrationId: string,
-  oracleId: string,
-  source: "ink" | "clash" = "ink"
-): Promise<void> {
-  const supabase = await createClient();
-  if (!supabase) return;
-  await supabase
-    .from("favorites")
-    .upsert({ user_id: userId, illustration_id: illustrationId, oracle_id: oracleId, source });
-}
-
-/** Remove an illustration from a user's favorites */
-export async function removeFavorite(
-  userId: string,
-  illustrationId: string
-): Promise<void> {
-  const supabase = await createClient();
-  if (!supabase) return;
-  await supabase
-    .from("favorites")
-    .delete()
-    .eq("user_id", userId)
-    .eq("illustration_id", illustrationId);
-}
-
-/** Batch check which illustration IDs are favorited by a user */
-export async function getFavoritedIllustrations(
-  userId: string,
-  illustrationIds: string[]
-): Promise<Set<string>> {
-  if (illustrationIds.length === 0) return new Set();
-  const supabase = await createClient();
-  if (!supabase) return new Set();
-
-  const { data } = await supabase
-    .from("favorites")
-    .select("illustration_id")
-    .eq("user_id", userId)
-    .in("illustration_id", illustrationIds);
-
-  return new Set((data ?? []).map((r) => r.illustration_id));
-}
-
-/** Get a user's favorited illustrations with card info, paginated */
-export async function getUserFavorites(
-  userId: string,
-  limit = 50,
-  offset = 0,
-  source?: "ink" | "clash"
-): Promise<{ favorites: FavoriteEntry[]; total: number }> {
-  const supabase = await createClient();
-  if (!supabase) return { favorites: [], total: 0 };
-
-  let countQuery = supabase
-    .from("favorites")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId);
-  if (source) countQuery = countQuery.eq("source", source);
-  const { count } = await countQuery;
-
-  let query = supabase
-    .from("favorites")
-    .select("illustration_id, oracle_id, source, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  if (source) query = query.eq("source", source);
-
-  const { data: rawFavorites } = await query.range(offset, offset + limit - 1);
-
-  if (!rawFavorites || rawFavorites.length === 0) return { favorites: [], total: count ?? 0 };
-
-  // Batch lookups
-  const oracleIds = [...new Set(rawFavorites.map((f) => f.oracle_id))];
-  const illustrationIds = rawFavorites.map((f) => f.illustration_id);
-
-  const [{ data: cards }, { data: printingRows }] = await Promise.all([
-    getAdminClient()
-      .from("oracle_cards")
-      .select("oracle_id, name, slug, type_line")
-      .in("oracle_id", oracleIds),
-    getAdminClient()
-      .from("printings")
-      .select("illustration_id, oracle_id, artist, set_code, collector_number, image_version")
-      .in("illustration_id", illustrationIds),
-  ]);
-
-  const cardMap = new Map((cards ?? []).map((c) => [c.oracle_id, c]));
-  const printingMap = new Map((printingRows ?? []).map((p) => [p.illustration_id, p]));
-
-  const favorites: FavoriteEntry[] = rawFavorites.map((f) => {
-    const card = cardMap.get(f.oracle_id);
-    const printing = printingMap.get(f.illustration_id);
-
-    return {
-      illustration_id: f.illustration_id,
-      oracle_id: f.oracle_id,
-      card_name: card?.name ?? "Unknown",
-      card_slug: card?.slug ?? "unknown",
-      artist: printing?.artist ?? "Unknown",
-      set_code: printing?.set_code ?? "",
-      collector_number: printing?.collector_number ?? "",
-      image_version: printing?.image_version ?? null,
-      source: (f.source ?? "ink") as "ink" | "clash",
-      created_at: f.created_at,
-    };
-  });
-
-  return { favorites, total: count ?? 0 };
-}
 
 const PLAYABLE_SET_TYPES = ["expansion", "core", "masters", "draft_innovation", "commander"];
 
@@ -1207,7 +1053,7 @@ export async function getCardsByTribe(
 const TAG_COLUMNS = "tag_id, label, slug, type, description, usage_count, source, rule_definition, category";
 
 /** Get all tags for a card (oracle tags + illustration tags) */
-export async function getTagsForCard(oracleId: string): Promise<Tag[]> {
+const _getTagsForCard = async (oracleId: string): Promise<Tag[]> => {
   const admin = getAdminClient();
 
   // Get oracle tags
@@ -1247,7 +1093,8 @@ export async function getTagsForCard(oracleId: string): Promise<Tag[]> {
   }
 
   return tags.sort((a, b) => a.label.localeCompare(b.label));
-}
+};
+export const getTagsForCard = unstable_cache(_getTagsForCard, ["tags-for-card"], { revalidate: 3600 });
 
 export async function getTags(
   search?: string,

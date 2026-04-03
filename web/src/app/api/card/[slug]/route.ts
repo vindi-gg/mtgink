@@ -29,7 +29,7 @@ export async function GET(
     ...ill,
     rating: ratingsMap.get(ill.illustration_id) ?? null,
     cheapest_price: ill.cheapest_price,
-    printings: printingsMap.get(ill.illustration_id) ?? [],
+    printings: printingsMap[ill.illustration_id] ?? [],
   }));
 
   // Sort by ELO (rated first, then unrated)
