@@ -6,7 +6,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
+          memory: 2G
     environment:
       - SUPABASE_DB_URL=postgresql://postgres:postgres@host.docker.internal:54322/postgres
       - OUTPUT_DIR=filesystem

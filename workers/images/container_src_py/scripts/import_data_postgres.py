@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 
+import ijson
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -115,40 +116,39 @@ def import_oracle_cards(cur, conn, slugs):
         print(f"WARNING: {oracle_file} not found, will derive from printings")
         return
 
-    with open(oracle_file) as f:
-        cards = json.load(f)
-
-    print(f"Importing {len(cards)} oracle cards...")
+    print(f"Streaming oracle cards from {oracle_file}...")
 
     batch = []
-    for card in cards:
-        oid = card.get("oracle_id")
-        if not oid:
-            continue
-
-        batch.append((
-            oid,
-            card.get("name", ""),
-            slugs.get(oid, slugify(card.get("name", ""))),
-            card.get("layout"),
-            card.get("mana_cost"),
-            card.get("cmc"),
-            card.get("type_line"),
-            card.get("oracle_text"),
-            json.dumps(card.get("colors") or []),
-            json.dumps(card.get("color_identity") or []),
-            json.dumps(card.get("keywords") or []),
-            card.get("power"),
-            card.get("toughness"),
-            card.get("loyalty"),
-            card.get("defense"),
-            json.dumps(card.get("legalities") or {}),
-            bool(card.get("reserved")),
-        ))
-
-        if len(batch) >= 5000:
-            _insert_oracle_batch(cur, conn, batch)
-            batch = []
+    count = 0
+    with open(oracle_file, "rb") as f:
+        for card in ijson.items(f, "item"):
+            oid = card.get("oracle_id")
+            if not oid:
+                continue
+            count += 1
+            batch.append((
+                oid,
+                card.get("name", ""),
+                slugs.get(oid, slugify(card.get("name", ""))),
+                card.get("layout"),
+                card.get("mana_cost"),
+                card.get("cmc"),
+                card.get("type_line"),
+                card.get("oracle_text"),
+                json.dumps(card.get("colors") or []),
+                json.dumps(card.get("color_identity") or []),
+                json.dumps(card.get("keywords") or []),
+                card.get("power"),
+                card.get("toughness"),
+                card.get("loyalty"),
+                card.get("defense"),
+                json.dumps(card.get("legalities") or {}),
+                bool(card.get("reserved")),
+            ))
+            if len(batch) >= 5000:
+                _insert_oracle_batch(cur, conn, batch)
+                print(f"  Streamed {count} oracle cards...", flush=True)
+                batch = []
 
     if batch:
         _insert_oracle_batch(cur, conn, batch)
@@ -181,132 +181,135 @@ def import_printings(cur, conn, slugs):
         print(f"ERROR: {cards_file} not found. Run download_bulk.py first.")
         sys.exit(1)
 
-    print(f"Loading printings from {cards_file}...")
-    with open(cards_file) as f:
-        cards = json.load(f)
+    print(f"Streaming printings from {cards_file}...")
 
-    print(f"Importing {len(cards)} printings...")
-
-    # Ensure all oracle_ids exist
-    oracle_batch = []
-    oracle_seen = set()
-    for card in cards:
-        oid = card.get("oracle_id")
-        if not oid:
-            if card.get("card_faces"):
-                oid = card["card_faces"][0].get("oracle_id")
-        if oid and oid not in oracle_seen:
-            oracle_seen.add(oid)
-            oracle_batch.append((
-                oid,
-                card.get("name", ""),
-                slugs.get(oid, slugify(card.get("name", ""))),
-                card.get("layout"),
-                card.get("mana_cost"),
-                card.get("cmc"),
-                card.get("type_line"),
-                card.get("oracle_text"),
-                json.dumps(card.get("colors") or []),
-                json.dumps(card.get("color_identity") or []),
-                json.dumps(card.get("keywords") or []),
-                card.get("power"),
-                card.get("toughness"),
-                card.get("loyalty"),
-                card.get("defense"),
-                json.dumps(card.get("legalities") or {}),
-                bool(card.get("reserved")),
-            ))
-
-    # Batch insert oracle cards (ON CONFLICT DO NOTHING — prefer existing oracle data)
-    for i in range(0, len(oracle_batch), 5000):
-        execute_values(
-            cur,
-            """INSERT INTO oracle_cards
-               (oracle_id, name, slug, layout, mana_cost, cmc, type_line, oracle_text,
-                colors, color_identity, keywords, power, toughness, loyalty, defense,
-                legalities, reserved)
-               VALUES %s ON CONFLICT (oracle_id) DO NOTHING""",
-            oracle_batch[i:i + 5000],
-        )
-        conn.commit()
-
-    # Import printings
+    # Stream through the file once — insert oracle cards and printings in batches
     count = 0
     skipped = 0
     batch = []
     face_batch = []
+    oracle_batch = []
+    oracle_seen = set()
 
-    for card in cards:
-        oracle_id = card.get("oracle_id")
-        if not oracle_id:
-            if card.get("card_faces"):
-                oracle_id = card["card_faces"][0].get("oracle_id")
+    with open(cards_file, "rb") as f:
+        for card in ijson.items(f, "item"):
+            oracle_id = card.get("oracle_id")
             if not oracle_id:
-                skipped += 1
-                continue
+                if card.get("card_faces"):
+                    oracle_id = card["card_faces"][0].get("oracle_id")
+                if not oracle_id:
+                    skipped += 1
+                    continue
 
-        image_uris = card.get("image_uris") or {}
-        if not image_uris and card.get("card_faces"):
-            image_uris = card["card_faces"][0].get("image_uris") or {}
-
-        prices = card.get("prices") or {}
-        purchase = card.get("purchase_uris") or {}
-
-        batch.append((
-            card["id"],
-            oracle_id,
-            card.get("set", ""),
-            card.get("collector_number", ""),
-            card.get("name", ""),
-            card.get("flavor_name"),
-            card.get("layout"),
-            card.get("mana_cost"),
-            card.get("type_line"),
-            card.get("illustration_id"),
-            card.get("artist"),
-            card.get("rarity"),
-            card.get("released_at"),
-            bool(card.get("digital")),
-            card.get("tcgplayer_id"),
-            card.get("cardmarket_id"),
-            prices.get("usd"),
-            prices.get("eur"),
-            json.dumps(purchase) if purchase else None,
-            json.dumps(image_uris) if image_uris else None,
-            None,  # local_image_normal
-            None,  # local_image_art_crop
-        ))
-
-        # Card faces
-        if card.get("card_faces"):
-            for i, face in enumerate(card["card_faces"]):
-                face_images = face.get("image_uris") or {}
-                face_batch.append((
-                    card["id"],
-                    i,
-                    face.get("name", ""),
-                    face.get("mana_cost"),
-                    face.get("type_line"),
-                    face.get("oracle_text"),
-                    json.dumps(face.get("colors") or []),
-                    face.get("power"),
-                    face.get("toughness"),
-                    face.get("loyalty"),
-                    face.get("defense"),
-                    face.get("illustration_id"),
-                    json.dumps(face_images) if face_images else None,
+            # Collect oracle cards inline (deduped, small set)
+            if oracle_id not in oracle_seen:
+                oracle_seen.add(oracle_id)
+                oracle_batch.append((
+                    oracle_id,
+                    card.get("name", ""),
+                    slugs.get(oracle_id, slugify(card.get("name", ""))),
+                    card.get("layout"),
+                    card.get("mana_cost"),
+                    card.get("cmc"),
+                    card.get("type_line"),
+                    card.get("oracle_text"),
+                    json.dumps(card.get("colors") or []),
+                    json.dumps(card.get("color_identity") or []),
+                    json.dumps(card.get("keywords") or []),
+                    card.get("power"),
+                    card.get("toughness"),
+                    card.get("loyalty"),
+                    card.get("defense"),
+                    json.dumps(card.get("legalities") or {}),
+                    bool(card.get("reserved")),
                 ))
+                if len(oracle_batch) >= 5000:
+                    execute_values(cur, """INSERT INTO oracle_cards
+                        (oracle_id, name, slug, layout, mana_cost, cmc, type_line, oracle_text,
+                         colors, color_identity, keywords, power, toughness, loyalty, defense,
+                         legalities, reserved)
+                        VALUES %s ON CONFLICT (oracle_id) DO NOTHING""", oracle_batch)
+                    conn.commit()
+                    oracle_batch = []
 
-        count += 1
-        if len(batch) >= 5000:
-            _insert_printing_batch(cur, conn, batch)
-            batch = []
-            # Flush faces after printings so FK constraint is satisfied
-            if face_batch:
-                _insert_face_batch(cur, conn, face_batch)
-                face_batch = []
-            print(f"  {count} printings imported...")
+            image_uris = card.get("image_uris") or {}
+            if not image_uris and card.get("card_faces"):
+                image_uris = card["card_faces"][0].get("image_uris") or {}
 
+            prices = card.get("prices") or {}
+            purchase = card.get("purchase_uris") or {}
+
+            batch.append((
+                card["id"],
+                oracle_id,
+                card.get("set", ""),
+                card.get("collector_number", ""),
+                card.get("name", ""),
+                card.get("flavor_name"),
+                card.get("layout"),
+                card.get("mana_cost"),
+                card.get("type_line"),
+                card.get("illustration_id"),
+                card.get("artist"),
+                card.get("rarity"),
+                card.get("released_at"),
+                bool(card.get("digital")),
+                card.get("tcgplayer_id"),
+                card.get("cardmarket_id"),
+                prices.get("usd"),
+                prices.get("eur"),
+                json.dumps(purchase) if purchase else None,
+                json.dumps(image_uris) if image_uris else None,
+                None,  # local_image_normal
+                None,  # local_image_art_crop
+            ))
+
+            # Card faces
+            if card.get("card_faces"):
+                for i, face in enumerate(card["card_faces"]):
+                    face_images = face.get("image_uris") or {}
+                    face_batch.append((
+                        card["id"],
+                        i,
+                        face.get("name", ""),
+                        face.get("mana_cost"),
+                        face.get("type_line"),
+                        face.get("oracle_text"),
+                        json.dumps(face.get("colors") or []),
+                        face.get("power"),
+                        face.get("toughness"),
+                        face.get("loyalty"),
+                        face.get("defense"),
+                        face.get("illustration_id"),
+                        json.dumps(face_images) if face_images else None,
+                    ))
+
+            count += 1
+            if len(batch) >= 5000:
+                # Flush oracle cards first (FK dependency)
+                if oracle_batch:
+                    execute_values(cur, """INSERT INTO oracle_cards
+                        (oracle_id, name, slug, layout, mana_cost, cmc, type_line, oracle_text,
+                         colors, color_identity, keywords, power, toughness, loyalty, defense,
+                         legalities, reserved)
+                        VALUES %s ON CONFLICT (oracle_id) DO NOTHING""", oracle_batch)
+                    conn.commit()
+                    oracle_batch = []
+                _insert_printing_batch(cur, conn, batch)
+                batch = []
+                if face_batch:
+                    _insert_face_batch(cur, conn, face_batch)
+                    face_batch = []
+                print(f"  {count} printings streamed...", flush=True)
+
+    # Flush remaining batches
+    if oracle_batch:
+        execute_values(cur, """INSERT INTO oracle_cards
+            (oracle_id, name, slug, layout, mana_cost, cmc, type_line, oracle_text,
+             colors, color_identity, keywords, power, toughness, loyalty, defense,
+             legalities, reserved)
+            VALUES %s ON CONFLICT (oracle_id) DO NOTHING""", oracle_batch)
+        conn.commit()
     if batch:
         _insert_printing_batch(cur, conn, batch)
     if face_batch:
