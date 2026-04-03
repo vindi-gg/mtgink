@@ -8,7 +8,7 @@ function ArtCardToggle() {
   const { imageMode, toggleImageMode } = useImageMode();
   return (
     <>
-      <div className="flex rounded-lg border border-gray-700 overflow-hidden mb-4">
+      <div className="flex rounded-lg border border-gray-700 overflow-hidden">
         <button
           onClick={() => { if (imageMode !== "art") toggleImageMode(); }}
           className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
@@ -30,7 +30,7 @@ function ArtCardToggle() {
           Card
         </button>
       </div>
-      <p className="text-[10px] text-gray-600 text-center mt-1 mb-4 hidden md:block">Press <kbd className="text-gray-500">W</kbd> to toggle</p>
+      <p className="text-[10px] text-gray-600 text-center mt-1 mb-3 hidden md:block">Press <kbd className="text-gray-500">W</kbd> to toggle</p>
     </>
   );
 }
@@ -78,7 +78,7 @@ function getDetailContext(pathname: string): PlayLink[] | null {
 
   // /db/expansions/[set_code]
   m = pathname.match(/^\/db\/expansions\/([^/]+)$/);
-  if (m) return makePlayLinks(`set_code=${m[1]}`);
+  if (m) return makePlayLinks(`set_code=${m[1]}`, false);
 
   // /artists/[slug]
   m = pathname.match(/^\/artists\/([^/]+)$/);
