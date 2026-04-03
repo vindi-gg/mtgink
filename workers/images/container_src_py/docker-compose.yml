@@ -1,0 +1,14 @@
+services:
+  scraper:
+    build: .
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    environment:
+      - SUPABASE_DB_URL=postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      - OUTPUT_DIR=filesystem
+    volumes:
+      - ../../../data:/app/data

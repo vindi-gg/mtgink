@@ -14,7 +14,7 @@ interface Env {
 export class ImageScraper extends Container {
   defaultPort = 8080;
   enableInternet = true;
-  sleepAfter = "6h";
+  sleepAfter = "10m";
 
   constructor(ctx: any, env: Env) {
     super(ctx, env);
@@ -102,11 +102,12 @@ async function fetchContainerStatus(
 async function triggerJob(
   container: DurableObjectStub<ImageScraper>,
   jobType: string,
-  opts?: { setCodes?: string; force?: boolean }
+  opts?: { setCodes?: string; force?: boolean; since?: string }
 ): Promise<unknown> {
   const params = new URLSearchParams({ job: jobType });
   if (opts?.setCodes) params.set("sets", opts.setCodes);
   if (opts?.force) params.set("force", "1");
+  if (opts?.since) params.set("since", opts.since);
   try {
     const resp = await container.fetch(
       `http://container:8080/run?${params.toString()}`,
@@ -120,7 +121,7 @@ async function triggerJob(
 
 async function startAndTrigger(
   env: Env,
-  opts?: { setCodes?: string; restart?: boolean; force?: boolean; jobType?: string }
+  opts?: { setCodes?: string; restart?: boolean; force?: boolean; jobType?: string; since?: string }
 ): Promise<{ state: unknown; status: unknown; triggered: unknown }> {
   const container = getContainer(env.IMAGE_SCRAPER);
 
@@ -148,6 +149,7 @@ async function startAndTrigger(
   const triggered = await triggerJob(container, jobType, {
     setCodes: opts?.setCodes,
     force: opts?.force,
+    since: opts?.since,
   });
 
   const state = await container.getState();
@@ -241,12 +243,13 @@ export default {
     const container = getContainer(env.IMAGE_SCRAPER);
     await container.start({ enableInternet: true });
 
-    // Wait for HTTP server, then trigger default images job
+    // Wait for HTTP server
     for (let i = 0; i < 15; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const status = await fetchContainerStatus(container);
       if (status) break;
     }
+
     await triggerJob(container, "sync");
   },
 };

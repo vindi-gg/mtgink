@@ -77,13 +77,14 @@ const server = createServer((req, res) => {
     const jobType = url.searchParams.get("job") || "images";
     const setCodes = url.searchParams.get("sets") || undefined;
     const force = url.searchParams.get("force") === "1";
+    const since = url.searchParams.get("since") || undefined;
 
-    console.log(`Job triggered via HTTP: ${jobType}`);
+    console.log(`Job triggered via HTTP: ${jobType}${since ? ` (since ${since})` : ""}`);
     status.job = jobType;
 
     // Start the job asynchronously
     jobRunning = true;
-    runJob(jobType, { setCodes, force }).catch(async (err) => {
+    runJob(jobType, { setCodes, force, since }).catch(async (err) => {
       console.error(`Job ${jobType} failed:`, err);
       status.state = "error";
       status.error = String(err);
@@ -1361,7 +1362,7 @@ async function runSync() {
 
 async function runJob(
   jobType: string,
-  opts?: { setCodes?: string; force?: boolean }
+  opts?: { setCodes?: string; force?: boolean; since?: string }
 ) {
   const startTime = Date.now();
   console.log(`MTG Ink job starting: ${jobType}`);
@@ -1408,9 +1409,12 @@ async function runJob(
   const force = opts?.force || false;
   const requestedSets = opts?.setCodes?.split(",").filter(Boolean);
 
+  const since = opts?.since;
+
   console.log(`  Output: ${outputDir || "R2"}`);
   console.log(`  Concurrency: ${concurrency}`);
   console.log(`  Force: ${force}`);
+  if (since) console.log(`  Since: ${since}`);
   if (requestedSets) {
     console.log(`  Sets: ${requestedSets.join(", ")}`);
   }
@@ -1431,11 +1435,18 @@ async function runJob(
     FROM printings
     WHERE image_uris IS NOT NULL
   `;
-  const params: string[] = [];
+  const params: (string | string[])[] = [];
+  let paramIdx = 1;
+
+  // Smart diff: only process cards without images (unless force or specific sets)
+  if (!force && !requestedSets) {
+    query += ` AND has_image = FALSE`;
+  }
 
   if (requestedSets && requestedSets.length > 0) {
-    query += ` AND set_code = ANY($1)`;
+    query += ` AND set_code = ANY($${paramIdx})`;
     params.push(requestedSets as any);
+    paramIdx++;
   }
 
   const { rows } = await client.query<Printing>(query, params);
@@ -1550,6 +1561,31 @@ async function runJob(
 
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
+
+  // Mark successfully processed printings as has_image = TRUE
+  if (totalUploaded + totalSkipped > 0) {
+    const processedKeys = jobs
+      .filter((_, i) => i < totalUploaded + totalSkipped) // uploaded + skipped = successfully have images
+      .map((j) => `${j.set_code}/${j.collector_number}`);
+    // Dedupe by set_code/collector_number and batch update
+    const seen = new Set<string>();
+    const updatePairs: { set_code: string; collector_number: string }[] = [];
+    for (const job of jobs) {
+      const key = `${job.set_code}/${job.collector_number}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        updatePairs.push({ set_code: job.set_code, collector_number: job.collector_number });
+      }
+    }
+    // Batch update in chunks of 1000
+    for (let i = 0; i < updatePairs.length; i += 1000) {
+      const batch = updatePairs.slice(i, i + 1000);
+      const conditions = batch.map((_, j) => `(set_code = $${j * 2 + 1} AND collector_number = $${j * 2 + 2})`).join(" OR ");
+      const batchParams = batch.flatMap((p) => [p.set_code, p.collector_number]);
+      await dbClient.query(`UPDATE printings SET has_image = TRUE WHERE ${conditions}`, batchParams).catch(() => {});
+    }
+    console.log(`  Updated has_image for ${updatePairs.length} printings`);
+  }
 
   // Final DB log
   const finalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
