@@ -50,11 +50,11 @@ export async function GET(request: NextRequest) {
           const oracleIds = await getRandomCardsByArtist(theme.artist);
           if (oracleIds.length >= 2) pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
         } else if (theme?.theme_type === "tag" && theme.tag_id) {
-          themeLabel = theme.label.replace(" Gauntlet", "");
+          themeLabel = theme.label;
           const oracleIds = await getRandomCardsByTag(theme.tag_id);
           if (oracleIds.length >= 2) pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
         } else if (theme?.theme_type === "art_tag" && theme.tag_id) {
-          themeLabel = theme.label.replace(" Gauntlet", "");
+          themeLabel = theme.label;
           const oracleIds = await getRandomCardsByArtTag(theme.tag_id);
           if (oracleIds.length >= 2) pair = await getSpecificClashPair(oracleIds[0], oracleIds[1]);
         }

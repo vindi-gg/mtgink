@@ -92,14 +92,17 @@ function hasActiveFilters(filters: CompareFilters): boolean {
 
 // --- Component ---
 
+type ThemeKind = "artist" | "tag" | "art_tag" | undefined;
+
 interface ShowdownViewProps {
   mode: "remix" | "vs";
   initialPair: ComparisonPair | ClashPair;
   initialFilters?: CompareFilters;
   themeLabel?: string;
+  themeType?: ThemeKind;
 }
 
-export default function ShowdownView({ mode, initialPair, initialFilters, themeLabel }: ShowdownViewProps) {
+export default function ShowdownView({ mode, initialPair, initialFilters, themeLabel, themeType: initialThemeType }: ShowdownViewProps) {
   const { imageMode, cardUrl, toggleImageMode } = useImageMode();
   const isRemix = mode === "remix";
 
@@ -113,6 +116,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
   const [filters, setFilters] = useState<CompareFilters>(initialFilters ?? {});
   const [filterError, setFilterError] = useState<string | null>(null);
   const [currentThemeLabel, setCurrentThemeLabel] = useState(themeLabel);
+  const [currentThemeType, setCurrentThemeType] = useState<ThemeKind>(initialThemeType);
   const voteGridRef = useRef<VoteGridHandle>(null);
 
   // Theme rotation (VS only)
@@ -218,6 +222,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
         updateSides(pair);
         setFilters(_theme?.filters ?? {});
         setCurrentThemeLabel(_theme?.label ?? undefined);
+        setCurrentThemeType(_theme?.artist ? "artist" : _theme?.tag_id ? (_theme.type === "art_tag" ? "art_tag" : "tag") : undefined);
         filtersRef.current = _theme?.filters ?? {};
         // Update URL to reflect new theme
         const url = new URL("/showdown/vs", window.location.origin);
@@ -406,7 +411,11 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
       return { label: filters.set_code.toUpperCase(), href: `/db/expansions/${filters.set_code}` };
     }
     if (currentThemeLabel && !filters.subtype && !filters.set_code) {
-      return { label: currentThemeLabel, href: `/artists/${currentThemeLabel.toLowerCase().replace(/\s+/g, "-")}` };
+      const slug = currentThemeLabel.toLowerCase().replace(/\s+/g, "-");
+      const href = currentThemeType === "tag" ? `/db/tags/${slug}`
+        : currentThemeType === "art_tag" ? `/db/art-tags/${slug}`
+        : `/artists/${slug}`;
+      return { label: currentThemeLabel, href };
     }
     return undefined;
   })();
@@ -444,7 +453,13 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
           ) : filters.set_code ? (
             <>Which <span className="text-amber-400 uppercase">{filters.set_code}</span> card is best?</>
           ) : currentThemeLabel ? (
-            <>Best <a href={`/artists/${currentThemeLabel.toLowerCase().replace(/\s+/g, "-")}`} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">{currentThemeLabel}</a> card?</>
+            <>Best {(() => {
+              const slug = currentThemeLabel.toLowerCase().replace(/\s+/g, "-");
+              const href = currentThemeType === "tag" ? `/db/tags/${slug}`
+                : currentThemeType === "art_tag" ? `/db/art-tags/${slug}`
+                : `/artists/${slug}`;
+              return <a href={href} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300">{currentThemeLabel}</a>;
+            })()} card?</>
           ) : (
             <>Which card is best?</>
           )}

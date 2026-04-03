@@ -20,6 +20,7 @@ export default async function VsPage({
 
   let filters: CompareFilters = {};
   let themeLabel: string | undefined;
+  let themeType: "artist" | "tag" | "art_tag" | undefined;
   let randomArtist: string | undefined;
   let randomTagId: string | undefined;
 
@@ -39,10 +40,13 @@ export default async function VsPage({
     }
   } else if (artistParam) {
     themeLabel = artistParam;
+    themeType = "artist";
   } else if (tag) {
     themeLabel = tag;
+    themeType = "tag";
   } else if (art_tag) {
     themeLabel = art_tag;
+    themeType = "art_tag";
   } else if (colors || type || subtype || set_code || rules_text) {
     filters = {
       colors: colors ? colors.split(",").filter(Boolean) : undefined,
@@ -64,9 +68,11 @@ export default async function VsPage({
       filters = { set_code: theme.set_code };
     } else if (theme?.artist) {
       themeLabel = theme.artist;
+      themeType = "artist";
       randomArtist = theme.artist;
     } else if (theme?.tag_id) {
       themeLabel = theme.label;
+      themeType = theme.theme_type === "art_tag" ? "art_tag" : "tag";
       randomTagId = theme.tag_id;
     }
   }
@@ -118,6 +124,7 @@ export default async function VsPage({
         initialPair={pair}
         initialFilters={hasFilters ? filters : undefined}
         themeLabel={themeLabel}
+        themeType={themeType}
       />
     </main>
   );
