@@ -1,10 +1,13 @@
-import { Container, getContainer } from "@cloudflare/containers";
+import { Container, ContainerProxy, getContainer } from "@cloudflare/containers";
+export { ContainerProxy };
 
 interface Env {
   IMAGE_SCRAPER: DurableObjectNamespace<ImageScraper>;
+  R2_BUCKET: R2Bucket;
   R2_ENDPOINT: string;
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
+  R2_UPLOAD_SECRET: string;
   SUPABASE_DB_URL: string;
   DISCORD_WEBHOOK_URL: string;
   VERCEL_REVALIDATE_SECRET: string;
@@ -16,15 +19,49 @@ export class ImageScraper extends Container {
   enableInternet = true;
   sleepAfter = "10m";
 
+  // Outbound worker: container can access R2 via http://r2/{key}
+  static outboundByHost = {
+    "r2.mtgink": async (request: Request, env: Env) => {
+      const key = new URL(request.url).pathname.slice(1);
+      if (!key) return new Response("Missing key", { status: 400 });
+
+      if (request.method === "PUT" || request.method === "POST") {
+        const body = await request.arrayBuffer();
+        await env.R2_BUCKET.put(key, body, {
+          httpMetadata: { contentType: request.headers.get("content-type") || "image/jpeg" },
+        });
+        return new Response(JSON.stringify({ ok: true, key, size: body.byteLength }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (request.method === "HEAD") {
+        const obj = await env.R2_BUCKET.head(key);
+        if (obj && obj.size > 0) {
+          return new Response(null, { status: 200, headers: { "content-length": String(obj.size) } });
+        }
+        return new Response(null, { status: 404 });
+      }
+
+      if (request.method === "GET") {
+        const obj = await env.R2_BUCKET.get(key);
+        if (!obj) return new Response(null, { status: 404 });
+        return new Response(obj.body, { headers: { "content-type": obj.httpMetadata?.contentType || "application/octet-stream" } });
+      }
+
+      return new Response("Method not allowed", { status: 405 });
+    },
+  };
+
   constructor(ctx: any, env: Env) {
     super(ctx, env);
-    // Set envVars as a property (not getter) to pass credentials to container
     this.envVars = {
-      R2_ENDPOINT: env.R2_ENDPOINT || "",
+      SUPABASE_DB_URL: env.SUPABASE_DB_URL || "",
+      R2_ENDPOINT: `https://${env.R2_ACCOUNT_ID || "7dad892db6ba7c0845a9a8572da362fc"}.r2.cloudflarestorage.com`,
       R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID || "",
       R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY || "",
       R2_BUCKET: "mtgink-cdn",
-      SUPABASE_DB_URL: env.SUPABASE_DB_URL || "",
+      USE_R2: "1",
       CONCURRENCY: "8",
       NODE_TLS_REJECT_UNAUTHORIZED: "0",
       DISCORD_WEBHOOK_URL: env.DISCORD_WEBHOOK_URL || "",
@@ -167,6 +204,32 @@ export default {
     const force = url.searchParams.get("force") === "1";
 
     try {
+      // R2 upload endpoint — container POSTs images here
+      if ((request.method === "PUT" || request.method === "POST") && url.pathname === "/r2") {
+        const secret = request.headers.get("x-upload-secret");
+        if (secret !== env.R2_UPLOAD_SECRET) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        const key = url.searchParams.get("key");
+        if (!key) return new Response("Missing key", { status: 400 });
+        const body = await request.arrayBuffer();
+        await env.R2_BUCKET.put(key, body, { httpMetadata: { contentType: "image/jpeg" } });
+        return new Response(JSON.stringify({ ok: true, key, size: body.byteLength }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // R2 check endpoint — container checks if object exists
+      if (request.method === "HEAD" && url.pathname === "/r2") {
+        const key = url.searchParams.get("key");
+        if (!key) return new Response("Missing key", { status: 400 });
+        const obj = await env.R2_BUCKET.head(key);
+        if (obj && obj.size > 1000) {
+          return new Response(null, { status: 200, headers: { "content-length": String(obj.size) } });
+        }
+        return new Response(null, { status: 404 });
+      }
+
       if (debug) {
         const container = getContainer(env.IMAGE_SCRAPER);
         const state = await container.getState();

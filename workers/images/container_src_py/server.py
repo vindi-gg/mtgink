@@ -39,6 +39,7 @@ JOBS = {
     "images": ["download_images.py"],
     "prices": ["import_prices.py"],
     "tags": ["import_tags.py"],
+    "r2test": ["r2_test.py"],
 }
 
 
@@ -66,7 +67,8 @@ def run_job(job_type: str, set_code: str | None = None, force: bool = False):
             if script == "download_images.py":
                 if set_code:
                     cmd += ["--set", set_code]
-                # R2 output handled by the script via env vars
+                if force:
+                    cmd += ["--force"]
 
             env = {**os.environ}
             result = subprocess.run(
@@ -74,11 +76,14 @@ def run_job(job_type: str, set_code: str | None = None, force: bool = False):
             )
 
             if result.stdout:
-                # Show last few lines
                 lines = result.stdout.strip().split("\n")
-                for line in lines[-5:]:
+                for line in lines[-10:]:
                     print(f"  {line}", flush=True)
                 status["message"] = lines[-1] if lines else f"Completed {script}"
+                status["output"] = "\n".join(lines[-50:])  # Keep last 50 lines for remote debug
+
+            if result.stderr:
+                status["stderr"] = result.stderr.strip()[-500:]
 
             if result.returncode != 0:
                 error_msg = result.stderr.strip().split("\n")[-1] if result.stderr else f"{script} failed"

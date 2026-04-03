@@ -13,9 +13,13 @@ enabled = true
 
 [[containers]]
 class_name = "ImageScraper"
-image = "registry.cloudflare.com/7dad892db6ba7c0845a9a8572da362fc/mtgink-images-imagescraper:v5"
+image = "registry.cloudflare.com/7dad892db6ba7c0845a9a8572da362fc/mtgink-images-imagescraper:v23"
 max_instances = 1
 instance_type = "standard-1"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "mtgink-cdn"
 
 [[durable_objects.bindings]]
 name = "IMAGE_SCRAPER"

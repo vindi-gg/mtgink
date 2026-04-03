@@ -21,7 +21,7 @@ HEADERS = {
     "User-Agent": "MTGInk/1.0 (card art popularity tracker)",
 }
 
-# R2 client (lazy init)
+# R2 via S3-compatible API (boto3)
 _s3_client = None
 
 
@@ -29,12 +29,14 @@ def get_s3_client():
     global _s3_client
     if _s3_client is None:
         import boto3
+        from botocore.config import Config
         _s3_client = boto3.client(
             "s3",
             endpoint_url=os.environ["R2_ENDPOINT"],
             aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
             region_name="auto",
+            config=Config(s3={"addressing_style": "path"}),
         )
     return _s3_client
 
@@ -52,13 +54,18 @@ def r2_exists(key: str) -> bool:
         return False
 
 
+_upload_count = 0
+
 def upload_to_r2(data: bytes, key: str):
-    get_s3_client().put_object(
-        Bucket=os.environ.get("R2_BUCKET", "mtgink-cdn"),
-        Key=key,
-        Body=data,
-        ContentType="image/jpeg",
-    )
+    global _upload_count
+    bucket = os.environ.get("R2_BUCKET", "mtgink-cdn")
+    resp = get_s3_client().put_object(Bucket=bucket, Key=key, Body=data, ContentType="image/jpeg")
+    _upload_count += 1
+    status = resp["ResponseMetadata"]["HTTPStatusCode"]
+    if _upload_count <= 5 or _upload_count % 100 == 0:
+        print(f"  R2 PUT [{_upload_count}] {key} ({len(data)}b) → HTTP {status}", flush=True)
+    if status != 200:
+        raise RuntimeError(f"R2 PUT failed: {key} HTTP {status}")
 
 
 def image_path(set_code: str, collector_number: str, image_type: str) -> Path:
@@ -71,7 +78,7 @@ def scryfall_image_url(scryfall_id: str, image_type: str) -> str:
     return f"https://cards.scryfall.io/{image_type}/front/{d1}/{d2}/{scryfall_id}.jpg"
 
 
-def download_card_images(row, image_types, use_r2):
+def download_card_images(row, image_types, use_r2, force=False):
     results = []
     set_code = row["set_code"]
     collector_number = row["collector_number"]
@@ -82,7 +89,7 @@ def download_card_images(row, image_types, use_r2):
 
         if use_r2:
             key = r2_key(set_code, collector_number, img_type)
-            if r2_exists(key):
+            if not force and r2_exists(key):
                 results.append(("skipped", scryfall_id, img_type, key))
                 continue
             try:
@@ -95,7 +102,7 @@ def download_card_images(row, image_types, use_r2):
                 results.append(("failed", scryfall_id, img_type, None))
         else:
             dest = image_path(set_code, collector_number, img_type)
-            if dest.exists() and dest.stat().st_size > 0:
+            if not force and dest.exists() and dest.stat().st_size > 0:
                 results.append(("skipped", scryfall_id, img_type, str(dest)))
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -123,11 +130,19 @@ def main():
     parser.add_argument("--limit", type=int, help="Limit number of cards to download")
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel download workers")
     parser.add_argument("--all", action="store_true", help="Include digital-only cards")
+    parser.add_argument("--force", action="store_true", help="Re-check all cards, not just has_image=FALSE")
     args = parser.parse_args()
 
-    use_r2 = os.environ.get("OUTPUT_DIR") == "R2" or os.environ.get("R2_ENDPOINT")
+    use_r2 = os.environ.get("USE_R2") == "1"
     if use_r2:
-        print(f"Output: R2 ({os.environ.get('R2_BUCKET', 'mtgink-cdn')})")
+        bucket = os.environ.get("R2_BUCKET", "mtgink-cdn")
+        print(f"Output: R2 (bucket={bucket})")
+        try:
+            upload_to_r2(b"r2_test", "_r2_test.txt")
+            print("  R2 connectivity: OK")
+        except Exception as e:
+            print(f"  R2 connectivity FAILED: {e}")
+            use_r2 = False
     else:
         print(f"Output: filesystem ({IMAGES_DIR})")
 
@@ -149,11 +164,15 @@ def main():
     conn = psycopg2.connect(db_url)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    conditions = ["p.illustration_id IS NOT NULL"]
+    conditions = ["p.scryfall_id IS NOT NULL"]
     params = []
 
     if not args.all:
         conditions.append("s.digital = FALSE")
+
+    # Smart diff: only process cards without images (unless force or specific set)
+    if not args.force and not args.set_code:
+        conditions.append("p.has_image = FALSE")
 
     if args.set_code:
         conditions.append("p.set_code = %s")
@@ -193,7 +212,7 @@ def main():
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {}
         for row in rows:
-            future = executor.submit(download_card_images, row, args.types, use_r2)
+            future = executor.submit(download_card_images, row, args.types, use_r2, args.force)
             futures[future] = row["scryfall_id"]
 
         processed = 0

@@ -1,7 +1,8 @@
 """Download card images from Scryfall CDN.
 
-Scryfall CDN (*.scryfall.io) is exempt from API rate limits,
-but we still add a small delay to be respectful.
+Supports two output modes:
+  - filesystem (local dev): writes to data/images/
+  - r2 (prod): uploads to Cloudflare R2 via S3-compatible API
 """
 
 import argparse
@@ -20,40 +21,64 @@ HEADERS = {
     "User-Agent": "MTGInk/1.0 (card art popularity tracker)",
 }
 
+# R2 via S3-compatible API (boto3)
+_s3_client = None
 
-def download_image(url: str, dest: Path) -> bool:
-    """Download a single image. Returns True if downloaded, False if skipped/failed."""
-    if dest.exists() and dest.stat().st_size > 0:
-        return False  # Already exists
 
-    dest.parent.mkdir(parents=True, exist_ok=True)
+def get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        import boto3
+        from botocore.config import Config
+        _s3_client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            region_name="auto",
+            config=Config(s3={"addressing_style": "path"}),
+        )
+    return _s3_client
 
+
+def r2_key(set_code: str, collector_number: str, image_type: str) -> str:
+    safe_num = collector_number.replace("/", "_").replace("*", "star")
+    return f"{set_code}/{safe_num}_{image_type}.jpg"
+
+
+def r2_exists(key: str) -> bool:
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=30)
-        resp.raise_for_status()
-        with open(dest, "wb") as f:
-            f.write(resp.content)
+        get_s3_client().head_object(Bucket=os.environ.get("R2_BUCKET", "mtgink-cdn"), Key=key)
         return True
-    except Exception as e:
-        print(f"\n  FAILED: {url} -> {e}")
-        return None  # Error
+    except Exception:
+        return False
+
+
+_upload_count = 0
+
+def upload_to_r2(data: bytes, key: str):
+    global _upload_count
+    bucket = os.environ.get("R2_BUCKET", "mtgink-cdn")
+    resp = get_s3_client().put_object(Bucket=bucket, Key=key, Body=data, ContentType="image/jpeg")
+    _upload_count += 1
+    status = resp["ResponseMetadata"]["HTTPStatusCode"]
+    if _upload_count <= 5 or _upload_count % 100 == 0:
+        print(f"  R2 PUT [{_upload_count}] {key} ({len(data)}b) → HTTP {status}", flush=True)
+    if status != 200:
+        raise RuntimeError(f"R2 PUT failed: {key} HTTP {status}")
 
 
 def image_path(set_code: str, collector_number: str, image_type: str) -> Path:
-    """Build local path for a card image."""
     safe_num = collector_number.replace("/", "_").replace("*", "star")
     return IMAGES_DIR / set_code / f"{safe_num}_{image_type}.jpg"
 
 
 def scryfall_image_url(scryfall_id: str, image_type: str) -> str:
-    """Build Scryfall CDN URL from scryfall_id."""
-    # Scryfall CDN uses first two chars of UUID as directory
     d1, d2 = scryfall_id[0], scryfall_id[1]
     return f"https://cards.scryfall.io/{image_type}/front/{d1}/{d2}/{scryfall_id}.jpg"
 
 
-def download_card_images(row, image_types):
-    """Download requested image types for a single card."""
+def download_card_images(row, image_types, use_r2, force=False):
     results = []
     set_code = row["set_code"]
     collector_number = row["collector_number"]
@@ -61,15 +86,35 @@ def download_card_images(row, image_types):
 
     for img_type in image_types:
         url = scryfall_image_url(scryfall_id, img_type)
-        dest = image_path(set_code, collector_number, img_type)
-        result = download_image(url, dest)
 
-        if result is True:
-            results.append(("downloaded", scryfall_id, img_type, str(dest)))
-        elif result is False:
-            results.append(("skipped", scryfall_id, img_type, str(dest)))
+        if use_r2:
+            key = r2_key(set_code, collector_number, img_type)
+            if not force and r2_exists(key):
+                results.append(("skipped", scryfall_id, img_type, key))
+                continue
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=30)
+                resp.raise_for_status()
+                upload_to_r2(resp.content, key)
+                results.append(("downloaded", scryfall_id, img_type, key))
+            except Exception as e:
+                print(f"\n  FAILED: {url} -> {e}")
+                results.append(("failed", scryfall_id, img_type, None))
         else:
-            results.append(("failed", scryfall_id, img_type, None))
+            dest = image_path(set_code, collector_number, img_type)
+            if not force and dest.exists() and dest.stat().st_size > 0:
+                results.append(("skipped", scryfall_id, img_type, str(dest)))
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=30)
+                resp.raise_for_status()
+                with open(dest, "wb") as f:
+                    f.write(resp.content)
+                results.append(("downloaded", scryfall_id, img_type, str(dest)))
+            except Exception as e:
+                print(f"\n  FAILED: {url} -> {e}")
+                results.append(("failed", scryfall_id, img_type, None))
 
     return results
 
@@ -79,40 +124,39 @@ def main():
     parser.add_argument(
         "--types", nargs="+", default=["normal", "art_crop"],
         choices=["small", "normal", "large", "png", "art_crop", "border_crop"],
-        help="Image types to download (default: art_crop)"
+        help="Image types to download (default: normal art_crop)"
     )
-    parser.add_argument(
-        "--set", dest="set_code", help="Only download images for a specific set"
-    )
-    parser.add_argument(
-        "--limit", type=int, help="Limit number of cards to download"
-    )
-    parser.add_argument(
-        "--workers", type=int, default=4,
-        help="Number of parallel download workers (default: 4)"
-    )
-    parser.add_argument(
-        "--all", action="store_true",
-        help="Include digital-only cards"
-    )
+    parser.add_argument("--set", dest="set_code", help="Only download images for a specific set")
+    parser.add_argument("--limit", type=int, help="Limit number of cards to download")
+    parser.add_argument("--workers", type=int, default=4, help="Number of parallel download workers")
+    parser.add_argument("--all", action="store_true", help="Include digital-only cards")
+    parser.add_argument("--force", action="store_true", help="Re-check all cards, not just has_image=FALSE")
     args = parser.parse_args()
+
+    use_r2 = os.environ.get("USE_R2") == "1"
+    if use_r2:
+        bucket = os.environ.get("R2_BUCKET", "mtgink-cdn")
+        print(f"Output: R2 (bucket={bucket})")
+        try:
+            upload_to_r2(b"r2_test", "_r2_test.txt")
+            print("  R2 connectivity: OK")
+        except Exception as e:
+            print(f"  R2 connectivity FAILED: {e}")
+            use_r2 = False
+    else:
+        print(f"Output: filesystem ({IMAGES_DIR})")
 
     db_url = os.environ.get("SUPABASE_DB_URL")
     if not db_url:
-        # Try loading from .env.development.local
-        env_file = Path(__file__).parent.parent / "web" / ".env.development.local"
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                if line.startswith("SUPABASE_DB_URL="):
-                    db_url = line.split("=", 1)[1]
-                    break
-    if not db_url:
-        env_file = Path(__file__).parent.parent / "web" / ".env.local"
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                if line.startswith("SUPABASE_DB_URL="):
-                    db_url = line.split("=", 1)[1]
-                    break
+        for env_file in ["web/.env.development.local", "web/.env.local"]:
+            p = Path(__file__).parent.parent / env_file
+            if p.exists():
+                for line in p.read_text().splitlines():
+                    if line.startswith("SUPABASE_DB_URL="):
+                        db_url = line.split("=", 1)[1]
+                        break
+            if db_url:
+                break
     if not db_url:
         print("ERROR: Set SUPABASE_DB_URL environment variable")
         sys.exit(1)
@@ -120,12 +164,15 @@ def main():
     conn = psycopg2.connect(db_url)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Build query
-    conditions = ["p.illustration_id IS NOT NULL"]
+    conditions = ["p.scryfall_id IS NOT NULL"]
     params = []
 
     if not args.all:
         conditions.append("s.digital = FALSE")
+
+    # Smart diff: only process cards without images (unless force or specific set)
+    if not args.force and not args.set_code:
+        conditions.append("p.has_image = FALSE")
 
     if args.set_code:
         conditions.append("p.set_code = %s")
@@ -154,7 +201,8 @@ def main():
         conn.close()
         return
 
-    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    if not use_r2:
+        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
     downloaded = 0
     skipped = 0
@@ -164,7 +212,7 @@ def main():
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {}
         for row in rows:
-            future = executor.submit(download_card_images, row, args.types)
+            future = executor.submit(download_card_images, row, args.types, use_r2, args.force)
             futures[future] = row["scryfall_id"]
 
         processed = 0
@@ -194,16 +242,12 @@ def main():
     print(f"  Failed: {failed:,}")
     print(f"  Time: {elapsed:.1f}s ({elapsed/60:.1f} min)")
 
-    # Update has_image flag for successfully downloaded cards
+    # Update has_image flags
     if downloaded > 0:
         print("\nUpdating has_image flags...")
         update_ids = []
         for row in rows:
-            for img_type in args.types:
-                dest = image_path(row["set_code"], row["collector_number"], img_type)
-                if dest.exists():
-                    update_ids.append(row["scryfall_id"])
-                    break
+            update_ids.append(row["scryfall_id"])
 
         if update_ids:
             cur.execute(
