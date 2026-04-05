@@ -60,6 +60,7 @@ export interface CompareFilters {
   subtype?: string;
   set_code?: string;
   rules_text?: string;
+  rarity?: string;
   mode?: "same" | "cross";
 }
 

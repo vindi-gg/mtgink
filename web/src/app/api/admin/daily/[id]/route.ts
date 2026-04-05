@@ -8,7 +8,7 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  const allowedFields = ["pool", "title", "description", "theme_id", "gauntlet_mode", "preview_set_code", "preview_collector_number", "preview_image_version"];
+  const allowedFields = ["pool", "title", "description", "theme_id", "brew_id", "gauntlet_mode", "preview_set_code", "preview_collector_number", "preview_image_version"];
   const updates: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (key in body) updates[key] = body[key];

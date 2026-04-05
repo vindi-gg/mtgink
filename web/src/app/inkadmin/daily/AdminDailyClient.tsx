@@ -25,6 +25,7 @@ interface Challenge {
   pool: PoolEntry[] | null;
   gauntlet_mode: string | null;
   theme_id: number | null;
+  brew_id: string | null;
   title: string;
   description: string | null;
   preview_set_code: string | null;
@@ -38,6 +39,17 @@ interface Theme {
   theme_type: string;
   pool_mode: string;
   description: string | null;
+}
+
+interface BrewResult {
+  id: string;
+  name: string;
+  slug: string;
+  mode: string;
+  source: string;
+  source_label: string;
+  pool_size: number | null;
+  pool: PoolEntry[] | null;
 }
 
 const PAGE_SIZE = 5;
@@ -74,7 +86,11 @@ export default function AdminDailyClient({ days }: { days: number }) {
   const [searchResults, setSearchResults] = useState<Theme[]>([]);
   const [searching, setSearching] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState<"theme" | "brew">("theme");
   const [regenerating, setRegenerating] = useState<number | null>(null);
+  const [brewQuery, setBrewQuery] = useState("");
+  const [brewResults, setBrewResults] = useState<BrewResult[]>([]);
+  const [searchingBrews, setSearchingBrews] = useState(false);
 
   const totalPages = Math.ceil(days / PAGE_SIZE);
 
@@ -136,6 +152,39 @@ export default function AdminDailyClient({ days }: { days: number }) {
     const { themes } = await res.json();
     setSearchResults(themes ?? []);
     setSearching(false);
+  }
+
+  async function handleBrewSearch(q: string) {
+    setBrewQuery(q);
+    if (q.length < 2) { setBrewResults([]); return; }
+    setSearchingBrews(true);
+    const res = await fetch(`/api/brew?q=${encodeURIComponent(q)}&sort=newest&limit=10`);
+    const { brews } = await res.json();
+    setBrewResults(brews ?? []);
+    setSearchingBrews(false);
+  }
+
+  async function handleAssignBrew(challengeId: number, brew: BrewResult) {
+    setRegenerating(challengeId);
+    const res = await fetch(`/api/admin/daily/${challengeId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brew_id: brew.id,
+        pool: brew.pool,
+        gauntlet_mode: brew.mode === "remix" ? "remix" : "vs",
+        title: brew.name,
+        description: `Brew: ${brew.source_label}`,
+      }),
+    });
+    if (res.ok) {
+      const { challenge } = await res.json();
+      setChallenges((prev) => prev.map((c) => (c.id === challengeId ? challenge : c)));
+    }
+    setRegenerating(null);
+    setEditingId(null);
+    setBrewQuery("");
+    setBrewResults([]);
   }
 
   // Group by date
@@ -294,65 +343,120 @@ export default function AdminDailyClient({ days }: { days: number }) {
                         <div className="mt-3 pt-3 border-t border-gray-800">
                           {editingId === c.id ? (
                             <div className="space-y-2">
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={searchQuery}
-                                  onChange={(e) => handleSearch(e.target.value)}
-                                  placeholder="Search themes..."
-                                  className="flex-1 px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500"
-                                />
+                              {/* Tab toggle */}
+                              <div className="flex gap-2 mb-2">
                                 <button
-                                  onClick={() => { setEditingId(null); setSearchQuery(""); setSearchResults([]); }}
-                                  className="px-3 py-1.5 text-xs text-gray-400 hover:text-white cursor-pointer"
+                                  onClick={() => setEditMode("brew")}
+                                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${editMode === "brew" ? "bg-amber-500 text-black" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+                                >
+                                  Assign Brew
+                                </button>
+                                <button
+                                  onClick={() => setEditMode("theme")}
+                                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${editMode === "theme" ? "bg-amber-500 text-black" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+                                >
+                                  Random Theme
+                                </button>
+                                <button
+                                  onClick={() => { setEditingId(null); setSearchQuery(""); setSearchResults([]); setBrewQuery(""); setBrewResults([]); }}
+                                  className="px-3 py-1 text-xs text-gray-400 hover:text-white cursor-pointer ml-auto"
                                 >
                                   Cancel
                                 </button>
                               </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {[
-                                  { type: undefined, label: "Any" },
-                                  { type: "tribe", label: "Tribe" },
-                                  { type: "set", label: "Set" },
-                                  { type: "artist", label: "Artist" },
-                                  { type: "card_remix", label: "Card" },
-                                  { type: "tag", label: "Tag" },
-                                  { type: "art_tag", label: "Art Tag" },
-                                ].map((opt) => (
-                                  <button
-                                    key={opt.label}
-                                    onClick={() => handleRandomTheme(c.id, opt.type)}
-                                    disabled={regenerating === c.id}
-                                    className="px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-800 text-gray-300 hover:bg-amber-500 hover:text-black disabled:opacity-50 cursor-pointer transition-colors"
-                                  >
-                                    {regenerating === c.id ? "..." : `Random ${opt.label}`}
-                                  </button>
-                                ))}
-                              </div>
-                              {searching && <p className="text-xs text-gray-500">Searching...</p>}
-                              {searchResults.length > 0 && (
-                                <div className="max-h-48 overflow-y-auto space-y-1">
-                                  {searchResults.map((theme) => (
-                                    <button
-                                      key={theme.id}
-                                      onClick={() => handleSelectTheme(c.id, theme.id)}
-                                      disabled={regenerating === c.id}
-                                      className="w-full text-left px-3 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer flex items-center gap-2"
-                                    >
-                                      <span className="text-white">{theme.label}</span>
-                                      <span className="text-xs text-gray-500">{theme.theme_type} · {theme.pool_mode}</span>
-                                    </button>
-                                  ))}
-                                </div>
+
+                              {editMode === "brew" ? (
+                                <>
+                                  <input
+                                    type="text"
+                                    value={brewQuery}
+                                    onChange={(e) => handleBrewSearch(e.target.value)}
+                                    placeholder="Search brews by name..."
+                                    className="w-full px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500"
+                                  />
+                                  {searchingBrews && <p className="text-xs text-gray-500">Searching...</p>}
+                                  {brewResults.length > 0 && (
+                                    <div className="max-h-48 overflow-y-auto space-y-1">
+                                      {brewResults.map((brew) => (
+                                        <button
+                                          key={brew.id}
+                                          onClick={() => handleAssignBrew(c.id, brew)}
+                                          disabled={regenerating === c.id}
+                                          className="w-full text-left px-3 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer flex items-center gap-2"
+                                        >
+                                          <span className="text-white">{brew.name}</span>
+                                          <span className="text-xs text-gray-500">{brew.source_label} · {brew.pool?.length ?? "?"} cards</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => handleSearch(e.target.value)}
+                                    placeholder="Search themes..."
+                                    className="w-full px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500"
+                                  />
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                      { type: undefined, label: "Any" },
+                                      { type: "tribe", label: "Tribe" },
+                                      { type: "set", label: "Set" },
+                                      { type: "artist", label: "Artist" },
+                                      { type: "card_remix", label: "Card" },
+                                      { type: "tag", label: "Tag" },
+                                      { type: "art_tag", label: "Art Tag" },
+                                    ].map((opt) => (
+                                      <button
+                                        key={opt.label}
+                                        onClick={() => handleRandomTheme(c.id, opt.type)}
+                                        disabled={regenerating === c.id}
+                                        className="px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-800 text-gray-300 hover:bg-amber-500 hover:text-black disabled:opacity-50 cursor-pointer transition-colors"
+                                      >
+                                        {regenerating === c.id ? "..." : `Random ${opt.label}`}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {searching && <p className="text-xs text-gray-500">Searching...</p>}
+                                  {searchResults.length > 0 && (
+                                    <div className="max-h-48 overflow-y-auto space-y-1">
+                                      {searchResults.map((theme) => (
+                                        <button
+                                          key={theme.id}
+                                          onClick={() => handleSelectTheme(c.id, theme.id)}
+                                          disabled={regenerating === c.id}
+                                          className="w-full text-left px-3 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer flex items-center gap-2"
+                                        >
+                                          <span className="text-white">{theme.label}</span>
+                                          <span className="text-xs text-gray-500">{theme.theme_type} · {theme.pool_mode}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           ) : (
-                            <button
-                              onClick={() => setEditingId(c.id)}
-                              className="text-xs text-amber-400 hover:text-amber-300 cursor-pointer"
-                            >
-                              Change theme
-                            </button>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => { setEditingId(c.id); setEditMode("brew"); }}
+                                className="text-xs text-amber-400 hover:text-amber-300 cursor-pointer"
+                              >
+                                Assign Brew
+                              </button>
+                              <button
+                                onClick={() => { setEditingId(c.id); setEditMode("theme"); }}
+                                className="text-xs text-gray-400 hover:text-gray-300 cursor-pointer"
+                              >
+                                Random Theme
+                              </button>
+                              {c.brew_id && (
+                                <span className="text-xs text-green-400">✓ Brew assigned</span>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}

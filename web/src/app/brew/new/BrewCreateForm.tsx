@@ -32,6 +32,12 @@ const COLOR_LABELS: Record<string, string> = { W: "White", U: "Blue", B: "Black"
 const COLOR_SYMBOLS: Record<string, string> = { W: "W", U: "U", B: "B", R: "R", G: "G" };
 
 const CARD_TYPES = ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Land"];
+const RARITIES = [
+  { value: "common", label: "Common" },
+  { value: "uncommon", label: "Uncommon" },
+  { value: "rare", label: "Rare" },
+  { value: "mythic", label: "Mythic" },
+];
 
 const COMMON_SUBTYPES = [
   "Elf", "Goblin", "Human", "Wizard", "Soldier", "Zombie", "Dragon", "Angel",
@@ -58,6 +64,7 @@ export default function BrewCreateForm() {
   const [selectedType, setSelectedType] = useState("");
   const [selectedSubtype, setSelectedSubtype] = useState("");
   const [rulesText, setRulesText] = useState("");
+  const [selectedRarity, setSelectedRarity] = useState("");
   const [showSubtypeDropdown, setShowSubtypeDropdown] = useState(false);
   const subtypeRef = useRef<HTMLDivElement>(null);
 
@@ -195,7 +202,7 @@ export default function BrewCreateForm() {
       return;
     }
     // For "all", require at least one filter
-    if (source === "all" && !selectedColors.length && !selectedType && !selectedSubtype && !rulesText) {
+    if (source === "all" && !selectedColors.length && !selectedType && !selectedSubtype && !selectedRarity && !rulesText) {
       setCount(null);
       return;
     }
@@ -210,6 +217,7 @@ export default function BrewCreateForm() {
       if (selectedType) params.set("type", selectedType);
       if (selectedSubtype) params.set("subtype", selectedSubtype);
       if (rulesText) params.set("rules_text", rulesText);
+      if (selectedRarity) params.set("rarity", selectedRarity);
 
       const res = await fetch(`/api/brew/count?${params}`);
       const data = await res.json();
@@ -218,7 +226,7 @@ export default function BrewCreateForm() {
       setCount(null);
     }
     setCountLoading(false);
-  }, [selected, source, selectedColors, selectedType, selectedSubtype, rulesText, needsSelection]);
+  }, [selected, source, selectedColors, selectedType, selectedSubtype, selectedRarity, rulesText, needsSelection]);
 
   useEffect(() => {
     fetchCount();
@@ -245,6 +253,10 @@ export default function BrewCreateForm() {
     if (selectedColors.length > 0) {
       parts.push(selectedColors.map((c) => COLOR_LABELS[c]).join(" "));
     }
+    if (selectedRarity) {
+      const r = RARITIES.find((x) => x.value === selectedRarity);
+      if (r) parts.push(r.label);
+    }
     if (selectedType) parts.push(selectedType);
     if (selectedSubtype) parts.push(selectedSubtype);
     if (rulesText) parts.push(`"${rulesText}"`);
@@ -258,7 +270,7 @@ export default function BrewCreateForm() {
 
   const hasFiltersOrSelection =
     (needsSelection && selected !== null) ||
-    (!needsSelection && (selectedColors.length > 0 || selectedType || selectedSubtype || rulesText));
+    (!needsSelection && (selectedColors.length > 0 || selectedType || selectedSubtype || selectedRarity || rulesText));
 
   const canCreate = hasFiltersOrSelection && generatedName.length > 0 && (count === null || count >= 2);
 
@@ -270,6 +282,7 @@ export default function BrewCreateForm() {
     card_type: selectedType || null,
     subtype: selectedSubtype || null,
     rules_text: rulesText || null,
+    rarity: selectedRarity || null,
     pool_size: showPoolSize ? poolSize : null,
   });
 
@@ -476,6 +489,28 @@ export default function BrewCreateForm() {
               {CARD_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Rarity */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Rarity</label>
+              {selectedRarity && (
+                <button onClick={() => { setSelectedRarity(""); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">&times; Clear</button>
+              )}
+            </div>
+            <select
+              value={selectedRarity}
+              onChange={(e) => { setSelectedRarity(e.target.value); clearPreview(); }}
+              className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500/50 cursor-pointer"
+            >
+              <option value="">Any rarity</option>
+              {RARITIES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
                 </option>
               ))}
             </select>

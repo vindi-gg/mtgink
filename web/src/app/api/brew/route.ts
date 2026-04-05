@@ -7,9 +7,10 @@ export async function GET(request: NextRequest) {
   const sort = params.get("sort") === "newest" ? "newest" : "popular";
   const limit = Math.min(parseInt(params.get("limit") ?? "20") || 20, 100);
   const offset = parseInt(params.get("offset") ?? "0") || 0;
+  const q = params.get("q");
 
   try {
-    const result = await listPublicBrews(sort, limit, offset);
+    const result = await listPublicBrews(sort, limit, offset, q ?? undefined);
     return NextResponse.json(result);
   } catch {
     return NextResponse.json({ brews: [], total: 0 }, { status: 500 });
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, mode, source, source_id, source_label, colors, card_type, subtype, rules_text, pool_size, is_public, pool } = body;
+    const { name, description, mode, source, source_id, source_label, colors, card_type, subtype, rules_text, rarity, pool_size, is_public, pool } = body;
 
     if (!name || !mode || !source || !source_label) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
       cardType: card_type,
       subtype,
       rulesText: rules_text,
+      rarity,
       poolSize: pool_size,
       isPublic: is_public,
       pool: pool ?? undefined,

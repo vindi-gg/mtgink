@@ -46,6 +46,7 @@ export async function createBrew(params: {
   cardType?: string;
   subtype?: string;
   rulesText?: string;
+  rarity?: string;
   poolSize?: number;
   isPublic?: boolean;
   pool?: GauntletEntry[];
@@ -73,6 +74,7 @@ export async function createBrew(params: {
       card_type: params.cardType ?? null,
       subtype: params.subtype ?? null,
       rules_text: params.rulesText ?? null,
+      rarity: params.rarity ?? null,
       pool_size: params.poolSize ?? null,
       pool,
       is_public: params.isPublic !== false,
@@ -97,6 +99,7 @@ export async function resolveBrewPool(params: {
   cardType?: string;
   subtype?: string;
   rulesText?: string;
+  rarity?: string;
   poolSize?: number;
 }): Promise<GauntletEntry[]> {
   const ps = params.poolSize ?? 10;
@@ -105,6 +108,7 @@ export async function resolveBrewPool(params: {
     type: params.cardType ?? undefined,
     subtype: params.subtype ?? undefined,
     rules_text: params.rulesText ?? undefined,
+    rarity: params.rarity ?? undefined,
   };
 
   if (params.source === "card") {
@@ -139,6 +143,7 @@ export async function resolveBrewPool(params: {
       type: params.cardType,
       subtype: params.subtype,
       rulesText: params.rulesText,
+      rarity: params.rarity,
     });
   }
 
@@ -163,22 +168,27 @@ export async function getBrewBySlug(slug: string): Promise<Brew | null> {
 export async function listPublicBrews(
   sort: "popular" | "newest" = "popular",
   limit = 20,
-  offset = 0
+  offset = 0,
+  search?: string,
 ): Promise<{ brews: Brew[]; total: number }> {
   const admin = getAdminClient();
 
-  const { count } = await admin
+  let countQuery = admin
     .from("brews")
     .select("*", { count: "exact", head: true })
     .eq("is_public", true);
+  if (search) countQuery = countQuery.ilike("name", `%${search}%`);
+  const { count } = await countQuery;
 
   const orderCol = sort === "popular" ? "play_count" : "created_at";
-  const { data } = await admin
+  let dataQuery = admin
     .from("brews")
     .select("*")
     .eq("is_public", true)
     .order(orderCol, { ascending: false })
     .range(offset, offset + limit - 1);
+  if (search) dataQuery = dataQuery.ilike("name", `%${search}%`);
+  const { data } = await dataQuery;
 
   return { brews: (data ?? []) as Brew[], total: count ?? 0 };
 }

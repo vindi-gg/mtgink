@@ -14,9 +14,10 @@ export async function GET(request: NextRequest) {
   const type = params.get("type") || undefined;
   const subtype = params.get("subtype") || undefined;
   const rulesText = params.get("rules_text") || undefined;
+  const rarity = params.get("rarity") || undefined;
 
   try {
-    const count = await getBrewCount(source, sourceId, colors, type, subtype, rulesText);
+    const count = await getBrewCount(source, sourceId, colors, type, subtype, rulesText, rarity);
     return NextResponse.json({ count });
   } catch {
     return NextResponse.json({ count: 0 });

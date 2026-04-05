@@ -1609,11 +1609,11 @@ export async function getGauntletIllustrationsByArtist(artistName: string, count
 export async function getGauntletIllustrationsBySet(
   setCode: string,
   count = 20,
-  filters?: { colors?: string[]; type?: string; subtype?: string; rulesText?: string },
+  filters?: { colors?: string[]; type?: string; subtype?: string; rulesText?: string; rarity?: string },
 ): Promise<GauntletEntry[]> {
   let query = getAdminClient()
     .from("printings")
-    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, released_at, sets!inner(name, digital), oracle_cards!inner(name, slug, type_line, mana_cost, colors, oracle_text)")
+    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, released_at, rarity, sets!inner(name, digital), oracle_cards!inner(name, slug, type_line, mana_cost, colors, oracle_text)")
     .eq("set_code", setCode)
     .not("illustration_id", "is", null)
     .eq("sets.digital", false);
@@ -1629,6 +1629,9 @@ export async function getGauntletIllustrationsBySet(
   }
   if (filters?.colors && filters.colors.length > 0) {
     query = query.filter("oracle_cards.colors", "cs", JSON.stringify(filters.colors));
+  }
+  if (filters?.rarity) {
+    query = query.eq("rarity", filters.rarity.toLowerCase());
   }
 
   const { data } = await query.order("released_at", { ascending: false });
@@ -1764,6 +1767,7 @@ export async function getBrewCount(
   type?: string,
   subtype?: string,
   rulesText?: string,
+  rarity?: string,
 ): Promise<number> {
   const admin = getAdminClient();
 
@@ -1809,6 +1813,9 @@ export async function getBrewCount(
     }
     if (colors && colors.length > 0) {
       query = query.filter("oracle_cards.colors", "cs", JSON.stringify(colors));
+    }
+    if (rarity) {
+      query = query.eq("rarity", rarity.toLowerCase());
     }
 
     const { data } = await query;
