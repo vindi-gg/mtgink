@@ -13,7 +13,7 @@ enabled = true
 
 [[containers]]
 class_name = "ImageScraper"
-image = "registry.cloudflare.com/7dad892db6ba7c0845a9a8572da362fc/mtgink-images-imagescraper:v23"
+image = "registry.cloudflare.com/7dad892db6ba7c0845a9a8572da362fc/mtgink-images-imagescraper:v24"
 max_instances = 1
 instance_type = "standard-1"
 

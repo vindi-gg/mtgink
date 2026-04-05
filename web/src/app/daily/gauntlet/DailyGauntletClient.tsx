@@ -71,10 +71,8 @@ export default function DailyGauntletClient({ challenge, pool, mode, themeLink }
       .finally(() => setChecking(false));
   }, [challenge.id, router]);
 
-  async function handleComplete(champ: GauntletEntry, wins: number, _results: GauntletResult[]) {
-    setChampion(champ);
-    setChampWins(wins);
-    setJustFinished(true);
+  async function handleComplete(_champ: GauntletEntry, _wins: number, _results: GauntletResult[]) {
+    router.push("/daily/gauntlet/results");
   }
 
   if (checking) {

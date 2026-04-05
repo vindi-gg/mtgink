@@ -25,12 +25,44 @@ function AuthForm() {
     });
   }
 
+  const isDev = process.env.NODE_ENV === "development";
+
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) {
       setError("Supabase client not configured — check env vars");
       return;
     }
+
+    // Dev shortcut: "admin" / "admin" auto-creates and signs in
+    if (isDev && (email.trim() === "admin@dev" || email.trim() === "admin@dev.local") && password === "admin") {
+      setLoading(true);
+      setError(null);
+      try {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: "admin@admin.com", password: "adminadmin",
+        });
+        if (!signInErr) { router.push(returnTo); router.refresh(); return; }
+        // User doesn't exist — create it
+        const { error: signUpErr } = await supabase.auth.signUp({
+          email: "admin@admin.com", password: "adminadmin",
+          options: { data: { display_name: "Admin" } },
+        });
+        if (signUpErr) { setError(`Dev signup failed: ${signUpErr.message}`); setLoading(false); return; }
+        // Sign in with the new account
+        const { error: retryErr } = await supabase.auth.signInWithPassword({
+          email: "admin@admin.com", password: "adminadmin",
+        });
+        if (retryErr) { setError(`Dev login failed: ${retryErr.message}`); setLoading(false); return; }
+        router.push(returnTo);
+        router.refresh();
+      } catch (err) {
+        setError(`Dev login error: ${err instanceof Error ? err.message : String(err)}`);
+        setLoading(false);
+      }
+      return;
+    }
+
     if (password.length < 6) {
       setError("Password must be at least 6 characters");
       return;
