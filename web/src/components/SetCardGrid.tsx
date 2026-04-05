@@ -5,6 +5,7 @@ import { useImageMode } from "@/lib/image-mode";
 import { useGridDensity, GRID_CLASSES } from "@/lib/grid-density";
 import GridDensitySelector from "./GridDensitySelector";
 import CardLightbox from "./CardLightbox";
+import CardFaceToggle from "./CardFaceToggle";
 import type { SetCard } from "@/lib/types";
 import type { BrowseCard } from "@/lib/types";
 
@@ -68,9 +69,11 @@ function sortCards(cards: SetCard[], key: SortKey): SetCard[] {
 export default function SetCardGrid({
   cards,
   setCode,
+  backFaceUrls,
 }: {
   cards: SetCard[];
   setCode: string;
+  backFaceUrls?: Record<string, { normal: string; art_crop?: string }>;
 }) {
   const { imageMode, toggleImageMode, cardUrl } = useImageMode();
   const { density, setDensity } = useGridDensity();
@@ -168,34 +171,54 @@ export default function SetCardGrid({
       </div>
 
       <div className={GRID_CLASSES[density]} suppressHydrationWarning>
-        {filtered.map((card, i) => (
-          <button
-            key={card.scryfall_id}
-            onClick={() => setLightboxIdx(i)}
-            className="group relative text-left cursor-pointer"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={cardUrl(setCode, card.collector_number, card.image_version)}
-              alt={card.name}
-              className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
-              loading="lazy"
-            />
-          </button>
-        ))}
+        {filtered.map((card, i) => {
+          const backFace = backFaceUrls?.[card.scryfall_id];
+          const backUrl = backFace ? (imageMode === "art" ? backFace.art_crop : backFace.normal) ?? backFace.normal : undefined;
+          return (
+            <button
+              key={card.scryfall_id}
+              onClick={() => setLightboxIdx(i)}
+              className="group relative text-left cursor-pointer"
+            >
+              {backUrl ? (
+                <CardFaceToggle
+                  frontSrc={cardUrl(setCode, card.collector_number, card.image_version)}
+                  backSrc={backUrl}
+                  alt={card.name}
+                  clickToFlip
+                  className="border border-gray-800 group-hover:border-amber-500/50 transition-colors rounded-lg"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={cardUrl(setCode, card.collector_number, card.image_version)}
+                  alt={card.name}
+                  className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
+                  loading="lazy"
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {lightboxIdx !== null && lightboxIdx < filtered.length && (
-        <CardLightbox
-          card={toBrowseCard(filtered[lightboxIdx], setCode)}
-          imageUrl={cardUrl(setCode, filtered[lightboxIdx].collector_number, filtered[lightboxIdx].image_version)}
-          index={lightboxIdx}
-          total={filtered.length}
-          onClose={() => setLightboxIdx(null)}
-          onPrev={lightboxIdx > 0 ? () => setLightboxIdx(lightboxIdx - 1) : undefined}
-          onNext={lightboxIdx < filtered.length - 1 ? () => setLightboxIdx(lightboxIdx + 1) : undefined}
-        />
-      )}
+      {lightboxIdx !== null && lightboxIdx < filtered.length && (() => {
+        const card = filtered[lightboxIdx];
+        const backFace = backFaceUrls?.[card.scryfall_id];
+        const backUrl = backFace ? (imageMode === "art" ? backFace.art_crop : backFace.normal) ?? backFace.normal : undefined;
+        return (
+          <CardLightbox
+            card={toBrowseCard(card, setCode)}
+            imageUrl={cardUrl(setCode, card.collector_number, card.image_version)}
+            backImageUrl={backUrl}
+            index={lightboxIdx}
+            total={filtered.length}
+            onClose={() => setLightboxIdx(null)}
+            onPrev={lightboxIdx > 0 ? () => setLightboxIdx(lightboxIdx - 1) : undefined}
+            onNext={lightboxIdx < filtered.length - 1 ? () => setLightboxIdx(lightboxIdx + 1) : undefined}
+          />
+        );
+      })()}
     </>
   );
 }

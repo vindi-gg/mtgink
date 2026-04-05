@@ -26,6 +26,8 @@ export default async function SettingsPage() {
           displayName={user.user_metadata?.display_name ?? ""}
           hasPasswordFlag={!!user.user_metadata?.has_password}
           identities={(user.identities ?? []).map((i) => ({ id: i.id, identity_id: i.identity_id, provider: i.provider, email: (i.identity_data as Record<string, string>)?.email, name: (i.identity_data as Record<string, string>)?.full_name }))}
+          customAvatar={user.user_metadata?.custom_avatar ?? null}
+          avatarUrl={user.user_metadata?.avatar_url ?? null}
         />
       </div>
     </main>

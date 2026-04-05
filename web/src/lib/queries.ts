@@ -488,12 +488,12 @@ export async function getSetByCode(setCode: string): Promise<MtgSet | null> {
 export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
   const { data } = await getAdminClient()
     .from("printings")
-    .select("scryfall_id, oracle_id, collector_number, rarity, image_version, oracle_cards!inner(name, slug, type_line, mana_cost)")
+    .select("scryfall_id, oracle_id, collector_number, rarity, image_version, oracle_cards!inner(name, slug, type_line, mana_cost, layout)")
     .eq("set_code", setCode)
     .order("collector_number", { ascending: true });
 
   return (data ?? []).map((row) => {
-    const card = row.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null };
+    const card = row.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null; layout: string | null };
     return {
       scryfall_id: row.scryfall_id,
       oracle_id: row.oracle_id,
@@ -504,8 +504,34 @@ export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
       type_line: card.type_line,
       mana_cost: card.mana_cost,
       image_version: row.image_version,
+      layout: card.layout,
     };
   });
+}
+
+/** Get back face image URLs for all DFC printings in a set, keyed by scryfall_id */
+export async function getBackFaceUrlsForSet(setCode: string): Promise<Record<string, { normal: string; art_crop?: string }>> {
+  const { data: printings } = await getAdminClient()
+    .from("printings")
+    .select("scryfall_id, oracle_cards!inner(layout)")
+    .eq("set_code", setCode)
+    .in("oracle_cards.layout", ["modal_dfc", "transform", "reversible_card"]);
+  if (!printings || printings.length === 0) return {};
+
+  const { data } = await getAdminClient()
+    .from("card_faces")
+    .select("scryfall_id, image_uris")
+    .in("scryfall_id", printings.map((p) => p.scryfall_id))
+    .eq("face_index", 1);
+
+  const map: Record<string, { normal: string; art_crop?: string }> = {};
+  for (const row of data ?? []) {
+    const uris = row.image_uris as { normal?: string; art_crop?: string } | null;
+    if (uris?.normal) {
+      map[row.scryfall_id] = { normal: uris.normal, art_crop: uris.art_crop };
+    }
+  }
+  return map;
 }
 
 /** Look up a card by exact name (case-insensitive), with split-card fallback */

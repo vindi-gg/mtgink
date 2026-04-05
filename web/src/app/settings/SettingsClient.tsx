@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import UserAvatar from "@/components/UserAvatar";
+import type { MtgSet } from "@/lib/types";
 
 interface Identity {
   id: string;
@@ -20,6 +22,8 @@ interface Props {
   displayName: string;
   hasPasswordFlag: boolean;
   identities: Identity[];
+  customAvatar: string | null;
+  avatarUrl: string | null;
 }
 
 function providerLabel(provider: string) {
@@ -28,7 +32,16 @@ function providerLabel(provider: string) {
   return "Email";
 }
 
-export default function SettingsClient({ email, provider, providers, createdAt, displayName: initialDisplayName, hasPasswordFlag, identities: initialIdentities }: Props) {
+const MANA_OPTIONS = [
+  { value: "W", label: "White" },
+  { value: "U", label: "Blue" },
+  { value: "B", label: "Black" },
+  { value: "R", label: "Red" },
+  { value: "G", label: "Green" },
+  { value: "C", label: "Colorless" },
+];
+
+export default function SettingsClient({ email, provider, providers, createdAt, displayName: initialDisplayName, hasPasswordFlag, identities: initialIdentities, customAvatar: initialCustomAvatar, avatarUrl }: Props) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -45,6 +58,30 @@ export default function SettingsClient({ email, provider, providers, createdAt, 
   const hasEmailPassword = initialIdentities.some((i) => i.provider === "email") || hasPasswordFlag;
   const socialIdentities = initialIdentities.filter((i) => i.provider !== "email");
   const isOAuthUser = socialIdentities.length > 0 && !hasEmailPassword;
+
+  // Avatar
+  const [customAvatar, setCustomAvatar] = useState(initialCustomAvatar);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [setQuery, setSetQuery] = useState("");
+  const [sets, setSets] = useState<MtgSet[] | null>(null);
+  const [showSetResults, setShowSetResults] = useState(false);
+
+  async function handleAvatarSelect(value: string | null) {
+    if (!supabase) return;
+    setAvatarSaving(true);
+    const { error } = await supabase.auth.updateUser({ data: { custom_avatar: value } });
+    setAvatarSaving(false);
+    if (!error) {
+      setCustomAvatar(value);
+      router.refresh();
+    }
+  }
+
+  const filteredSets = (() => {
+    if (!sets || !setQuery.trim()) return [];
+    const q = setQuery.toLowerCase();
+    return sets.filter((s) => s.name.toLowerCase().includes(q) || s.set_code.toLowerCase().includes(q)).slice(0, 12);
+  })();
 
   // Display name
   const [displayName, setDisplayName] = useState(initialDisplayName);
@@ -190,6 +227,92 @@ export default function SettingsClient({ email, provider, providers, createdAt, 
             <span className="text-gray-400">Member since</span>
             <span>{new Date(createdAt).toLocaleDateString()}</span>
           </div>
+        </div>
+      </section>
+
+      {/* Avatar */}
+      <section className="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
+        <div className="flex items-center gap-4">
+          <UserAvatar customAvatar={customAvatar} avatarUrl={avatarUrl} displayName={initialDisplayName} size="lg" />
+          <div>
+            <h2 className="text-lg font-semibold">Avatar</h2>
+            {customAvatar && (
+              <button
+                onClick={() => handleAvatarSelect(null)}
+                className="text-xs text-gray-500 hover:text-gray-300 cursor-pointer"
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+          {avatarSaving && <span className="text-xs text-gray-500 ml-auto">Saving...</span>}
+        </div>
+
+        {/* Mana symbols */}
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block">Mana</label>
+          <div className="flex gap-2">
+            {MANA_OPTIONS.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => handleAvatarSelect(`mana:${m.value}`)}
+                title={m.label}
+                className={`w-10 h-10 rounded-full overflow-hidden transition-all cursor-pointer ${
+                  customAvatar === `mana:${m.value}` ? "ring-2 ring-amber-400 scale-110" : "opacity-60 hover:opacity-100"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`https://svgs.scryfall.io/card-symbols/${m.value}.svg`} alt={m.label} className="w-full h-full" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Set symbols */}
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block">Expansion</label>
+          <input
+            type="text"
+            value={setQuery}
+            onChange={(e) => {
+              setSetQuery(e.target.value);
+              setShowSetResults(true);
+              if (!sets) {
+                fetch("/api/sets").then((r) => r.json()).then((d) => setSets(d.sets ?? d)).catch(() => {});
+              }
+            }}
+            onFocus={() => {
+              if (filteredSets.length > 0) setShowSetResults(true);
+              if (!sets) {
+                fetch("/api/sets").then((r) => r.json()).then((d) => setSets(d.sets ?? d)).catch(() => {});
+              }
+            }}
+            placeholder="Search expansions..."
+            className={inputClass}
+          />
+          {showSetResults && filteredSets.length > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {filteredSets.map((s) => (
+                <button
+                  key={s.set_code}
+                  onClick={() => {
+                    handleAvatarSelect(`set:${s.set_code}`);
+                    setShowSetResults(false);
+                    setSetQuery("");
+                  }}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all cursor-pointer ${
+                    customAvatar === `set:${s.set_code}` ? "bg-amber-500/20 ring-1 ring-amber-500/50" : "bg-gray-800 hover:bg-gray-700"
+                  }`}
+                >
+                  {s.icon_svg_uri && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.icon_svg_uri} alt="" className="h-6 w-6 invert opacity-70" />
+                  )}
+                  <span className="text-[10px] text-gray-400 truncate w-full text-center">{s.set_code.toUpperCase()}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

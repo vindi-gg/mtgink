@@ -119,6 +119,7 @@ export interface SetCard {
   type_line: string | null;
   mana_cost: string | null;
   image_version: string | null;
+  layout: string | null;
 }
 
 export interface BracketCard {

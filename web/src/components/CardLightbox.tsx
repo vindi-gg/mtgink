@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { BrowseCard } from "@/lib/types";
@@ -8,6 +8,7 @@ import type { BrowseCard } from "@/lib/types";
 interface CardLightboxProps {
   card: BrowseCard;
   imageUrl: string;
+  backImageUrl?: string;
   index: number;
   total: number;
   onClose: () => void;
@@ -15,8 +16,9 @@ interface CardLightboxProps {
   onNext?: () => void;
 }
 
-export default function CardLightbox({ card, imageUrl, index, total, onClose, onPrev, onNext }: CardLightboxProps) {
+export default function CardLightbox({ card, imageUrl, backImageUrl, index, total, onClose, onPrev, onNext }: CardLightboxProps) {
   const touchStartX = useRef<number | null>(null);
+  const [showBack, setShowBack] = useState(false);
 
   const handleKey = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") onClose();
@@ -32,6 +34,9 @@ export default function CardLightbox({ card, imageUrl, index, total, onClose, on
       document.body.style.overflow = "";
     };
   }, [handleKey]);
+
+  // Reset flip state when card changes
+  useEffect(() => { setShowBack(false); }, [imageUrl]);
 
   function handleTouchStart(e: React.TouchEvent) {
     touchStartX.current = e.touches[0].clientX;
@@ -73,11 +78,25 @@ export default function CardLightbox({ card, imageUrl, index, total, onClose, on
 
         {/* Art + shelf */}
         <div className="flex flex-col max-w-[90vw] md:max-w-[70vw]">
-          <img
-            src={imageUrl}
-            alt={card.name}
-            className="max-h-[70vh] object-contain rounded-t-lg shadow-2xl"
-          />
+          <div className="relative">
+            <img
+              src={showBack && backImageUrl ? backImageUrl : imageUrl}
+              alt={card.name}
+              className="max-h-[70vh] object-contain rounded-t-lg shadow-2xl"
+            />
+            {backImageUrl && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowBack(!showBack); }}
+                className="absolute top-3 right-3 z-30 w-9 h-9 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition-colors cursor-pointer"
+                title="Flip card"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/80">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                </svg>
+              </button>
+            )}
+          </div>
           {/* Shelf */}
           <div className="bg-gray-900 border-t border-gray-800 rounded-b-lg px-4 py-3">
             <div className="flex items-center justify-between gap-4">

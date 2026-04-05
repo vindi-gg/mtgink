@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getSetByCode, getCardsForSet } from "@/lib/queries";
+import { getSetByCode, getCardsForSet, getBackFaceUrlsForSet } from "@/lib/queries";
 import { collectionPageJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
 import SetCardGrid from "@/components/SetCardGrid";
 
@@ -31,6 +31,7 @@ export default async function SetDetailPage({
   if (!set) notFound();
 
   const cards = await getCardsForSet(set_code);
+  const backFaceUrls = await getBackFaceUrlsForSet(set_code);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
@@ -74,7 +75,7 @@ export default async function SetDetailPage({
           {cards.length} cards
         </p>
 
-        <SetCardGrid cards={cards} setCode={set_code} />
+        <SetCardGrid cards={cards} setCode={set_code} backFaceUrls={backFaceUrls} />
     </main>
   );
 }

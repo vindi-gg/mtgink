@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import SearchModal from "./SearchModal";
+import UserAvatar from "./UserAvatar";
 import { PLAY_MODES, DB_MODES, PlayModeIcon } from "@/lib/play-modes";
 
 function isActiveLink(pathname: string, href: string): boolean {
@@ -138,19 +139,12 @@ export default function Navbar() {
   const allLinks = [...primaryLinks, ...secondaryLinks];
 
   // Avatar
-  const avatarUrl = user?.user_metadata?.avatar_url;
+  const customAvatar = user?.user_metadata?.custom_avatar as string | undefined;
+  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
   const displayName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     user?.email;
-  const initials = displayName
-    ? displayName
-        .split(" ")
-        .map((s: string) => s[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : "?";
 
   const isShowdown = pathname.startsWith("/showdown") || pathname.startsWith("/daily/gauntlet") || pathname.endsWith("/remix");
 
@@ -287,17 +281,7 @@ export default function Navbar() {
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-1.5 cursor-pointer"
               >
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt=""
-                    className="h-7 w-7 rounded-full"
-                  />
-                ) : (
-                  <div className="h-7 w-7 rounded-full bg-amber-500 flex items-center justify-center text-xs font-bold text-gray-900">
-                    {initials}
-                  </div>
-                )}
+                <UserAvatar customAvatar={customAvatar} avatarUrl={avatarUrl} displayName={displayName} />
                 <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
@@ -390,17 +374,7 @@ export default function Navbar() {
               onClick={() => { setMenuOpen(!menuOpen); setPlayMenuOpen(false); }}
               className="flex-shrink-0"
             >
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  className="h-7 w-7 rounded-full"
-                />
-              ) : (
-                <div className="h-7 w-7 rounded-full bg-amber-500 flex items-center justify-center text-xs font-bold text-gray-900">
-                  {initials}
-                </div>
-              )}
+              <UserAvatar customAvatar={customAvatar} avatarUrl={avatarUrl} displayName={displayName} />
             </button>
           ) : supabase ? (
             <Link
