@@ -1,4 +1,3 @@
-import { unstable_cache } from "next/cache";
 import { getAdminClient } from "@/lib/supabase/admin";
 import type {
   OracleCard,
@@ -152,14 +151,13 @@ export async function getCrossCardPair(filters?: CompareFilters): Promise<Compar
 }
 
 /** Get all distinct illustrations for a card, picking one representative printing per illustration */
-const _getIllustrationsForCard = async (oracleId: string): Promise<(Illustration & { cheapest_price: number | null })[]> => {
+export async function getIllustrationsForCard(oracleId: string): Promise<(Illustration & { cheapest_price: number | null })[]> {
   const { data, error } = await getAdminClient().rpc("get_illustrations_for_card", {
     p_oracle_id: oracleId,
   });
   if (error) throw new Error(`Failed to get illustrations: ${error.message}`);
   return (data as any[]).map((row) => ({ ...row, cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null }));
-};
-export const getIllustrationsForCard = unstable_cache(_getIllustrationsForCard, ["illustrations-for-card"], { revalidate: 3600 });
+}
 
 /** Get ELO rating for an illustration, or null if unrated */
 export async function getRating(illustrationId: string): Promise<ArtRating | null> {
@@ -211,7 +209,7 @@ export async function getCardByOracleId(oracleId: string): Promise<OracleCard | 
 }
 
 /** Get a card by URL slug, with UUID fallback */
-const _getCardBySlug = async (slug: string): Promise<OracleCard | null> => {
+export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
   // UUID fallback
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(slug)) {
     return getCardByOracleId(slug);
@@ -272,14 +270,13 @@ const _getCardBySlug = async (slug: string): Promise<OracleCard | null> => {
   if (matches.length === 0) return null;
   const m = matches[0];
   return { ...m, colors: m.colors ? JSON.stringify(m.colors) : null };
-};
-export const getCardBySlug = unstable_cache(_getCardBySlug, ["card-by-slug"], { revalidate: 3600 });
+}
 
 /** Get all printings for a card, grouped by illustration_id (excludes digital-only sets) */
 /** Non-English reprint sets to exclude from printings display */
 const NON_ENGLISH_SETS = ["psal", "ps11", "ren", "rin", "fbb", "4bb", "bchr"];
 
-const _getPrintingsForCard = async (oracleId: string): Promise<Record<string, Printing[]>> => {
+export async function getPrintingsForCard(oracleId: string): Promise<Record<string, Printing[]>> {
   const { data, error } = await getAdminClient()
     .from("printings")
     .select("scryfall_id, illustration_id, set_code, collector_number, released_at, rarity, tcgplayer_id, image_version, sets!inner(name, digital)")
@@ -307,11 +304,10 @@ const _getPrintingsForCard = async (oracleId: string): Promise<Record<string, Pr
     });
   }
   return grouped;
-};
-export const getPrintingsForCard = unstable_cache(_getPrintingsForCard, ["printings-for-card"], { revalidate: 3600 });
+}
 
 /** Get card faces for a DFC (one representative printing) */
-const _getCardFaces = async (oracleId: string): Promise<CardFace[]> => {
+export async function getCardFaces(oracleId: string): Promise<CardFace[]> {
   // Get one printing for this card
   const { data: printing } = await getAdminClient()
     .from("printings")
@@ -329,11 +325,10 @@ const _getCardFaces = async (oracleId: string): Promise<CardFace[]> => {
     .order("face_index", { ascending: true });
 
   return (data ?? []) as CardFace[];
-};
-export const getCardFaces = unstable_cache(_getCardFaces, ["card-faces"], { revalidate: 3600 });
+}
 
 /** Get back face image URLs for all printings of a DFC, keyed by scryfall_id */
-const _getBackFaceUrls = async (oracleId: string): Promise<Record<string, string>> => {
+export async function getBackFaceUrls(oracleId: string): Promise<Record<string, string>> {
   const { data: printings } = await getAdminClient()
     .from("printings")
     .select("scryfall_id")
@@ -354,8 +349,7 @@ const _getBackFaceUrls = async (oracleId: string): Promise<Record<string, string
     }
   }
   return map;
-};
-export const getBackFaceUrls = unstable_cache(_getBackFaceUrls, ["back-face-urls"], { revalidate: 3600 });
+}
 
 /** Record a vote and update ELO ratings */
 export async function recordVote(payload: VotePayload, kFactor?: number, scope = "remix"): Promise<{
@@ -399,15 +393,14 @@ export async function recordVote(payload: VotePayload, kFactor?: number, scope =
 }
 
 /** Get all ratings for a card's illustrations, sorted by ELO desc */
-const _getRatingsForCard = async (oracleId: string): Promise<ArtRating[]> => {
+export async function getRatingsForCard(oracleId: string): Promise<ArtRating[]> {
   const { data } = await getAdminClient()
     .from("art_ratings")
     .select("*")
     .eq("oracle_id", oracleId)
     .order("elo_rating", { ascending: false });
   return (data ?? []) as ArtRating[];
-};
-export const getRatingsForCard = unstable_cache(_getRatingsForCard, ["ratings-for-card"], { revalidate: 3600 });
+}
 
 interface BestPrice {
   scryfall_id: string;
@@ -417,7 +410,7 @@ interface BestPrice {
   product_url: string;
 }
 
-const _getBestPricesForCard = async (oracleId: string): Promise<BestPrice[]> => {
+export async function getBestPricesForCard(oracleId: string): Promise<BestPrice[]> {
   const { data: printings } = await getAdminClient()
     .from("printings")
     .select("scryfall_id")
@@ -431,8 +424,7 @@ const _getBestPricesForCard = async (oracleId: string): Promise<BestPrice[]> => 
     .in("scryfall_id", printings.map((p) => p.scryfall_id));
 
   return (data ?? []) as BestPrice[];
-};
-export const getBestPricesForCard = unstable_cache(_getBestPricesForCard, ["best-prices-for-card"], { revalidate: 3600 });
+}
 
 /** Search cards by name, limited to those with 2+ illustrations, sorted by popularity */
 export async function searchCards(query: string, limit = 20): Promise<(OracleCard & { matched_flavor_name?: string | null })[]> {
@@ -1079,7 +1071,7 @@ export async function getCardsByTribe(
 const TAG_COLUMNS = "tag_id, label, slug, type, description, usage_count, source, rule_definition, category";
 
 /** Get all tags for a card (oracle tags + illustration tags) */
-const _getTagsForCard = async (oracleId: string): Promise<Tag[]> => {
+export async function getTagsForCard(oracleId: string): Promise<Tag[]> {
   const admin = getAdminClient();
 
   // Get oracle tags
@@ -1119,8 +1111,7 @@ const _getTagsForCard = async (oracleId: string): Promise<Tag[]> => {
   }
 
   return tags.sort((a, b) => a.label.localeCompare(b.label));
-};
-export const getTagsForCard = unstable_cache(_getTagsForCard, ["tags-for-card"], { revalidate: 3600 });
+}
 
 export async function getTags(
   search?: string,
