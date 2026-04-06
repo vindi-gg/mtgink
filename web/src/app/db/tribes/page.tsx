@@ -1,9 +1,8 @@
-import { Suspense } from "react";
 import Link from "next/link";
 import { getCreatureTribes } from "@/lib/queries";
-import DbSearch from "@/components/DbSearch";
+import TribesListClient from "@/components/TribesListClient";
 
-export const revalidate = 3600; // tribes change only on data imports
+export const revalidate = 3600;
 
 export const metadata = {
   title: "Creature Tribes",
@@ -11,41 +10,8 @@ export const metadata = {
   alternates: { canonical: "https://mtg.ink/db/tribes" },
 };
 
-async function TribesList({ query }: { query: string }) {
-  const allTribes = await getCreatureTribes();
-  const tribes = query
-    ? allTribes.filter((t) => t.tribe.toLowerCase().includes(query.toLowerCase()))
-    : allTribes;
-
-  return (
-    <>
-      <p className="text-gray-400 text-sm mb-4">
-        {tribes.length} creature types
-      </p>
-      <div className="grid gap-1">
-        {tribes.map((tribe) => (
-          <Link
-            key={tribe.slug}
-            href={`/db/tribes/${tribe.slug}`}
-            className="flex items-center justify-between px-4 py-2.5 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
-          >
-            <span className="text-white font-medium">{tribe.tribe}</span>
-            <span className="text-gray-500 text-sm">
-              {tribe.card_count.toLocaleString()} cards
-            </span>
-          </Link>
-        ))}
-      </div>
-    </>
-  );
-}
-
-export default async function TribesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q = "" } = await searchParams;
+export default async function TribesPage() {
+  const tribes = await getCreatureTribes();
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
@@ -56,14 +22,9 @@ export default async function TribesPage({
           <span className="text-gray-600">/</span>
           <h1 className="text-3xl font-bold">Tribes</h1>
         </div>
-        <div className="mb-4 mt-4">
-          <Suspense>
-            <DbSearch placeholder="Search creature types..." />
-          </Suspense>
+        <div className="mt-4">
+          <TribesListClient tribes={tribes} />
         </div>
-        <Suspense fallback={<p className="text-gray-500">Loading tribes...</p>}>
-          <TribesList query={q} />
-        </Suspense>
     </main>
   );
 }

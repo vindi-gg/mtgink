@@ -1,12 +1,8 @@
-import { Suspense } from "react";
 import Link from "next/link";
-import { getTags } from "@/lib/queries";
-import DbSearch from "@/components/DbSearch";
-import Pagination from "@/components/Pagination";
+import { getAllTagsByType } from "@/lib/queries";
+import TagsListClient from "@/components/TagsListClient";
 
 export const revalidate = 3600;
-
-const PAGE_SIZE = 50;
 
 export const metadata = {
   title: "Card Tags",
@@ -14,50 +10,8 @@ export const metadata = {
   alternates: { canonical: "https://mtg.ink/db/tags" },
 };
 
-async function TagsList({ query, page }: { query: string; page: number }) {
-  const { tags, total } = await getTags(query || undefined, "oracle", page, PAGE_SIZE, "scryfall");
-
-  if (tags.length === 0) {
-    return (
-      <p className="text-gray-500 py-8 text-center">
-        {query ? "No card tags found" : "No card tags imported yet."}
-      </p>
-    );
-  }
-
-  return (
-    <>
-      <p className="text-gray-400 text-sm mb-4">
-        {total.toLocaleString()} card tags
-      </p>
-      <div className="grid gap-1">
-        {tags.map((tag) => (
-          <Link
-            key={tag.tag_id}
-            href={`/db/tags/${tag.slug}`}
-            className="flex items-center justify-between px-4 py-2.5 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
-          >
-            <span className="text-white font-medium truncate">{tag.label}</span>
-            <span className="text-gray-500 text-sm shrink-0 ml-4">
-              {tag.usage_count.toLocaleString()}
-            </span>
-          </Link>
-        ))}
-      </div>
-      <Suspense>
-        <Pagination total={total} pageSize={PAGE_SIZE} currentPage={page} />
-      </Suspense>
-    </>
-  );
-}
-
-export default async function CardTagsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string; page?: string }>;
-}) {
-  const { q = "", page: pageStr } = await searchParams;
-  const page = Math.max(1, parseInt(pageStr || "1", 10));
+export default async function CardTagsPage() {
+  const tags = await getAllTagsByType("oracle");
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">
@@ -78,14 +32,11 @@ export default async function CardTagsPage({
           Art Tags
         </Link>
       </p>
-      <div className="mb-4">
-        <Suspense>
-          <DbSearch placeholder="Search card tags..." />
-        </Suspense>
-      </div>
-      <Suspense fallback={<p className="text-gray-500">Loading card tags...</p>}>
-        <TagsList query={q} page={page} />
-      </Suspense>
+      <TagsListClient
+        tags={tags}
+        basePath="/db/tags"
+        emptyLabel="No card tags imported yet."
+      />
     </main>
   );
 }

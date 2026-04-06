@@ -1143,6 +1143,41 @@ export async function getTags(
   return { tags: (data ?? []) as Tag[], total: count ?? 0 };
 }
 
+export async function getAllTagsByType(
+  type: "oracle" | "illustration",
+  source = "scryfall"
+): Promise<Tag[]> {
+  let query = getAdminClient()
+    .from("tags")
+    .select(TAG_COLUMNS)
+    .order("usage_count", { ascending: false })
+    .eq("type", type);
+  if (source) query = query.eq("source", source);
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to load tags: ${error.message}`);
+  return (data ?? []) as Tag[];
+}
+
+export async function getTopCardsBoth(limit = 500): Promise<{
+  popular: TopCard[];
+  prints: TopCard[];
+  total: number;
+}> {
+  const admin = getAdminClient();
+  const [popularRes, printsRes, countRes] = await Promise.all([
+    admin.rpc("get_top_cards", { p_sort: "popular", p_limit: limit, p_offset: 0 }),
+    admin.rpc("get_top_cards", { p_sort: "prints", p_limit: limit, p_offset: 0 }),
+    admin.from("oracle_cards").select("*", { count: "exact", head: true }).gt("illustration_count", 1),
+  ]);
+  if (popularRes.error) throw new Error(`Failed to get top cards: ${popularRes.error.message}`);
+  if (printsRes.error) throw new Error(`Failed to get top cards: ${printsRes.error.message}`);
+  return {
+    popular: (popularRes.data ?? []) as TopCard[],
+    prints: (printsRes.data ?? []) as TopCard[],
+    total: countRes.count ?? 0,
+  };
+}
+
 export async function getTagById(tagId: string): Promise<Tag | null> {
   const { data } = await getAdminClient()
     .from("tags")
