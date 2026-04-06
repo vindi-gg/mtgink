@@ -21,7 +21,7 @@ export default function OGTestPage() {
   const [genResult, setGenResult] = useState<string | null>(null);
   const ts = Date.now();
 
-  const ogUrl = mode === "default" ? "/opengraph-image" : `/api/og/card/${slug}`;
+  const ogUrl = mode === "default" ? "/api/og/default" : `/api/og/card/${slug}`;
   const label = mode === "default" ? "Default (site-wide)" : slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 
   return (
@@ -147,30 +147,29 @@ export default function OGTestPage() {
           <p className="text-xs text-gray-600">
             URL: <code className="text-gray-400">{ogUrl}</code>
           </p>
-          {mode === "card" && (
-            <button
-              onClick={async () => {
-                setGenerating(true);
-                setGenResult(null);
-                try {
-                  const res = await fetch("/api/admin/worker", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ job: "og", slugs: slug }),
-                  });
-                  const data = await res.json();
-                  setGenResult(res.ok ? `Started: ${data.message || "generating"}` : `Error: ${data.error}`);
-                } catch (err) {
-                  setGenResult(`Error: ${(err as Error).message}`);
-                }
-                setGenerating(false);
-              }}
-              disabled={generating}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap"
-            >
-              {generating ? "Generating..." : "Generate to R2"}
-            </button>
-          )}
+          <button
+            onClick={async () => {
+              setGenerating(true);
+              setGenResult(null);
+              try {
+                const slugs = mode === "default" ? "default" : slug;
+                const res = await fetch("/api/admin/worker", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ job: "og", slugs }),
+                });
+                const data = await res.json();
+                setGenResult(res.ok ? `Started: ${data.message || "generating to R2"}` : `Error: ${data.error}`);
+              } catch (err) {
+                setGenResult(`Error: ${(err as Error).message}`);
+              }
+              setGenerating(false);
+            }}
+            disabled={generating}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap"
+          >
+            {generating ? "Generating..." : "Generate to R2"}
+          </button>
         </div>
         {genResult && (
           <p className={`text-xs mt-1 ${genResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{genResult}</p>

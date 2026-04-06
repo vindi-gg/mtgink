@@ -2,9 +2,8 @@ import { ImageResponse } from "next/og";
 import { artCropUrl } from "@/lib/image-utils";
 
 export const runtime = "edge";
-export const revalidate = 604800; // 1 week
-export const contentType = "image/png";
-export const size = { width: 1200, height: 630 };
+
+const size = { width: 1200, height: 630 };
 
 // 5 iconic MTG cards
 const ICONIC_CARDS: { set_code: string; collector_number: string }[] = [
@@ -24,7 +23,7 @@ async function loadFont() {
   return fontRes.arrayBuffer();
 }
 
-export default async function DefaultOGImage() {
+export async function GET() {
   const fontData = await loadFont();
   const fonts = fontData ? [{ name: "Jost", data: fontData, weight: 700 as const }] : [];
 
@@ -113,7 +112,6 @@ export default async function DefaultOGImage() {
           position: "relative",
         }}
       >
-        {/* Logo */}
         <div
           style={{
             display: "flex",
@@ -126,7 +124,6 @@ export default async function DefaultOGImage() {
           <span style={{ fontSize: 120, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
         </div>
 
-        {/* Tagline */}
         <div
           style={{
             display: "flex",
@@ -139,7 +136,6 @@ export default async function DefaultOGImage() {
           Compare and rank every MTG card art
         </div>
 
-        {/* URL */}
         <div
           style={{
             display: "flex",

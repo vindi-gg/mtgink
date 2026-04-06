@@ -30,6 +30,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "MTG Ink",
+    images: [{ url: "https://cdn.mtg.ink/og/default.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",

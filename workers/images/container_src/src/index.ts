@@ -1334,6 +1334,24 @@ async function generateOgImages(opts?: { force?: boolean; setCodes?: string }) {
   console.log(`  Force: ${force}`);
   if (slugFilter) console.log(`  Slugs: ${slugFilter}`);
 
+  // Handle default OG image
+  if (slugFilter === "default") {
+    console.log("  Generating default OG image");
+    const buf = await downloadBuffer(`${siteUrl}/api/og/default`);
+    if (!buf || buf.length < 1000) {
+      console.log("  [FAIL] Default OG — empty or failed");
+      status.state = "error";
+      status.message = "Failed to generate default OG image";
+      return;
+    }
+    const ok = await uploadToR2("og/default.png", buf, "image/png");
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    status.state = ok ? "done" : "error";
+    status.message = ok ? `Default OG uploaded in ${elapsed}s` : "Failed to upload default OG";
+    console.log(`  ${status.message}`);
+    return;
+  }
+
   const client = new pg.Client(process.env.SUPABASE_DB_URL);
   await client.connect();
 
