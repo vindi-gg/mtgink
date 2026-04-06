@@ -6,6 +6,7 @@ export const revalidate = 3600;
 export const metadata = {
   title: "Expansions",
   description: "Browse all MTG expansions, sets, and products.",
+  alternates: { canonical: "https://mtg.ink/db/expansions" },
 };
 
 export default async function ExpansionsPage({

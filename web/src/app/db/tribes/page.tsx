@@ -8,6 +8,7 @@ export const revalidate = 3600; // tribes change only on data imports
 export const metadata = {
   title: "Creature Tribes",
   description: "Browse all MTG creature types. Find every Goblin, Elf, Dragon, Zombie, and more.",
+  alternates: { canonical: "https://mtg.ink/db/tribes" },
 };
 
 async function TribesList({ query }: { query: string }) {

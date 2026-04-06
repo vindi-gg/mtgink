@@ -8,6 +8,7 @@ export const revalidate = 3600;
 export const metadata = {
   title: "Cards",
   description: "Top MTG cards by popularity and number of prints.",
+  alternates: { canonical: "https://mtg.ink/db/cards" },
 };
 
 type SortOption = "popular" | "prints";

@@ -18,6 +18,7 @@ export async function generateMetadata({
   return {
     title: `${set.name} (${set.set_code.toUpperCase()}) - All Cards`,
     description: `Browse all ${set.card_count ?? ""} cards in ${set.name}. Compare card art and find the best illustrations.${set.released_at ? ` Released ${set.released_at}.` : ""}`,
+    alternates: { canonical: `https://mtg.ink/db/expansions/${set_code}` },
   };
 }
 

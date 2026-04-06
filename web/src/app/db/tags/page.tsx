@@ -11,6 +11,7 @@ const PAGE_SIZE = 50;
 export const metadata = {
   title: "Card Tags",
   description: "Browse MTG cards by community-curated card tags.",
+  alternates: { canonical: "https://mtg.ink/db/tags" },
 };
 
 async function TagsList({ query, page }: { query: string; page: number }) {

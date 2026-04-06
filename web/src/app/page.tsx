@@ -12,6 +12,7 @@ export const revalidate = 60;
 export const metadata = {
   title: "MTG Ink — Discover the Art of Magic",
   description: "Compare and rank every Magic: The Gathering card art. Browse 37,000+ cards, discover illustrations across all printings, and vote for the best MTG art.",
+  alternates: { canonical: "https://mtg.ink/" },
 };
 
 export default async function HomePage() {

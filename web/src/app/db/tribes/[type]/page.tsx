@@ -30,6 +30,7 @@ export async function generateMetadata({
   return {
     title: `${tribe.tribe} - MTG Creatures`,
     description: `Browse all ${tribe.card_count.toLocaleString()} MTG ${tribe.tribe} creatures. Compare art across every printing.`,
+    alternates: { canonical: `https://mtg.ink/db/tribes/${type}` },
   };
 }
 

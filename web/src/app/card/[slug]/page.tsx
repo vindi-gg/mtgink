@@ -58,6 +58,7 @@ export async function generateMetadata({
       title: ogTitle,
       description,
     },
+    alternates: { canonical: `https://mtg.ink/card/${card.slug}` },
   };
 }
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 export const metadata = {
   title: "MTG Database",
   description: "Browse the MTG card database. Explore artists, expansions, creature tribes, tags, and more.",
+  alternates: { canonical: "https://mtg.ink/db" },
 };
 
 const sections = [

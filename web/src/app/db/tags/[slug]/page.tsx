@@ -22,6 +22,7 @@ export async function generateMetadata({
   return {
     title: `${tag.label} Art - Card Tag`,
     description: `Browse all MTG cards tagged "${tag.label}". Compare art and discover illustrations.`,
+    alternates: { canonical: `https://mtg.ink/db/tags/${slug}` },
   };
 }
 
