@@ -1,12 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { artCropUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
+import CardLightbox from "./CardLightbox";
 import type { ArtistIllustration } from "@/lib/types";
+import type { BrowseCard } from "@/lib/types";
 
 const PAGE_SIZE = 24;
+
+function toBrowseCard(ill: ArtistIllustration): BrowseCard {
+  return {
+    oracle_id: ill.oracle_id,
+    name: ill.card_name,
+    slug: ill.card_slug,
+    type_line: null,
+    mana_cost: null,
+    set_code: ill.set_code,
+    collector_number: ill.collector_number,
+    image_version: ill.image_version,
+  };
+}
 
 export default function ArtistGallery({
   illustrations,
@@ -15,38 +28,28 @@ export default function ArtistGallery({
 }) {
   const { cardUrl, imageMode } = useImageMode();
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const hasMore = visible < illustrations.length;
+  const shown = illustrations.slice(0, visible);
 
   return (
     <>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {illustrations.slice(0, visible).map((ill) => (
-          <Link
+        {shown.map((ill, i) => (
+          <button
             key={ill.illustration_id}
-            href={`/card/${ill.card_slug}`}
-            className="group bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-amber-500/50 transition-colors"
+            onClick={() => setLightboxIdx(i)}
+            className="group relative text-left cursor-pointer"
           >
-            <div className={`${imageMode === "card" ? "aspect-[488/680]" : "aspect-[4/3]"} bg-gray-800 overflow-hidden`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
-                alt={ill.card_name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                loading="lazy"
-              />
-            </div>
-            <div className="px-3 py-2">
-              <p className="text-sm font-medium text-white truncate">
-                {ill.card_name}
-              </p>
-              <div className="flex items-center justify-between mt-0.5">
-                <span className="text-xs text-gray-500 truncate">
-                  {ill.set_name}
-                </span>
-              </div>
-            </div>
-          </Link>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={cardUrl(ill.set_code, ill.collector_number, ill.image_version)}
+              alt={ill.card_name}
+              className="w-full rounded-lg border border-gray-800 group-hover:border-amber-500/50 transition-colors"
+              loading="lazy"
+            />
+          </button>
         ))}
       </div>
 
@@ -59,6 +62,18 @@ export default function ArtistGallery({
             Show more ({illustrations.length - visible} remaining)
           </button>
         </div>
+      )}
+
+      {lightboxIdx !== null && lightboxIdx < shown.length && (
+        <CardLightbox
+          card={toBrowseCard(shown[lightboxIdx])}
+          imageUrl={cardUrl(shown[lightboxIdx].set_code, shown[lightboxIdx].collector_number, shown[lightboxIdx].image_version)}
+          index={lightboxIdx}
+          total={shown.length}
+          onClose={() => setLightboxIdx(null)}
+          onPrev={lightboxIdx > 0 ? () => setLightboxIdx(lightboxIdx - 1) : undefined}
+          onNext={lightboxIdx < shown.length - 1 ? () => setLightboxIdx(lightboxIdx + 1) : undefined}
+        />
       )}
     </>
   );
