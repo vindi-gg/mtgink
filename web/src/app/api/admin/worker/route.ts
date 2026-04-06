@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.user_metadata?.is_admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { job, status: checkStatus } = await request.json();
+  const { job, status: checkStatus, slugs } = await request.json();
   const admin = getAdminClient();
 
   // Poll status
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
 
   const params = new URLSearchParams();
   if (job) params.set("job", job);
+  if (slugs) params.set("sets", slugs); // reuse sets param for slug filter on og job
   const res = await fetch(`${WORKER_URL}?${params}`);
   return NextResponse.json(await res.json(), { status: res.status });
 }

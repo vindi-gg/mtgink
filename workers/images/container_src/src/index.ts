@@ -1320,10 +1320,11 @@ async function revalidateVercel(result: DataImportResult): Promise<void> {
 
 // ── OG image pre-generation ────────────────────────────
 
-async function generateOgImages(opts?: { force?: boolean }) {
+async function generateOgImages(opts?: { force?: boolean; setCodes?: string }) {
   const startTime = Date.now();
   const concurrency = parseInt(process.env.CONCURRENCY || "8", 10);
   const force = opts?.force || false;
+  const slugFilter = opts?.setCodes || null; // reuse setCodes param for slug filter
   const siteUrl = process.env.VERCEL_URL || "https://mtg.ink";
   const version = Math.floor(Date.now() / 1000);
 
@@ -1331,15 +1332,27 @@ async function generateOgImages(opts?: { force?: boolean }) {
   console.log(`  Site: ${siteUrl}`);
   console.log(`  Concurrency: ${concurrency}`);
   console.log(`  Force: ${force}`);
+  if (slugFilter) console.log(`  Slugs: ${slugFilter}`);
 
   const client = new pg.Client(process.env.SUPABASE_DB_URL);
   await client.connect();
 
   // Get cards that need OG images
-  const condition = force ? "TRUE" : "og_version IS NULL";
-  const { rows } = await client.query(
-    `SELECT slug FROM oracle_cards WHERE ${condition} ORDER BY slug`
-  );
+  let rows: { slug: string }[];
+  if (slugFilter) {
+    const slugs = slugFilter.split(",").map((s) => s.trim());
+    const result = await client.query(
+      `SELECT slug FROM oracle_cards WHERE slug = ANY($1) ORDER BY slug`,
+      [slugs]
+    );
+    rows = result.rows;
+  } else {
+    const condition = force ? "TRUE" : "og_version IS NULL";
+    const result = await client.query(
+      `SELECT slug FROM oracle_cards WHERE ${condition} ORDER BY slug`
+    );
+    rows = result.rows;
+  }
 
   if (rows.length === 0) {
     console.log("  No cards need OG images");

@@ -17,6 +17,8 @@ export default function OGTestPage() {
   const [mode, setMode] = useState<Mode>("default");
   const [slug, setSlug] = useState(SAMPLES[0]);
   const [custom, setCustom] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState<string | null>(null);
   const ts = Date.now();
 
   const ogUrl = mode === "default" ? "/opengraph-image" : `/api/og/card/${slug}`;
@@ -141,9 +143,38 @@ export default function OGTestPage() {
           </div>
         </div>
 
-        <p className="text-xs text-gray-600">
-          URL: <code className="text-gray-400">{ogUrl}</code>
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-xs text-gray-600">
+            URL: <code className="text-gray-400">{ogUrl}</code>
+          </p>
+          {mode === "card" && (
+            <button
+              onClick={async () => {
+                setGenerating(true);
+                setGenResult(null);
+                try {
+                  const res = await fetch("/api/admin/worker", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ job: "og", slugs: slug }),
+                  });
+                  const data = await res.json();
+                  setGenResult(res.ok ? `Started: ${data.message || "generating"}` : `Error: ${data.error}`);
+                } catch (err) {
+                  setGenResult(`Error: ${(err as Error).message}`);
+                }
+                setGenerating(false);
+              }}
+              disabled={generating}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            >
+              {generating ? "Generating..." : "Generate to R2"}
+            </button>
+          )}
+        </div>
+        {genResult && (
+          <p className={`text-xs mt-1 ${genResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{genResult}</p>
+        )}
       </div>
     </main>
   );
