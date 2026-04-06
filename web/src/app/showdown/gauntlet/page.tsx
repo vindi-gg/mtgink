@@ -11,6 +11,7 @@ import {
   getTheme,
   getArtistBySlug,
   getTagBySlug,
+  getTagById,
 } from "@/lib/queries";
 import { getBrewBySlug, incrementPlayCount } from "@/lib/brew-queries";
 import GauntletView from "@/components/GauntletView";
@@ -59,6 +60,8 @@ export default async function GauntletPage({
   let themeName: string | undefined;
   let brewId: string | undefined;
   let tagId: string | undefined;
+  let tagSlug: string | undefined;
+  let tagType: "oracle" | "illustration" | undefined;
 
   try {
     if (brewSlug) {
@@ -140,6 +143,11 @@ export default async function GauntletPage({
         } else if (t.theme_type === "tag" && t.tag_id) {
           tagId = t.tag_id;
           filterLabel = t.label.replace(" Gauntlet", "");
+          const tagObj = await getTagById(t.tag_id);
+          if (tagObj) {
+            tagSlug = tagObj.slug;
+            tagType = tagObj.type as "oracle" | "illustration";
+          }
           pool = await getGauntletCardsByTag(t.tag_id, poolSize);
         } else if (t.theme_type === "artist" && t.artist) {
           filterLabel = t.artist;
@@ -173,6 +181,8 @@ export default async function GauntletPage({
       if (resolvedTag) {
         resolvedTagId = resolvedTag.tag_id;
         filterLabel = resolvedTag.label;
+        tagSlug = resolvedTag.slug;
+        tagType = resolvedTag.type as "oracle" | "illustration";
       } else {
         filterLabel = tag;
       }
@@ -185,6 +195,8 @@ export default async function GauntletPage({
       if (resolvedTag) {
         resolvedTagId = resolvedTag.tag_id;
         filterLabel = resolvedTag.label;
+        tagSlug = resolvedTag.slug;
+        tagType = resolvedTag.type as "oracle" | "illustration";
       } else {
         filterLabel = art_tag;
       }
@@ -231,6 +243,11 @@ export default async function GauntletPage({
         } else if (t.theme_type === "tag" && t.tag_id) {
           tagId = t.tag_id;
           filterLabel = t.label.replace(" Gauntlet", "");
+          const tagObj = await getTagById(t.tag_id);
+          if (tagObj) {
+            tagSlug = tagObj.slug;
+            tagType = tagObj.type as "oracle" | "illustration";
+          }
           pool = await getGauntletCardsByTag(t.tag_id, poolSize);
         } else if (t.theme_type === "artist" && t.artist) {
           filterLabel = t.artist;
@@ -287,6 +304,8 @@ export default async function GauntletPage({
         filterLabel={filterLabel}
         filters={filters}
         tag={tagId}
+        tagSlug={tagSlug}
+        tagType={tagType}
         themeName={themeName}
         brewId={brewId}
       />

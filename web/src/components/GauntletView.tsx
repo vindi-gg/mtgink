@@ -67,6 +67,8 @@ interface GauntletViewProps {
   filterLabel?: string;
   filters?: CompareFilters;
   tag?: string;
+  tagSlug?: string;
+  tagType?: "oracle" | "illustration";
   dailyChallengeId?: number;
   onComplete?: (champion: GauntletEntry, championWins: number, results: GauntletResult[]) => void;
   hideControls?: boolean;
@@ -83,6 +85,8 @@ export default function GauntletView({
   filterLabel,
   filters,
   tag,
+  tagSlug,
+  tagType,
   dailyChallengeId,
   onComplete,
   hideControls,
@@ -644,7 +648,8 @@ export default function GauntletView({
         return { label: filters.set_code.toUpperCase(), href: `/db/expansions/${filters.set_code}` };
       }
       if (tag) {
-        return { label: filterLabel || tag, href: `/db/tags/${tag}` };
+        const basePath = tagType === "illustration" ? "/db/art-tags" : "/db/tags";
+        return { label: filterLabel || tag, href: `${basePath}/${tagSlug || tag}` };
       }
       if (filterLabel && !filters) {
         // Artist VS theme — filterLabel is the artist name
