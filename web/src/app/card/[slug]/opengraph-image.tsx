@@ -139,7 +139,7 @@ export default async function OGImage({
           </div>
         </div>
 
-        {/* Branding top-left */}
+        {/* Branding top-left — logo + domain stacked */}
         <div
           style={{
             display: "flex",
@@ -154,24 +154,22 @@ export default async function OGImage({
         >
           <span style={{ fontSize: 28, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
           <span style={{ fontSize: 64, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
+          <span style={{ fontSize: 24, color: "rgba(255,255,255,0.4)", letterSpacing: "0.05em", marginTop: "8px" }}>
+            https://mtg.ink
+          </span>
         </div>
 
-        {/* URL bottom-right */}
+        {/* Copyright bottom-right */}
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
             position: "absolute",
             bottom: "40px",
             right: "60px",
             fontFamily: "Jost",
           }}
         >
-          <span style={{ fontSize: 36, color: "rgba(255,255,255,0.6)", letterSpacing: "0.05em" }}>
-            https://mtg.ink
-          </span>
-          <span style={{ fontSize: 14, color: "rgba(255,255,255,0.25)", marginTop: "4px" }}>
+          <span style={{ fontSize: 14, color: "rgba(255,255,255,0.25)" }}>
             Card art © Wizards of the Coast
           </span>
         </div>

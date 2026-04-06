@@ -1,11 +1,19 @@
 import { ImageResponse } from "next/og";
-import { getAdminClient } from "@/lib/supabase/admin";
 import { artCropUrl } from "@/lib/image-utils";
 
 export const runtime = "edge";
-export const revalidate = 86400; // 1 day
+export const revalidate = 604800; // 1 week
 export const contentType = "image/png";
 export const size = { width: 1200, height: 630 };
+
+// 5 iconic MTG cards
+const ICONIC_CARDS: { set_code: string; collector_number: string }[] = [
+  { set_code: "lea", collector_number: "232" },   // Black Lotus
+  { set_code: "sta", collector_number: "42" },     // Lightning Bolt (Mystical Archive)
+  { set_code: "mh2", collector_number: "267" },    // Counterspell (full-art MH2)
+  { set_code: "dmr", collector_number: "418" },    // Force of Will (borderless)
+  { set_code: "wwk", collector_number: "31" },     // Jace, the Mind Sculptor
+];
 
 async function loadFont() {
   const res = await fetch("https://fonts.googleapis.com/css2?family=Jost:wght@700&display=swap");
@@ -16,41 +24,11 @@ async function loadFont() {
   return fontRes.arrayBuffer();
 }
 
-async function getTopArtUrls(): Promise<string[]> {
-  const client = getAdminClient();
-
-  // Get top 6 rated illustrations
-  const { data: ratings } = await client
-    .from("art_ratings")
-    .select("illustration_id")
-    .order("rating", { ascending: false })
-    .limit(6);
-
-  const ids = ratings?.map((r) => r.illustration_id) ?? [];
-  if (ids.length === 0) return [];
-
-  // Get one printing per illustration
-  const { data: prints } = await client
-    .from("printings")
-    .select("illustration_id, set_code, collector_number, image_version")
-    .in("illustration_id", ids);
-
-  // Deduplicate — one printing per illustration, preserve rating order
-  const byIll = new Map<string, { set_code: string; collector_number: string; image_version: string | null }>();
-  for (const p of prints ?? []) {
-    if (!byIll.has(p.illustration_id)) byIll.set(p.illustration_id, p);
-  }
-
-  return ids
-    .map((id) => byIll.get(id))
-    .filter(Boolean)
-    .map((p) => artCropUrl(p!.set_code, p!.collector_number, p!.image_version));
-}
-
 export default async function DefaultOGImage() {
-  const [artUrls, fontData] = await Promise.all([getTopArtUrls(), loadFont()]);
-
+  const fontData = await loadFont();
   const fonts = fontData ? [{ name: "Jost", data: fontData, weight: 700 as const }] : [];
+
+  const artUrls = ICONIC_CARDS.map((c) => artCropUrl(c.set_code, c.collector_number, null));
 
   return new ImageResponse(
     <div
@@ -63,11 +41,10 @@ export default async function DefaultOGImage() {
         background: "#030712",
       }}
     >
-      {/* Art grid background — 3x2 tiles */}
+      {/* 5 art strips side by side */}
       <div
         style={{
           display: "flex",
-          flexWrap: "wrap",
           position: "absolute",
           top: 0,
           left: 0,
@@ -76,19 +53,29 @@ export default async function DefaultOGImage() {
         }}
       >
         {artUrls.map((url, i) => (
-          <img
+          <div
             key={i}
-            src={url}
             style={{
-              width: "33.333%",
-              height: "50%",
-              objectFit: "cover",
+              display: "flex",
+              flex: 1,
+              overflow: "hidden",
+              height: "100%",
+              borderRight: i < 4 ? "2px solid rgba(3,7,18,0.8)" : "none",
             }}
-          />
+          >
+            <img
+              src={url}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          </div>
         ))}
       </div>
 
-      {/* Dark overlay */}
+      {/* Gradient overlay — left side heavy for text */}
       <div
         style={{
           display: "flex",
@@ -97,17 +84,30 @@ export default async function DefaultOGImage() {
           left: 0,
           width: "100%",
           height: "100%",
-          background: "rgba(3, 7, 18, 0.7)",
+          background: "linear-gradient(to right, rgba(3,7,18,0.92) 0%, rgba(3,7,18,0.5) 50%, rgba(3,7,18,0.1) 100%)",
         }}
       />
 
-      {/* Center content */}
+      {/* Bottom gradient */}
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          background: "linear-gradient(to top, rgba(3,7,18,0.8) 0%, rgba(3,7,18,0.0) 40%)",
+        }}
+      />
+
+      {/* Content — bottom-left */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
+          justifyContent: "flex-end",
+          padding: "60px",
           width: "100%",
           height: "100%",
           position: "relative",
@@ -118,24 +118,22 @@ export default async function DefaultOGImage() {
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
             lineHeight: 0.9,
             fontFamily: "Jost",
           }}
         >
-          <span style={{ fontSize: 48, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
-          <span style={{ fontSize: 112, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
+          <span style={{ fontSize: 45, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
+          <span style={{ fontSize: 120, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
         </div>
 
         {/* Tagline */}
         <div
           style={{
             display: "flex",
-            fontSize: 32,
+            fontSize: 38,
             color: "rgba(255, 255, 255, 0.7)",
-            marginTop: "16px",
+            marginTop: "12px",
             fontFamily: "Jost",
-            letterSpacing: "0.02em",
           }}
         >
           Compare and rank every MTG card art
@@ -145,9 +143,9 @@ export default async function DefaultOGImage() {
         <div
           style={{
             display: "flex",
-            fontSize: 22,
+            fontSize: 25,
             color: "rgba(255, 255, 255, 0.35)",
-            marginTop: "24px",
+            marginTop: "8px",
             fontFamily: "Jost",
             letterSpacing: "0.05em",
           }}
