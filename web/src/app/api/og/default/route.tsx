@@ -116,12 +116,14 @@ export async function GET() {
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: "flex-start",
             lineHeight: 0.9,
             fontFamily: "Jost",
           }}
         >
-          <span style={{ fontSize: 45, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
+          <div style={{ display: "flex", width: "100%", justifyContent: "center" }}>
+            <span style={{ fontSize: 45, letterSpacing: "0.25em", color: "#ffffff", fontWeight: 700 }}>MTG</span>
+          </div>
           <span style={{ fontSize: 120, color: "#f59e0b", fontWeight: 700, letterSpacing: "0.05em" }}>INK</span>
         </div>
 
