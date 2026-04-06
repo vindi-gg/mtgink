@@ -78,11 +78,11 @@ export default function CardLightbox({ card, imageUrl, backImageUrl, index, tota
 
         {/* Art + shelf */}
         <div className="flex flex-col max-w-[90vw] md:max-w-[70vw]">
-          <div className="relative">
+          <div className="relative bg-gray-900 rounded-t-lg overflow-hidden p-[7px]">
             <img
               src={showBack && backImageUrl ? backImageUrl : imageUrl}
               alt={card.name}
-              className="max-h-[70vh] object-contain rounded-t-lg shadow-2xl"
+              className="max-h-[70vh] object-contain rounded-[18px]"
             />
             {backImageUrl && (
               <button
