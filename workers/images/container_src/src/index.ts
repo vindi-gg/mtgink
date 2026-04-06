@@ -188,7 +188,7 @@ async function downloadBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-async function uploadToR2(key: string, data: Buffer, contentType = "image/jpeg"): Promise<boolean> {
+async function uploadToR2(key: string, data: Buffer, contentType = "image/jpeg", cacheControl = "public, max-age=31536000, immutable"): Promise<boolean> {
   try {
     const { client, PutObjectCommand } = await getS3();
     await client.send(
@@ -197,7 +197,7 @@ async function uploadToR2(key: string, data: Buffer, contentType = "image/jpeg")
         Key: key,
         Body: data,
         ContentType: contentType,
-        CacheControl: "public, max-age=31536000, immutable", // 1 year, versioned URLs
+        CacheControl: cacheControl,
       })
     );
     return true;
@@ -1344,7 +1344,7 @@ async function generateOgImages(opts?: { force?: boolean; setCodes?: string }) {
       status.message = "Failed to generate default OG image";
       return;
     }
-    const ok = await uploadToR2("og/default.png", buf, "image/png");
+    const ok = await uploadToR2("og/default.png", buf, "image/png", "public, max-age=86400");
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     status.state = ok ? "done" : "error";
     status.message = ok ? `Default OG uploaded in ${elapsed}s` : "Failed to upload default OG";

@@ -22,7 +22,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://mtg.ink"),
   title: {
-    default: "MTG Ink — Discover the Art of Magic",
+    default: "MTG Ink - Discover the Art of Magic",
     template: "%s | MTG Ink",
   },
   description:
