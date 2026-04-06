@@ -1371,7 +1371,7 @@ async function generateOgImages(opts?: { force?: boolean }) {
 
   // Worker pool
   async function processSlug(slug: string) {
-    const ogUrl = `${siteUrl}/card/${slug}/opengraph-image`;
+    const ogUrl = `${siteUrl}/api/og/card/${slug}`;
     const buf = await downloadBuffer(ogUrl);
     if (!buf || buf.length < 1000) {
       console.log(`  [SKIP] ${slug} — empty or failed`);

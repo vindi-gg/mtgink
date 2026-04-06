@@ -19,7 +19,7 @@ export default function OGTestPage() {
   const [custom, setCustom] = useState("");
   const ts = Date.now();
 
-  const ogUrl = mode === "default" ? "/opengraph-image" : `/card/${slug}/opengraph-image`;
+  const ogUrl = mode === "default" ? "/opengraph-image" : `/api/og/card/${slug}`;
   const label = mode === "default" ? "Default (site-wide)" : slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 
   return (
