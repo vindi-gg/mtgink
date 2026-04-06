@@ -120,6 +120,7 @@ async function getRandomCards(count: number, minIllustrations: number, filters?:
       mana_cost: r.mana_cost,
       colors: r.colors ? JSON.stringify(r.colors) : null,
       cmc: r.cmc,
+      og_version: null,
     }));
 }
 
@@ -201,7 +202,7 @@ export async function getComparisonPair(oracleId?: string, filters?: CompareFilt
 export async function getCardByOracleId(oracleId: string): Promise<OracleCard | null> {
   const { data } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .eq("oracle_id", oracleId)
     .single();
   if (!data) return null;
@@ -218,7 +219,7 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
   // Direct slug lookup (slug is pre-computed in DB)
   const { data } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -243,7 +244,7 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
   const likePattern = `%${searchSlug.replace(/-/g, "%")}%`;
   const { data: candidates } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .ilike("name", likePattern);
 
   if (!candidates || candidates.length === 0) return null;
@@ -531,7 +532,7 @@ export async function lookupCardByName(name: string): Promise<OracleCard | null>
   // Exact match
   const { data: exact } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .ilike("name", name)
     .limit(1)
     .maybeSingle();
@@ -541,7 +542,7 @@ export async function lookupCardByName(name: string): Promise<OracleCard | null>
   // Split card fallback: "Fire" → match "Fire // Ice"
   const { data: split } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .ilike("name", `${name} // %`)
     .limit(1)
     .maybeSingle();
@@ -560,7 +561,7 @@ export async function lookupCardsByNames(names: string[]): Promise<Map<string, O
   const lowerNames = names.map((n) => n.toLowerCase());
   const { data: exact } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .in("name", names);
 
   for (const row of exact ?? []) {
@@ -591,7 +592,7 @@ export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
   const uniqueNames = [...new Set(entries.map((e) => e.name))];
   const { data: allCards } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .in("name", uniqueNames);
 
   const cardsByName = new Map<string, OracleCard>();
@@ -651,7 +652,7 @@ export async function lookupDeckCards(entries: DecklistEntry[]): Promise<{
 export async function searchAllCards(query: string, limit = 50): Promise<OracleCard[]> {
   const { data } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
     .ilike("name", `%${query}%`)
     .order("name")
     .limit(limit);

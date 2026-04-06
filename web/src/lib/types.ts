@@ -7,6 +7,7 @@ export interface OracleCard {
   mana_cost: string | null;
   colors: string | null;
   cmc: number | null;
+  og_version: number | null;
 }
 
 /** DFC layout types that have two card faces */

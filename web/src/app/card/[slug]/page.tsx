@@ -44,6 +44,10 @@ export async function generateMetadata({
   const ogTitle = `${card.name} - Best Card Art | MTG Ink`;
   const description = `Browse all ${illustrations.length} illustration${illustrations.length !== 1 ? "s" : ""} of ${card.name}. Compare art across every printing and vote for your favorite.`;
 
+  const ogImage = card.og_version
+    ? `https://cdn.mtg.ink/og/card/${card.slug}_v${card.og_version}.png`
+    : undefined;
+
   return {
     title,
     description,
@@ -52,11 +56,13 @@ export async function generateMetadata({
       description,
       type: "website",
       url: `/card/${card.slug}`,
+      ...(ogImage && { images: [{ url: ogImage, width: 1200, height: 630 }] }),
     },
     twitter: {
       card: "summary_large_image",
       title: ogTitle,
       description,
+      ...(ogImage && { images: [ogImage] }),
     },
     alternates: { canonical: `https://mtg.ink/card/${card.slug}` },
   };
