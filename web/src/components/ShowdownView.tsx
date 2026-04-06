@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import CardImage from "./CardImage";
 import VoteGrid from "./VoteGrid";
 import type { VoteGridHandle } from "./VoteGrid";
@@ -13,6 +13,8 @@ import { artCropUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ComparisonPair, ClashPair, CompareFilters, VoteResponse, CardVoteResponse } from "@/lib/types";
+
+const PREFETCH_TARGET = 3;
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -150,6 +152,36 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
   sidesRef.current = sides;
   filtersRef.current = filters;
 
+  // Prefetch queue for instant transitions
+  const queueRef = useRef<(ComparisonPair | ClashPair)[]>([]);
+  const prefetchingRef = useRef(false);
+
+  function preloadImages(raw: ComparisonPair | ClashPair) {
+    const [sA, sB] = normalizePair(raw, mode);
+    new Image().src = artCropUrl(sA.set_code, sA.collector_number, sA.image_version);
+    new Image().src = artCropUrl(sB.set_code, sB.collector_number, sB.image_version);
+  }
+
+  const prefetch = useCallback(async () => {
+    if (prefetchingRef.current) return;
+    prefetchingRef.current = true;
+    try {
+      while (queueRef.current.length < PREFETCH_TARGET) {
+        const res = await fetch(compareUrl(filtersRef.current));
+        if (!res.ok) break;
+        const data = await res.json();
+        queueRef.current.push(data);
+        preloadImages(data);
+      }
+    } catch { /* silently handle */ } finally {
+      prefetchingRef.current = false;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  // Start prefetching on mount
+  useEffect(() => { prefetch(); }, [prefetch]);
+
   // Persist theme/filters in URL so refresh preserves them
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -246,83 +278,119 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
   // --- Vote ---
 
   async function vote(winnerIdx: 0 | 1) {
-    if (votingRef.current) return;
-    votingRef.current = true;
-    setVoting(true);
-
     const [sA, sB] = sidesRef.current;
     const winner = winnerIdx === 0 ? sA : sB;
     const loser = winnerIdx === 0 ? sB : sA;
 
-    try {
-      const payload = isRemix
-        ? {
-            mode: "remix",
-            oracle_id: winner.oracle_id,
-            winner_illustration_id: winner.illustration_id,
-            loser_illustration_id: loser.illustration_id,
-            session_id: getSessionId(),
-            filters: hasActiveFilters(filtersRef.current) ? filtersRef.current : undefined,
-            lock_oracle_id: lockOracleId,
-          }
-        : {
-            mode: "vs",
-            winner_oracle_id: winner.oracle_id,
-            loser_oracle_id: loser.oracle_id,
-            winner_illustration_id: winner.illustration_id,
-            loser_illustration_id: loser.illustration_id,
-            session_id: getSessionId(),
-            filters: hasActiveFilters(filtersRef.current) ? filtersRef.current : undefined,
-          };
+    // Check if theme will rotate after this vote
+    let willRotate = false;
+    if (!isRemix && themeRotation !== "manual" && !initialFilters) {
+      const threshold = themeRotation === "every" ? 1 : 5;
+      willRotate = (voteCountRef.current + 1) >= threshold;
+    }
 
-      const res = await fetch("/api/showdown/vote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        // Vote rejected (e.g. 429) — still fetch a new pair so user isn't stuck
-        const fallback = await fetch(compareUrl(filtersRef.current));
-        if (fallback.ok) updateSides(await fallback.json());
-        return;
+    // Show next pair immediately (unless theme is about to rotate)
+    let shownFromQueue = false;
+    if (!willRotate) {
+      const next = queueRef.current.shift();
+      if (next) {
+        updateSides(next);
+        shownFromQueue = true;
+      } else {
+        setVoting(true);
       }
+    } else {
+      setVoting(true);
+    }
 
-      const data = await res.json();
-      updateSides(isRemix ? (data as VoteResponse).next : (data as CardVoteResponse).next);
+    // Fire vote in background
+    const payload = isRemix
+      ? {
+          mode: "remix",
+          oracle_id: winner.oracle_id,
+          winner_illustration_id: winner.illustration_id,
+          loser_illustration_id: loser.illustration_id,
+          session_id: getSessionId(),
+          filters: hasActiveFilters(filtersRef.current) ? filtersRef.current : undefined,
+          lock_oracle_id: lockOracleId,
+        }
+      : {
+          mode: "vs",
+          winner_oracle_id: winner.oracle_id,
+          loser_oracle_id: loser.oracle_id,
+          winner_illustration_id: winner.illustration_id,
+          loser_illustration_id: loser.illustration_id,
+          session_id: getSessionId(),
+          filters: hasActiveFilters(filtersRef.current) ? filtersRef.current : undefined,
+        };
 
-      // Theme rotation (VS only — skip when page was loaded with explicit filters)
-      if (!isRemix && themeRotation !== "manual" && !initialFilters) {
-        voteCountRef.current++;
-        const threshold = themeRotation === "every" ? 1 : 5;
-        if (voteCountRef.current >= threshold) {
-          voteCountRef.current = 0;
-          await loadNewTheme();
-          return;
+    fetch("/api/showdown/vote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        const nextPair = isRemix ? (data as VoteResponse).next : (data as CardVoteResponse).next;
+        if (!willRotate) {
+          queueRef.current.push(nextPair);
+          preloadImages(nextPair);
         }
       }
-    } catch (err) {
+      // If we were waiting (queue was empty, no rotation), show pair now
+      if (!shownFromQueue && !willRotate) {
+        const fallbackPair = queueRef.current.shift();
+        if (fallbackPair) {
+          updateSides(fallbackPair);
+        } else {
+          try {
+            const fallback = await fetch(compareUrl(filtersRef.current));
+            if (fallback.ok) updateSides(await fallback.json());
+          } catch { /* silently handle */ }
+        }
+        setVoting(false);
+      }
+    }).catch((err) => {
       console.error("Vote failed:", err);
-    } finally {
-      votingRef.current = false;
-      setVoting(false);
+      if (!shownFromQueue) setVoting(false);
+    });
+
+    // Handle theme rotation
+    if (!isRemix && themeRotation !== "manual" && !initialFilters) {
+      voteCountRef.current++;
+      const threshold = themeRotation === "every" ? 1 : 5;
+      if (voteCountRef.current >= threshold) {
+        voteCountRef.current = 0;
+        queueRef.current = [];
+        await loadNewTheme();
+        setVoting(false);
+        prefetch();
+        return;
+      }
     }
+
+    prefetch();
   }
 
   async function skip() {
-    if (votingRef.current) return;
-    votingRef.current = true;
-    setVoting(true);
+    const next = queueRef.current.shift();
+    if (next) {
+      updateSides(next);
+      prefetch();
+      return;
+    }
 
+    // Queue empty — fetch directly
+    setVoting(true);
     try {
       const res = await fetch(compareUrl(filtersRef.current));
       if (res.ok) updateSides(await res.json());
     } catch (err) {
       console.error("Skip failed:", err);
     } finally {
-      votingRef.current = false;
       setVoting(false);
     }
+    prefetch();
   }
 
   // Keyboard shortcuts

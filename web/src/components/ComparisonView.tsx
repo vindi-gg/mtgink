@@ -9,7 +9,9 @@ import PriceTag from "./PriceTag";
 import { artCropUrl, normalCardUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
-import type { ComparisonPair, CompareFilters, VoteResponse } from "@/lib/types";
+import type { ComparisonPair, CompareFilters } from "@/lib/types";
+
+const PREFETCH_TARGET = 3;
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -172,6 +174,36 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
 
   filtersRef.current = filters;
 
+  // Prefetch queue for instant transitions
+  const queueRef = useRef<ComparisonPair[]>([]);
+  const prefetchingRef = useRef(false);
+
+  function preloadImages(p: ComparisonPair) {
+    new Image().src = artCropUrl(p.a.set_code, p.a.collector_number, p.a.image_version);
+    new Image().src = artCropUrl(p.b.set_code, p.b.collector_number, p.b.image_version);
+  }
+
+  const prefetch = useCallback(async () => {
+    if (prefetchingRef.current) return;
+    prefetchingRef.current = true;
+    try {
+      while (queueRef.current.length < PREFETCH_TARGET) {
+        const aq = apiParams(filtersRef.current);
+        const res = await fetch(`/api/compare${aq ? `?${aq}` : ""}`);
+        if (!res.ok) break;
+        const data = await res.json();
+        if (data.error) break;
+        queueRef.current.push(data);
+        preloadImages(data);
+      }
+    } catch { /* silently handle */ } finally {
+      prefetchingRef.current = false;
+    }
+  }, []);
+
+  // Start prefetching on mount
+  useEffect(() => { prefetch(); }, [prefetch]);
+
   const isFirstPair = useRef(true);
 
   // Reset card preview when pair changes + update URL with current matchup (skip initial)
@@ -206,6 +238,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     setFilters(newFilters);
     filtersRef.current = newFilters;
     setFilterError(null);
+    queueRef.current = []; // Flush queue — filters changed
 
     // Update URL without full navigation
     const params = filtersToParams(newFilters);
@@ -213,8 +246,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     router.replace(newUrl, { scroll: false });
 
     // Fetch new pair with filters
-    if (votingRef.current) return;
-    votingRef.current = true;
     setVoting(true);
 
     try {
@@ -223,7 +254,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
       const data = await res.json();
       if (data.error) {
         setFilterError(data.error);
-        votingRef.current = false;
         setVoting(false);
         return;
       }
@@ -232,57 +262,84 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     } catch {
       setFilterError("Failed to load cards with these filters");
     } finally {
-      votingRef.current = false;
       setVoting(false);
     }
-  }, [router, baseUrl]);
+    prefetch();
+  }, [router, baseUrl, prefetch]);
 
   async function vote(winnerId: string, loserId: string) {
-    if (votingRef.current) return;
-    votingRef.current = true;
-    setVoting(true);
+    // Capture current pair data before switching
+    const currentOracleId = pairRef.current.card.oracle_id;
+    const currentFilters = filtersRef.current;
 
-    try {
-      const res = await fetch("/api/vote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          oracle_id: pairRef.current.card.oracle_id,
-          winner_illustration_id: winnerId,
-          loser_illustration_id: loserId,
-          session_id: getSessionId(),
-          filters: (hasActiveFilters(filtersRef.current) || filtersRef.current.mode) ? filtersRef.current : undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        // Vote rejected (e.g. 429 duplicate) — still fetch a new pair so user isn't stuck
-        const aq = apiParams(filtersRef.current);
-        const fallback = await fetch(`/api/compare${aq ? `?${aq}` : ""}`);
-        if (fallback.ok) {
-          const next: ComparisonPair = await fallback.json();
-          setPair(next);
-          pairRef.current = next;
-        }
-        return;
-      }
-
-      const data: VoteResponse = await res.json();
-      setPair(data.next);
-      pairRef.current = data.next;
-    } catch (err) {
-      console.error("Vote failed:", err);
-    } finally {
-      votingRef.current = false;
-      setVoting(false);
+    // Show next pair immediately from queue
+    const next = queueRef.current.shift();
+    if (next) {
+      setPair(next);
+      pairRef.current = next;
+    } else {
+      // Queue empty — show loading while we wait
+      setVoting(true);
     }
+
+    // Fire vote in background
+    fetch("/api/vote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        oracle_id: currentOracleId,
+        winner_illustration_id: winnerId,
+        loser_illustration_id: loserId,
+        session_id: getSessionId(),
+        filters: (hasActiveFilters(currentFilters) || currentFilters.mode) ? currentFilters : undefined,
+      }),
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        // Add vote response's next pair to queue
+        if (data.next) {
+          queueRef.current.push(data.next);
+          preloadImages(data.next);
+        }
+      }
+      // If we were waiting (queue was empty), show the next pair now
+      if (!next) {
+        const fallbackPair = queueRef.current.shift();
+        if (fallbackPair) {
+          setPair(fallbackPair);
+          pairRef.current = fallbackPair;
+        } else {
+          // Last resort: fetch directly
+          const aq = apiParams(filtersRef.current);
+          const fallback = await fetch(`/api/compare${aq ? `?${aq}` : ""}`);
+          if (fallback.ok) {
+            const data: ComparisonPair = await fallback.json();
+            setPair(data);
+            pairRef.current = data;
+          }
+        }
+        setVoting(false);
+      }
+    }).catch((err) => {
+      console.error("Vote failed:", err);
+      if (!next) setVoting(false);
+    });
+
+    // Refill queue
+    prefetch();
   }
 
   async function skip() {
-    if (votingRef.current) return;
-    votingRef.current = true;
-    setVoting(true);
+    const next = queueRef.current.shift();
+    if (next) {
+      setPair(next);
+      pairRef.current = next;
+      prefetch();
+      return;
+    }
 
+    // Queue empty — fetch directly
+    setVoting(true);
     try {
       const aq = apiParams(filtersRef.current);
       const res = await fetch(`/api/compare${aq ? `?${aq}` : ""}`);
@@ -292,9 +349,9 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     } catch (err) {
       console.error("Skip failed:", err);
     } finally {
-      votingRef.current = false;
       setVoting(false);
     }
+    prefetch();
   }
 
   useEffect(() => {
@@ -345,6 +402,7 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
   async function switchSubMode(mode: "mirror" | "vs") {
     if (mode === subMode) return;
     setSubMode(mode);
+    queueRef.current = []; // Flush queue — mode changed
 
     // Build new filters with mode change
     const newFilters: CompareFilters = {
@@ -359,8 +417,6 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     router.replace(allParams ? `${baseUrl}?${allParams}` : baseUrl, { scroll: false });
 
     // Fetch new pair
-    if (votingRef.current) return;
-    votingRef.current = true;
     setVoting(true);
 
     try {
@@ -376,9 +432,9 @@ export default function ComparisonView({ initialPair, initialFilters, baseUrl = 
     } catch {
       // Silently handle
     } finally {
-      votingRef.current = false;
       setVoting(false);
     }
+    prefetch();
   }
 
   const aArt = cardUrl(pair.a.set_code, pair.a.collector_number, pair.a.image_version);
