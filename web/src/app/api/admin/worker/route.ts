@@ -13,6 +13,7 @@ const LOCAL_SCRIPTS: Record<string, string> = {
   tags: "python3 scripts/import_tags.py",
   images: "python3 scripts/download_images.py",
   sync: "python3 scripts/download_bulk.py && python3 scripts/import_data_postgres.py && python3 scripts/download_images.py && python3 scripts/import_prices.py && python3 scripts/import_tags.py",
+  og: "echo 'OG generation requires Cloudflare worker — not available locally'",
 };
 
 export async function POST(request: NextRequest) {

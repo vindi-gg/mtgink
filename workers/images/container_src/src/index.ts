@@ -188,7 +188,7 @@ async function downloadBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-async function uploadToR2(key: string, data: Buffer): Promise<boolean> {
+async function uploadToR2(key: string, data: Buffer, contentType = "image/jpeg"): Promise<boolean> {
   try {
     const { client, PutObjectCommand } = await getS3();
     await client.send(
@@ -196,7 +196,7 @@ async function uploadToR2(key: string, data: Buffer): Promise<boolean> {
         Bucket: process.env.R2_BUCKET || "mtgink-cdn",
         Key: key,
         Body: data,
-        ContentType: "image/jpeg",
+        ContentType: contentType,
         CacheControl: "public, max-age=31536000, immutable", // 1 year, versioned URLs
       })
     );
@@ -1318,6 +1318,115 @@ async function revalidateVercel(result: DataImportResult): Promise<void> {
   }
 }
 
+// ── OG image pre-generation ────────────────────────────
+
+async function generateOgImages(opts?: { force?: boolean }) {
+  const startTime = Date.now();
+  const concurrency = parseInt(process.env.CONCURRENCY || "8", 10);
+  const force = opts?.force || false;
+  const siteUrl = process.env.VERCEL_URL || "https://mtg.ink";
+  const version = Math.floor(Date.now() / 1000);
+
+  console.log("=== OG Image Generation ===");
+  console.log(`  Site: ${siteUrl}`);
+  console.log(`  Concurrency: ${concurrency}`);
+  console.log(`  Force: ${force}`);
+
+  const client = new pg.Client(process.env.SUPABASE_DB_URL);
+  await client.connect();
+
+  // Get cards that need OG images
+  const condition = force ? "TRUE" : "og_version IS NULL";
+  const { rows } = await client.query(
+    `SELECT slug FROM oracle_cards WHERE ${condition} ORDER BY slug`
+  );
+
+  if (rows.length === 0) {
+    console.log("  No cards need OG images");
+    status.state = "done";
+    status.message = "No cards need OG images";
+    await client.end();
+    return;
+  }
+
+  console.log(`  Cards to process: ${rows.length}`);
+
+  // Log to job_runs
+  const { rows: [jobLog] } = await client.query(
+    `INSERT INTO job_runs (job_type, total_items, status, message)
+     VALUES ('og', $1, 'running', 'Generating OG images')
+     RETURNING id`,
+    [rows.length]
+  );
+  const jobLogId = jobLog.id;
+
+  status.state = "processing";
+  status.uploaded = 0;
+  status.failed = 0;
+  status.skipped = 0;
+
+  let processed = 0;
+  const total = rows.length;
+  const slugs = rows.map((r: { slug: string }) => r.slug);
+
+  // Worker pool
+  async function processSlug(slug: string) {
+    const ogUrl = `${siteUrl}/card/${slug}/opengraph-image`;
+    const buf = await downloadBuffer(ogUrl);
+    if (!buf || buf.length < 1000) {
+      console.log(`  [SKIP] ${slug} — empty or failed`);
+      status.failed = (status.failed || 0) + 1;
+      return;
+    }
+
+    const key = `og/card/${slug}_v${version}.png`;
+    const ok = await uploadToR2(key, buf, "image/png");
+    if (!ok) {
+      status.failed = (status.failed || 0) + 1;
+      return;
+    }
+
+    // Update og_version in DB
+    await client.query(
+      `UPDATE oracle_cards SET og_version = $1 WHERE slug = $2`,
+      [version, slug]
+    );
+    status.uploaded = (status.uploaded || 0) + 1;
+  }
+
+  // Process in batches of `concurrency`
+  for (let i = 0; i < slugs.length; i += concurrency) {
+    const batch = slugs.slice(i, i + concurrency);
+    await Promise.all(batch.map(processSlug));
+    processed += batch.length;
+    status.message = `OG images: ${processed}/${total} (${status.uploaded} uploaded, ${status.failed} failed)`;
+
+    // Log progress every 50 batches
+    if (processed % (concurrency * 50) === 0 || processed === total) {
+      console.log(`  Progress: ${processed}/${total}`);
+      await client.query(
+        `UPDATE job_runs SET processed_items = $1, message = $2, updated_at = NOW() WHERE id = $3`,
+        [processed, status.message, jobLogId]
+      );
+    }
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const msg = `OG generation complete: ${status.uploaded} uploaded, ${status.failed} failed in ${elapsed}s`;
+  console.log(`  ${msg}`);
+
+  await client.query(
+    `UPDATE job_runs SET status = 'completed', processed_items = $1, message = $2,
+     completed_at = NOW(), updated_at = NOW() WHERE id = $3`,
+    [processed, msg, jobLogId]
+  );
+  await client.end();
+
+  status.state = "done";
+  status.message = msg;
+  status.elapsed = elapsed + "s";
+}
+
 // ── Sync orchestration ──────────────────────────────────
 
 async function runSync() {
@@ -1400,6 +1509,11 @@ async function runJob(
 
   if (jobType === "prices") {
     await importPrices();
+    return;
+  }
+
+  if (jobType === "og") {
+    await generateOgImages(opts);
     return;
   }
 
