@@ -91,14 +91,6 @@ export default async function ArtistDetailPage({
               {allTimeStat.total_votes.toLocaleString()} total votes
             </span>
           )}
-          {allTimeStat?.avg_elo != null && (
-            <>
-              {allTimeStat.total_votes > 0 && (
-                <span className="text-gray-700">|</span>
-              )}
-              <span>Avg ELO: {Math.round(allTimeStat.avg_elo)}</span>
-            </>
-          )}
         </div>
         {sorted.length >= 3 && (
           <div className="flex gap-2 mb-6 lg:hidden">

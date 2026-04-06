@@ -165,11 +165,6 @@ export default async function ArtistsPage({
                       {artist.total_votes.toLocaleString()} votes
                     </span>
                   )}
-                  {sort === "popular" && artist.avg_elo != null && (
-                    <span className="text-xs text-amber-400">
-                      {Math.round(artist.avg_elo)} avg ELO
-                    </span>
-                  )}
                 </div>
               </div>
             </Link>
