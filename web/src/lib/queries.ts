@@ -1443,13 +1443,18 @@ export async function getDailyChallengeStats(challengeId: number): Promise<Daily
 
 /** Pick a random theme with balanced type selection (pick type first, then theme) */
 function pickBalancedTheme(themes: GauntletTheme[]): GauntletTheme | null {
-  if (themes.length === 0) return null;
+  // Exclude card_remix from random selection (still available via brew/direct link)
+  // Enforce minimum pool size of 10
+  const eligible = themes.filter(
+    (t) => t.theme_type !== "card_remix" && (!t.pool_size_estimate || t.pool_size_estimate >= 10)
+  );
+  if (eligible.length === 0) return null;
   // Get distinct types
-  const types = [...new Set(themes.map((t) => t.theme_type))];
+  const types = [...new Set(eligible.map((t) => t.theme_type))];
   // Pick a random type
   const type = types[Math.floor(Math.random() * types.length)];
   // Pick a random theme within that type
-  const ofType = themes.filter((t) => t.theme_type === type);
+  const ofType = eligible.filter((t) => t.theme_type === type);
   return ofType[Math.floor(Math.random() * ofType.length)];
 }
 
