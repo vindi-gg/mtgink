@@ -116,6 +116,7 @@ export async function GET() {
           style={{
             display: "flex",
             flexDirection: "column",
+            alignItems: "center",
             lineHeight: 0.9,
             fontFamily: "Jost",
           }}
