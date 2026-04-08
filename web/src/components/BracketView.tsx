@@ -248,7 +248,7 @@ export default function BracketView({ initialCards }: BracketViewProps) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-amber-400">{progress.roundName}</span>
           <span className="text-sm text-gray-400">
-            Match {progress.matchupInRound} of {progress.matchupsInRound}
+            {progress.completedMatchups} of {progress.totalMatchups}
           </span>
         </div>
         <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">

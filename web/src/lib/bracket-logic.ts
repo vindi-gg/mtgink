@@ -1,29 +1,41 @@
 import type { BracketCard, BracketMatchup, BracketState } from "./types";
 
-const STORAGE_KEY = "mtgink_bracket";
+/** Valid bracket sizes: must be a power of 2 between 8 and 512 */
+const VALID_SIZES = [8, 16, 32, 64, 128, 256, 512];
 
-const ROUND_NAMES = [
-  "Round of 32",
-  "Sweet 16",
-  "Elite 8",
-  "Final 4",
-  "Championship",
-];
+/** Generate round names based on bracket size */
+function buildRoundNames(bracketSize: number): string[] {
+  const roundCount = Math.log2(bracketSize);
+  const names: string[] = [];
+  for (let r = 0; r < roundCount; r++) {
+    const remaining = bracketSize / Math.pow(2, r);
+    if (remaining === 2) names.push("Final");
+    else if (remaining === 4) names.push("Semifinals");
+    else if (remaining === 8) names.push("Quarterfinals");
+    else names.push(`Round of ${remaining}`);
+  }
+  return names;
+}
 
 /** Create initial bracket state with adjacent pairing */
 export function createBracket(cards: BracketCard[]): BracketState {
-  if (cards.length !== 32) throw new Error("Bracket requires exactly 32 cards");
+  if (!VALID_SIZES.includes(cards.length)) {
+    throw new Error(`Bracket size must be one of: ${VALID_SIZES.join(", ")}`);
+  }
 
-  // Round 0: 16 matchups (0v1, 2v3, ...)
+  const roundCount = Math.log2(cards.length);
+
+  // Round 0: bracketSize/2 matchups with adjacent pairing (0v1, 2v3, ...)
   const round0: BracketMatchup[] = [];
-  for (let i = 0; i < 16; i++) {
+  const firstRoundMatchups = cards.length / 2;
+  for (let i = 0; i < firstRoundMatchups; i++) {
     round0.push({ index: i, seedA: i * 2, seedB: i * 2 + 1, winner: null });
   }
 
-  // Rounds 1-4: empty matchups to be filled as winners advance
+  // Subsequent rounds: empty matchups, halving each time
   const rounds: BracketMatchup[][] = [round0];
-  let matchupCount = 8;
-  for (let r = 1; r <= 4; r++) {
+  let matchupCount = firstRoundMatchups / 2;
+  for (let r = 1; r < roundCount; r++) {
     const round: BracketMatchup[] = [];
     for (let i = 0; i < matchupCount; i++) {
       round.push({ index: i, seedA: -1, seedB: -1, winner: null });
@@ -42,17 +54,21 @@ export function createBracket(cards: BracketCard[]): BracketState {
   };
 }
 
-/** Record a vote and advance the bracket (immutable update) */
-export function recordBracketVote(
+/** Record a vote for a specific matchup (immutable update) */
+export function recordVote(
   state: BracketState,
+  roundIndex: number,
+  matchupIndex: number,
   winnerSeed: number
 ): BracketState {
-  const { currentRound, currentMatchup } = state;
-  const matchup = state.rounds[currentRound][currentMatchup];
-
+  const matchup = state.rounds[roundIndex]?.[matchupIndex];
+  if (!matchup) throw new Error("Invalid round/matchup index");
+  if (matchup.seedA < 0 || matchup.seedB < 0) throw new Error("Matchup not ready");
   if (winnerSeed !== matchup.seedA && winnerSeed !== matchup.seedB) {
-    throw new Error("Winner seed must be one of the matchup participants");
+    throw new Error("Winner must be one of the matchup participants");
   }
+
+  const lastRound = state.rounds.length - 1;
 
   // Deep clone rounds
   const newRounds = state.rounds.map((round) =>
@@ -60,13 +76,13 @@ export function recordBracketVote(
   );
 
   // Set winner
-  newRounds[currentRound][currentMatchup].winner = winnerSeed;
+  newRounds[roundIndex][matchupIndex].winner = winnerSeed;
 
   // Propagate winner to next round
-  if (currentRound < 4) {
-    const nextRound = currentRound + 1;
-    const nextMatchupIdx = Math.floor(currentMatchup / 2);
-    const isFirstOfPair = currentMatchup % 2 === 0;
+  if (roundIndex < lastRound) {
+    const nextRound = roundIndex + 1;
+    const nextMatchupIdx = Math.floor(matchupIndex / 2);
+    const isFirstOfPair = matchupIndex % 2 === 0;
 
     if (isFirstOfPair) {
       newRounds[nextRound][nextMatchupIdx].seedA = winnerSeed;
@@ -75,51 +91,74 @@ export function recordBracketVote(
     }
   }
 
+  // Check if bracket is complete (final matchup has a winner)
+  const finalMatchup = newRounds[lastRound][0];
+  const completed = finalMatchup.winner !== null;
+
+  return { ...state, rounds: newRounds, completed };
+}
+
+/** Legacy: record vote and auto-advance currentRound/currentMatchup (for sequential play) */
+export function recordBracketVote(
+  state: BracketState,
+  winnerSeed: number
+): BracketState {
+  const { currentRound, currentMatchup } = state;
+  const lastRound = state.rounds.length - 1;
+
+  const newState = recordVote(state, currentRound, currentMatchup, winnerSeed);
+
   // Advance to next matchup
   let nextRound = currentRound;
   let nextMatchup = currentMatchup + 1;
-  let completed = false;
 
-  if (nextMatchup >= newRounds[nextRound].length) {
-    // Move to next round
+  if (nextMatchup >= newState.rounds[nextRound].length) {
     nextRound++;
     nextMatchup = 0;
-
-    if (nextRound > 4) {
-      completed = true;
-      nextRound = 4;
+    if (nextRound > lastRound) {
+      nextRound = lastRound;
       nextMatchup = 0;
     }
   }
 
   return {
-    ...state,
-    rounds: newRounds,
+    ...newState,
     currentRound: nextRound,
     currentMatchup: nextMatchup,
-    completed,
   };
 }
 
-/** Get the two cards for the current matchup, or null if bracket is complete */
+/** Get the two cards for a specific matchup, or null if seeds not yet determined */
+export function getMatchupCards(
+  state: BracketState,
+  roundIndex: number,
+  matchupIndex: number
+): { cardA: BracketCard; cardB: BracketCard; seedA: number; seedB: number } | null {
+  const matchup = state.rounds[roundIndex]?.[matchupIndex];
+  if (!matchup || matchup.seedA < 0 || matchup.seedB < 0) return null;
+  return {
+    cardA: state.cards[matchup.seedA],
+    cardB: state.cards[matchup.seedB],
+    seedA: matchup.seedA,
+    seedB: matchup.seedB,
+  };
+}
+
+/** Get the two cards for the current matchup (legacy sequential) */
 export function getCurrentMatchupCards(
   state: BracketState
 ): { cardA: BracketCard; cardB: BracketCard } | null {
   if (state.completed) return null;
-
-  const matchup = state.rounds[state.currentRound][state.currentMatchup];
-  if (matchup.seedA < 0 || matchup.seedB < 0) return null;
-
-  return {
-    cardA: state.cards[matchup.seedA],
-    cardB: state.cards[matchup.seedB],
-  };
+  const result = getMatchupCards(state, state.currentRound, state.currentMatchup);
+  if (!result) return null;
+  return { cardA: result.cardA, cardB: result.cardB };
 }
 
 /** Get the champion card, or null if bracket isn't complete */
 export function getChampion(state: BracketState): BracketCard | null {
   if (!state.completed) return null;
-  const finalMatchup = state.rounds[4][0];
+  const lastRound = state.rounds.length - 1;
+  const finalMatchup = state.rounds[lastRound][0];
   if (finalMatchup.winner === null) return null;
   return state.cards[finalMatchup.winner];
 }
@@ -129,40 +168,71 @@ export function getBracketProgress(state: BracketState): {
   totalMatchups: number;
   completedMatchups: number;
   roundName: string;
-  matchupInRound: number;
-  matchupsInRound: number;
+  currentRoundIndex: number;
+  roundNames: string[];
+  roundProgress: { completed: number; total: number }[];
 } {
+  const bracketSize = state.cards.length;
+  const roundNames = buildRoundNames(bracketSize);
   let completedMatchups = 0;
-  for (const round of state.rounds) {
-    for (const m of round) {
-      if (m.winner !== null) completedMatchups++;
+
+  const roundProgress = state.rounds.map((round) => {
+    const completed = round.filter((m) => m.winner !== null).length;
+    completedMatchups += completed;
+    return { completed, total: round.length };
+  });
+
+  // Find the first round that isn't fully complete
+  let currentRoundIndex = state.rounds.length - 1;
+  for (let r = 0; r < state.rounds.length; r++) {
+    if (roundProgress[r].completed < roundProgress[r].total) {
+      currentRoundIndex = r;
+      break;
     }
   }
 
   return {
-    totalMatchups: 31,
+    totalMatchups: bracketSize - 1,
     completedMatchups,
-    roundName: getRoundName(state.currentRound),
-    matchupInRound: state.currentMatchup + 1,
-    matchupsInRound: state.rounds[state.currentRound].length,
+    roundName: roundNames[currentRoundIndex] ?? `Round ${currentRoundIndex}`,
+    currentRoundIndex,
+    roundNames,
+    roundProgress,
   };
 }
 
 /** Get human-readable round name */
-export function getRoundName(index: number): string {
-  return ROUND_NAMES[index] ?? `Round ${index}`;
+export function getRoundName(index: number, bracketSize = 32): string {
+  const names = buildRoundNames(bracketSize);
+  return names[index] ?? `Round ${index}`;
 }
 
-/** Save bracket to localStorage */
-export function saveBracket(state: BracketState): void {
+/** Check if a round is fully votable (all matchups have both seeds) */
+export function isRoundReady(state: BracketState, roundIndex: number): boolean {
+  const round = state.rounds[roundIndex];
+  if (!round) return false;
+  return round.every((m) => m.seedA >= 0 && m.seedB >= 0);
+}
+
+/** Check if a round is fully completed */
+export function isRoundComplete(state: BracketState, roundIndex: number): boolean {
+  const round = state.rounds[roundIndex];
+  if (!round) return false;
+  return round.every((m) => m.winner !== null);
+}
+
+/** Save bracket to localStorage (keyed by optional slug) */
+export function saveBracket(state: BracketState, slug?: string): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const key = slug ? `mtgink_bracket_${slug}` : "mtgink_bracket";
+  localStorage.setItem(key, JSON.stringify(state));
 }
 
 /** Load bracket from localStorage */
-export function loadBracket(): BracketState | null {
+export function loadBracket(slug?: string): BracketState | null {
   if (typeof window === "undefined") return null;
-  const data = localStorage.getItem(STORAGE_KEY);
+  const key = slug ? `mtgink_bracket_${slug}` : "mtgink_bracket";
+  const data = localStorage.getItem(key);
   if (!data) return null;
   try {
     return JSON.parse(data) as BracketState;
@@ -172,7 +242,8 @@ export function loadBracket(): BracketState | null {
 }
 
 /** Clear bracket from localStorage */
-export function clearBracket(): void {
+export function clearBracket(slug?: string): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
+  const key = slug ? `mtgink_bracket_${slug}` : "mtgink_bracket";
+  localStorage.removeItem(key);
 }
