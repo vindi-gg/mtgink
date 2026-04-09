@@ -153,11 +153,14 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
       // Mobile: scroll to top (carousel handles horizontal position)
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
-      // Desktop: scroll to first matchup of new round, in parallel with transition
+      // Desktop: center first matchup in viewport, in parallel with transition
       const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
       if (el?.offsetParent) {
-        const y = el.getBoundingClientRect().top + window.scrollY - 140;
-        window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+        const elRect = el.getBoundingClientRect();
+        const viewportCenter = window.innerHeight / 2;
+        const elCenter = elRect.top + elRect.height / 2;
+        const scrollBy = elCenter - viewportCenter;
+        window.scrollTo({ top: window.scrollY + scrollBy, behavior: "smooth" });
       }
     }
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
