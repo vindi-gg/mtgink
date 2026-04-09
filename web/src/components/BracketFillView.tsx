@@ -80,10 +80,17 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
         const el = (desktopEl?.offsetParent ? desktopEl : null)
           || (mobileEl?.offsetParent ? mobileEl : null);
         if (el) {
-          // On mobile nav isn't sticky, only bracket header (~80px). On desktop both (~140px).
-          const offset = window.innerWidth >= 768 ? 140 : 80;
-          const y = el.getBoundingClientRect().top + window.scrollY - offset;
-          window.scrollTo({ top: y, behavior: "smooth" });
+          if (window.innerWidth >= 768) {
+            // Desktop: center matchup in viewport
+            const elRect = el.getBoundingClientRect();
+            const viewportCenter = window.innerHeight / 2;
+            const elCenter = elRect.top + elRect.height / 2;
+            window.scrollTo({ top: window.scrollY + (elCenter - viewportCenter), behavior: "smooth" });
+          } else {
+            // Mobile: scroll to top of matchup with header offset
+            const y = el.getBoundingClientRect().top + window.scrollY - 80;
+            window.scrollTo({ top: y, behavior: "smooth" });
+          }
         }
       }
     }, 200);
