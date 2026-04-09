@@ -327,7 +327,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
 
               {/* Round column — same component for all, maxWidth transitions handle sizing */}
               <div
-                className={`flex flex-col ${round.length === 1 ? "justify-center" : "justify-around"} ${isActive || isPast ? "flex-1 min-w-0" : "flex-shrink-0"}`}
+                className={`flex flex-col justify-around ${isActive || isPast ? "flex-1 min-w-0" : "flex-shrink-0"}`}
                 style={{
                   maxWidth: isFuture ? 280 : 2000,
                   transition: "max-width 500ms ease-in-out",
