@@ -149,9 +149,16 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     const tab = container.children[tabIdx] as HTMLElement | undefined;
     tab?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
 
-    // Mobile: scroll to top. Desktop: CSS transitions handle positioning.
     if (window.innerWidth < 768) {
+      // Mobile: scroll to top (carousel handles horizontal position)
       window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      // Desktop: scroll to first matchup of new round, in parallel with transition
+      const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
+      if (el?.offsetParent) {
+        const y = el.getBoundingClientRect().top + window.scrollY - 140;
+        window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+      }
     }
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
