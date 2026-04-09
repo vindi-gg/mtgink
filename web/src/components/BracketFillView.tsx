@@ -306,10 +306,10 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           return (
             <div key={roundIdx} className="flex items-stretch transition-all duration-500 ease-in-out" style={{
               width: isPast || isActive ? "60%" : "22%",
-              height: isPast ? 0 : "auto",
               marginLeft: isPast ? "-60%" : "0",
               opacity: isPast ? 0 : 1,
               overflow: "hidden",
+              alignSelf: isActive ? "start" : "stretch",
             }}>
               {/* Connector from previous visible round */}
               {!isPast && prevRound && roundIdx > 0 && !isPast && (
