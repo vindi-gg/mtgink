@@ -149,8 +149,10 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     const tab = container.children[tabIdx] as HTMLElement | undefined;
     tab?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
 
-    // Scroll immediately — happens in parallel with column transition
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Mobile: scroll to top. Desktop: CSS transitions handle positioning.
+    if (window.innerWidth < 768) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
