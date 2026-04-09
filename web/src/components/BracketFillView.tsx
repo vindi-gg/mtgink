@@ -149,8 +149,22 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     const tab = container.children[tabIdx] as HTMLElement | undefined;
     tab?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
 
-    // Scroll page to top — works for both round transitions and champion reveal
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Scroll to first matchup of new round
+    setTimeout(() => {
+      if (window.innerWidth < 768) {
+        // Mobile: scroll to top (carousel handles horizontal position)
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        // Desktop: scroll to first matchup in the active round
+        const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
+        if (el?.offsetParent) {
+          const y = el.getBoundingClientRect().top + window.scrollY - 140;
+          window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+    }, 550); // after column transition (500ms)
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
