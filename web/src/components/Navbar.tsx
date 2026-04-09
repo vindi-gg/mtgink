@@ -146,7 +146,7 @@ export default function Navbar() {
     user?.user_metadata?.name ||
     user?.email;
 
-  const isShowdown = pathname.startsWith("/showdown") || pathname.startsWith("/daily/gauntlet") || pathname.endsWith("/remix");
+  const isShowdown = pathname.startsWith("/showdown") || pathname.startsWith("/daily/gauntlet") || pathname.endsWith("/remix") || pathname.startsWith("/bracket");
 
   return (
     <>
@@ -446,8 +446,8 @@ export default function Navbar() {
       )}
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </nav>
-    {/* Beta banner */}
-    {!betaDismissed && (
+    {/* Beta banner — homepage only */}
+    {!betaDismissed && pathname === "/" && (
       <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-400/80">
         MTG Ink is in beta — we&apos;ll do our best not to reset data, but we may have to!
         <button

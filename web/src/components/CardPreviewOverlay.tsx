@@ -104,7 +104,7 @@ export default function CardPreviewOverlay({
       {/* Mobile card preview modal — enhanced with favorite + price */}
       {showing && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fade-in md:hidden"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6 animate-fade-in md:hidden"
           onClick={() => setShowing(false)}
         >
           <div className="relative max-w-[320px] w-full">
