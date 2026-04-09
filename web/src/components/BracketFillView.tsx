@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { artCropUrl } from "@/lib/image-utils";
+import { useImageMode } from "@/lib/image-mode";
 import CardImage from "./CardImage";
+import CardPreviewOverlay from "./CardPreviewOverlay";
 import {
   createBracket,
   recordVote,
@@ -78,7 +80,9 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
         const el = (desktopEl?.offsetParent ? desktopEl : null)
           || (mobileEl?.offsetParent ? mobileEl : null);
         if (el) {
-          const y = el.getBoundingClientRect().top + window.scrollY - 160;
+          // On mobile nav isn't sticky, only bracket header (~80px). On desktop both (~140px).
+          const offset = window.innerWidth >= 768 ? 140 : 80;
+          const y = el.getBoundingClientRect().top + window.scrollY - offset;
           window.scrollTo({ top: y, behavior: "smooth" });
         }
       }
@@ -126,6 +130,16 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     return { ...state, rounds: newRounds, completed: false };
   }
 
+  // On mobile, scroll past nav on mount so bracket fills the screen
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      // Delay to ensure layout is complete
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 56, behavior: "instant" });
+      });
+    }
+  }, []);
+
   // Scroll active round tab into view + scroll to top on round switch
   useEffect(() => {
     const container = roundTabsRef.current;
@@ -143,7 +157,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Sticky header: round tabs + progress bar */}
-      <div className="sticky top-14 z-10 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800">
+      <div className="sticky top-0 md:top-14 z-10 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800">
         <div
           ref={roundTabsRef}
           className="flex gap-1.5 px-3 py-2 overflow-x-auto scrollbar-hide"
@@ -194,15 +208,16 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           </button>
         </div>
         <div className="px-4 pb-2">
-          <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-500 transition-all duration-300"
-              style={{ width: `${(progress.completedMatchups / progress.totalMatchups) * 100}%` }}
-            />
+          <div className="flex gap-1 h-1.5">
+            {(bracket.rounds[activeRound] ?? []).map((m, i) => (
+              <div
+                key={i}
+                className={`flex-1 rounded-full transition-colors duration-300 ${
+                  m.winner !== null ? "bg-amber-500" : "bg-gray-800"
+                }`}
+              />
+            ))}
           </div>
-          <p className="text-xs text-gray-500 mt-1 text-center">
-            {progress.completedMatchups} / {progress.totalMatchups} matchups
-          </p>
         </div>
       </div>
 
@@ -281,7 +296,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
       </div>
 
       {/* Desktop: All rounds as animated columns */}
-      <div className="hidden md:flex px-4 pb-20 overflow-hidden">
+      <div className="hidden md:flex items-stretch px-4 pb-20 overflow-hidden">
         {bracket.rounds.map((round, roundIdx) => {
           const isActive = roundIdx === activeRound;
           const isPast = roundIdx < activeRound;
@@ -291,6 +306,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           return (
             <div key={roundIdx} className="flex items-stretch transition-all duration-500 ease-in-out" style={{
               width: isPast || isActive ? "60%" : "22%",
+              height: isPast ? 0 : "auto",
               marginLeft: isPast ? "-60%" : "0",
               opacity: isPast ? 0 : 1,
               overflow: "hidden",
@@ -309,9 +325,9 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
                 </div>
               )}
 
-              {/* Round column */}
+              {/* Round column — same component for all, maxWidth transitions handle sizing */}
               <div
-                className={`flex flex-col justify-around ${isActive || isPast ? "flex-1 min-w-0" : "flex-shrink-0"}`}
+                className={`flex flex-col ${round.length === 1 ? "justify-center" : "justify-around"} ${isActive || isPast ? "flex-1 min-w-0" : "flex-shrink-0"}`}
                 style={{
                   maxWidth: isFuture ? 280 : 2000,
                   transition: "max-width 500ms ease-in-out",
@@ -321,9 +337,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
                   <div
                     key={mIdx}
                     className={isActive || isPast ? "mb-2" : "mx-0.5 my-0.5"}
-                    ref={(el) => {
-                      if (el) matchupRefs.current.set(`desktop-${roundIdx}-${mIdx}`, el);
-                    }}
+                    ref={(el) => { if (el) matchupRefs.current.set(`desktop-${roundIdx}-${mIdx}`, el); }}
                   >
                     <MiniMatchupPreview
                       bracket={bracket}
@@ -410,7 +424,7 @@ function MatchupCard({
         <p className="text-xs text-gray-600 text-center mb-2">
           Match {matchupNumber} of {totalInRound}
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
+        <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-1 md:gap-4">
           <div className="aspect-[626/457] bg-gray-900 rounded-lg border border-gray-800" />
           <div className="aspect-[626/457] bg-gray-900 rounded-lg border border-gray-800" />
         </div>
@@ -423,22 +437,30 @@ function MatchupCard({
   function renderSide(card: BracketCard, seed: number) {
     const isWinner = hasWinner && matchup.winner === seed;
     const isLoser = hasWinner && matchup.winner !== seed;
+    const artUrl = artCropUrl(card.set_code, card.collector_number, card.image_version);
 
     return (
-      <div className={`transition-opacity duration-200 ${isLoser ? "opacity-25" : ""}`}>
-        <div className={`relative rounded-lg overflow-hidden ring-3 transition-all duration-200 ${
-          isWinner
-            ? "ring-amber-500"
-            : "ring-transparent"
-        }`}>
+      <div className={`flex flex-col items-center transition-opacity duration-200 ${isLoser ? "opacity-25" : ""}`}>
+        <div className={`relative w-full ${isWinner ? "ring-3 ring-amber-500 rounded-[3.8%]" : ""}`}>
           <CardImage
-            src={artCropUrl(card.set_code, card.collector_number, card.image_version)}
+            key={`${card.illustration_id}-${seed}`}
+            src={artUrl}
             alt={`${card.name} by ${card.artist}`}
             onClick={() => onVote(roundIndex, matchupIndex, seed)}
             className="w-full"
           />
+          <CardPreviewOverlay
+            setCode={card.set_code}
+            collectorNumber={card.collector_number}
+            imageVersion={card.image_version}
+            alt={`${card.name} by ${card.artist}`}
+            illustrationId={card.illustration_id}
+            oracleId={card.oracle_id}
+            cardName={card.name}
+            cardSlug={card.slug}
+          />
           {isWinner && (
-            <div className="absolute top-2 right-2 pointer-events-none">
+            <div className="absolute top-2 right-2 z-10 pointer-events-none">
               <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center shadow-lg">
                 <svg className="w-4 h-4 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -446,19 +468,22 @@ function MatchupCard({
               </div>
             </div>
           )}
+          <div className="absolute bottom-2 right-2 z-10 text-right pointer-events-none">
+            <p className={`text-xs font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
+            <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
+            <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.set_code.toUpperCase()}</p>
+          </div>
         </div>
-        <p className={`text-xs font-medium mt-1.5 truncate ${isWinner ? "text-amber-400" : "text-gray-200"}`}>{card.name}</p>
-        <p className="text-[10px] text-gray-500 truncate">{card.artist} · {card.set_code.toUpperCase()}</p>
       </div>
     );
   }
 
   return (
-    <div className="py-3 border-b border-gray-800/50">
-      <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-2 px-1">
+    <div className="py-2">
+      <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1 px-1">
         Match {matchupNumber} of {totalInRound}
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
+      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
         {renderSide(cardA, seedA)}
         {renderSide(cardB, seedB)}
       </div>
@@ -499,40 +524,42 @@ function MiniMatchupPreview({
     const isWinner = hasWinner && matchup.winner === seed;
     const isLoser = hasWinner && matchup.winner !== seed;
 
-    const content = (
-      <div className={`relative rounded-lg overflow-hidden transition-all ${isLoser ? "opacity-30" : ""} ${isWinner ? "ring-2 ring-amber-500" : onVote ? "hover:ring-2 hover:ring-gray-500" : ""}`}>
-        <img
-          src={artCropUrl(card.set_code, card.collector_number, card.image_version)}
-          alt={card.name}
-          className="w-full aspect-[626/457] object-cover"
-        />
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
-          <p className={`text-[10px] font-medium truncate ${isWinner ? "text-amber-400" : "text-white"}`}>{card.name}</p>
-        </div>
-        {isWinner && (
-          <div className="absolute top-1 right-1 pointer-events-none">
-            <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
-              <svg className="w-3 h-3 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+    return (
+      <div className={`flex flex-col items-center transition-opacity duration-200 ${isLoser ? "opacity-25" : ""}`}>
+        <div className={`relative w-full ${isWinner ? "ring-2 ring-amber-500 rounded-[3.8%]" : ""}`}>
+          <CardImage
+            key={`${card.illustration_id}-${seed}`}
+            src={artCropUrl(card.set_code, card.collector_number, card.image_version)}
+            alt={`${card.name} by ${card.artist}`}
+            onClick={onVote ? () => onVote(roundIndex, matchupIndex, seed) : undefined}
+            className="w-full"
+          />
+          <CardPreviewOverlay
+            setCode={card.set_code}
+            collectorNumber={card.collector_number}
+            imageVersion={card.image_version}
+            alt={`${card.name} by ${card.artist}`}
+            illustrationId={card.illustration_id}
+            oracleId={card.oracle_id}
+            cardName={card.name}
+            cardSlug={card.slug}
+          />
+          {isWinner && (
+            <div className="absolute top-1 right-1 z-10 pointer-events-none">
+              <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
+                <svg className="w-3 h-3 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
             </div>
+          )}
+          <div className="absolute bottom-1 right-1 z-10 text-right pointer-events-none">
+            <p className={`text-[10px] font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
+            <p className="text-[9px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
           </div>
-        )}
+        </div>
       </div>
     );
-
-    if (onVote) {
-      return (
-        <button
-          type="button"
-          onClick={() => onVote(roundIndex, matchupIndex, seed)}
-          className="w-full cursor-pointer text-left"
-        >
-          {content}
-        </button>
-      );
-    }
-    return content;
   }
 
   return (
@@ -542,7 +569,7 @@ function MiniMatchupPreview({
           Match {matchupNumber} of {totalInRound}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid grid-cols-2 gap-2 md:gap-4">
         {renderSlot(cardA, matchup.seedA)}
         {renderSlot(cardB, matchup.seedB)}
       </div>
