@@ -307,7 +307,8 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
 
           return (
             <div key={roundIdx} className="flex items-stretch transition-all duration-500 ease-in-out" style={{
-              width: isPast ? 1 : isActive ? "55%" : "22%",
+              width: isPast || isActive ? "55%" : "22%",
+              marginLeft: isPast ? "-55%" : "0",
               opacity: isPast ? 0 : 1,
               overflow: "hidden",
             }}>
