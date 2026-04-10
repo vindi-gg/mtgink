@@ -208,21 +208,29 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
       return;
     }
 
-    // Desktop: center the first matchup of the active round in both axes.
-    // Fire immediately for responsiveness on mount, then again after the
-    // 500ms column-width CSS transition finishes (so round-change scrolls
-    // don't measure pre-transition geometry and overshoot).
-    const scrollToActive = () => {
-      const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
+    // Desktop: wait for the 500ms width/margin CSS transition to finish
+    // before measuring + scrolling. Running earlier gives interpolated
+    // mid-transition geometry and the scroll lands at the wrong spot.
+    // The user sees the layout animate for 500ms (real "movement" feel)
+    // and THEN the scroll animates smoothly — one motion, not two.
+    //
+    // Target the first UNVOTED matchup of the active round (not match 0),
+    // so jumping back to a partially-played round lands on where you left
+    // off instead of the top.
+    const round = bracket.rounds[activeRound];
+    let targetIdx = 0;
+    if (round) {
+      const nextUnvoted = round.findIndex(
+        (m) => m.winner === null && m.seedA >= 0 && m.seedB >= 0,
+      );
+      if (nextUnvoted >= 0) targetIdx = nextUnvoted;
+    }
+    const timer = setTimeout(() => {
+      const el = matchupRefs.current.get(`desktop-${activeRound}-${targetIdx}`);
       if (!el || !el.offsetParent) return;
       el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-    };
-    const rafId = requestAnimationFrame(scrollToActive);
-    const timer = setTimeout(scrollToActive, 550);
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timer);
-    };
+    }, 520);
+    return () => clearTimeout(timer);
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -402,7 +410,8 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
                 </div>
               )}
 
-              {/* Round column — same component for all, maxWidth transitions handle sizing */}
+              {/* Round column — max-width transitions in sync with the wrapper
+                  width so the future→active growth feels like one smooth motion. */}
               <div
                 className={`flex flex-col justify-around ${isActive || isPast ? "flex-1 min-w-0" : "flex-shrink-0"}`}
                 style={{
