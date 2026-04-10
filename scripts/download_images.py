@@ -73,9 +73,14 @@ def image_path(set_code: str, collector_number: str, image_type: str) -> Path:
     return IMAGES_DIR / set_code / f"{safe_num}_{image_type}.jpg"
 
 
-def scryfall_image_url(scryfall_id: str, image_type: str) -> str:
+def scryfall_image_url(scryfall_id: str, image_type: str, image_version: str = None) -> str:
     d1, d2 = scryfall_id[0], scryfall_id[1]
-    return f"https://cards.scryfall.io/{image_type}/front/{d1}/{d2}/{scryfall_id}.jpg"
+    base = f"https://cards.scryfall.io/{image_type}/front/{d1}/{d2}/{scryfall_id}.jpg"
+    # Scryfall serves a different (newer) file when the version query string is
+    # included. Without it they often serve an older cached/preview variant.
+    if image_version:
+        return f"{base}?{image_version}"
+    return base
 
 
 def download_card_images(row, image_types, use_r2, force=False):
@@ -83,9 +88,10 @@ def download_card_images(row, image_types, use_r2, force=False):
     set_code = row["set_code"]
     collector_number = row["collector_number"]
     scryfall_id = row["scryfall_id"]
+    image_version = row.get("image_version")
 
     for img_type in image_types:
-        url = scryfall_image_url(scryfall_id, img_type)
+        url = scryfall_image_url(scryfall_id, img_type, image_version)
 
         if use_r2:
             key = r2_key(set_code, collector_number, img_type)
@@ -180,7 +186,7 @@ def main():
 
     where = " AND ".join(conditions)
     query = f"""
-        SELECT p.scryfall_id, p.set_code, p.collector_number
+        SELECT p.scryfall_id, p.set_code, p.collector_number, p.image_version
         FROM printings p
         JOIN sets s ON s.set_code = p.set_code
         WHERE {where}

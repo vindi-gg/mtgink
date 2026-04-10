@@ -1,0 +1,66 @@
+name: Update Recent Sets
+
+# Refreshes card data + images for recently released / upcoming sets from Scryfall.
+# Only downloads images whose image_version has changed, so most runs are a
+# fast no-op. Uploads to R2 via USE_R2=1.
+on:
+  schedule:
+    - cron: '15 * * * *'  # Hourly, at :15 to avoid collision with other jobs
+  workflow_dispatch:
+    inputs:
+      past_days:
+        description: "Days in the past to include"
+        required: false
+        default: "180"
+      future_days:
+        description: "Days in the future to include"
+        required: false
+        default: "90"
+      sets:
+        description: "Optional explicit set codes (space-separated), e.g. 'soc sos soa'"
+        required: false
+        default: ""
+      force:
+        description: "Force redownload even if image_version unchanged"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  update-recent-sets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests boto3
+
+      - name: Update recent sets (data + images)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          USE_R2: "1"
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: mtgink-cdn
+        run: |
+          PAST_DAYS="${{ github.event.inputs.past_days || '180' }}"
+          FUTURE_DAYS="${{ github.event.inputs.future_days || '90' }}"
+          EXTRA_SETS="${{ github.event.inputs.sets || '' }}"
+          FORCE_FLAG=""
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+          python3 scripts/update_set.py \
+            --recent \
+            --past-days "$PAST_DAYS" \
+            --future-days "$FUTURE_DAYS" \
+            --images \
+            $FORCE_FLAG \
+            $EXTRA_SETS
