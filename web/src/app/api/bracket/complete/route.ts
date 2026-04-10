@@ -45,8 +45,10 @@ export async function POST(req: NextRequest) {
   const admin = getAdminClient();
   const kFactor = userId ? undefined : ANON_BRACKET_K_FACTOR;
 
+  // Pass the array directly — Supabase serializes to JSONB. Pre-stringifying
+  // produces a JSONB string scalar that jsonb_array_elements() can't iterate.
   const { error: eloErr } = await admin.rpc("process_bracket_matchups", {
-    p_matchups: JSON.stringify(matchups),
+    p_matchups: matchups,
     p_session_id: session_id,
     p_user_id: userId ?? null,
     p_k_factor: kFactor ?? null,

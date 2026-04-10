@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { artCropUrl } from "@/lib/image-utils";
 import { useImageMode } from "@/lib/image-mode";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
@@ -29,6 +28,9 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
   const roundTabsRef = useRef<HTMLDivElement>(null);
   const matchupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const justVotedRef = useRef(false);
+
+  // cardUrl picks art_crop or normal based on the W-toggle (ImageModeProvider)
+  const { cardUrl } = useImageMode();
 
   const progress = getBracketProgress(bracket);
   const champion = getChampion(bracket);
@@ -300,7 +302,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
               <div className="text-center pt-4 pb-20">
                 <p className="text-sm uppercase tracking-[0.3em] text-amber-400 mb-6">Champion</p>
                 <img
-                  src={artCropUrl(champion.set_code, champion.collector_number, champion.image_version)}
+                  src={cardUrl(champion.set_code, champion.collector_number, champion.image_version)}
                   alt={champion.name}
                   className="w-full max-w-md rounded-xl border-4 border-amber-500 shadow-[0_0_40px_rgba(245,158,11,0.3)] mx-auto"
                 />
@@ -314,7 +316,13 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
         </div>
       </div>
 
-      {/* Desktop: All rounds as animated columns */}
+      {/* Desktop: All rounds as animated columns.
+          Wrappers are flex-shrink-0 so the active round stays its full 55%
+          width regardless of how many future rounds also want their share —
+          for very large brackets the row overflows horizontally and the
+          body becomes horizontally scrollable (can't use overflow-x-auto
+          on this container or the vertical overflow for tall columns
+          would get clipped too). */}
       <div className="hidden md:flex items-stretch px-4 pb-20">
         {bracket.rounds.map((round, roundIdx) => {
           const isActive = roundIdx === activeRound;
@@ -323,7 +331,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           const prevRound = roundIdx > 0 ? bracket.rounds[roundIdx - 1] : null;
 
           return (
-            <div key={roundIdx} className="flex items-stretch transition-all duration-500 ease-in-out" style={{
+            <div key={roundIdx} className="flex items-stretch flex-shrink-0 transition-all duration-500 ease-in-out" style={{
               width: isPast || isActive ? "55%" : "22%",
               marginLeft: isPast ? "-55%" : "0",
               opacity: isPast ? 0 : 1,
@@ -354,7 +362,11 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
                 {round.map((matchup, mIdx) => (
                   <div
                     key={mIdx}
-                    className={isActive || isPast ? "my-1" : "mx-0.5 my-0.5"}
+                    // flex-shrink-0 is load-bearing here: aspect-ratio children
+                    // have min-content height of 0, so without it flexbox
+                    // squishes matchups to tiny when there are hundreds stacked
+                    // in one column (see 597-card brackets).
+                    className={isActive || isPast ? "my-1 flex-shrink-0" : "mx-0.5 my-0.5"}
                     ref={(el) => { if (el) matchupRefs.current.set(`desktop-${roundIdx}-${mIdx}`, el); }}
                   >
                     <MiniMatchupPreview
@@ -373,7 +385,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           );
         })}
         {/* Champion column */}
-        <div className="flex items-stretch transition-all duration-500 ease-in-out" style={{
+        <div className="flex items-stretch flex-shrink-0 transition-all duration-500 ease-in-out" style={{
           width: activeRound === championRoundIdx ? "60%" : champion ? "22%" : "0%",
           marginLeft: activeRound > championRoundIdx ? "-60%" : "0",
           opacity: champion || activeRound === championRoundIdx ? 1 : 0,
@@ -391,7 +403,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
               <div className="text-center py-8">
                 <p className="text-sm uppercase tracking-[0.3em] text-amber-400 mb-4">Champion</p>
                 <img
-                  src={artCropUrl(champion.set_code, champion.collector_number, champion.image_version)}
+                  src={cardUrl(champion.set_code, champion.collector_number, champion.image_version)}
                   alt={champion.name}
                   className="w-full max-w-md rounded-xl border-4 border-amber-500 shadow-[0_0_40px_rgba(245,158,11,0.3)] mx-auto"
                 />
@@ -431,6 +443,8 @@ function MatchupCard({
   totalInRound: number;
   onVote: (round: number, matchup: number, winner: number) => void;
 }) {
+  const { cardUrl, imageMode } = useImageMode();
+  const placeholderAspect = imageMode === "card" ? "aspect-[488/680]" : "aspect-[626/457]";
   const cards = getMatchupCards(bracket, roundIndex, matchupIndex);
   const hasWinner = matchup.winner !== null;
 
@@ -442,8 +456,8 @@ function MatchupCard({
           Match {matchupNumber} of {totalInRound}
         </p>
         <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-1 md:gap-4">
-          <div className="aspect-[626/457] bg-gray-900 rounded-lg border border-gray-800" />
-          <div className="aspect-[626/457] bg-gray-900 rounded-lg border border-gray-800" />
+          <div className={`${placeholderAspect} bg-gray-900 rounded-lg border border-gray-800`} />
+          <div className={`${placeholderAspect} bg-gray-900 rounded-lg border border-gray-800`} />
         </div>
       </div>
     );
@@ -454,7 +468,7 @@ function MatchupCard({
   function renderSide(card: BracketCard, seed: number) {
     const isWinner = hasWinner && matchup.winner === seed;
     const isLoser = hasWinner && matchup.winner !== seed;
-    const artUrl = artCropUrl(card.set_code, card.collector_number, card.image_version);
+    const artUrl = cardUrl(card.set_code, card.collector_number, card.image_version);
 
     return (
       <div className={`flex flex-col items-center transition-opacity duration-200 ${isLoser ? "opacity-25" : ""}`}>
@@ -527,6 +541,8 @@ function MiniMatchupPreview({
   totalInRound?: number;
   onVote?: (round: number, matchup: number, winner: number) => void;
 }) {
+  const { cardUrl, imageMode } = useImageMode();
+  const placeholderAspect = imageMode === "card" ? "aspect-[488/680]" : "aspect-[626/457]";
   const seedAReady = matchup.seedA >= 0;
   const seedBReady = matchup.seedB >= 0;
 
@@ -536,7 +552,7 @@ function MiniMatchupPreview({
 
   function renderSlot(card: BracketCard | null, seed: number) {
     if (!card) {
-      return <div className="aspect-[626/457] bg-gray-800/30 rounded-lg border border-gray-700/30" />;
+      return <div className={`${placeholderAspect} bg-gray-800/30 rounded-lg border border-gray-700/30`} />;
     }
     const isWinner = hasWinner && matchup.winner === seed;
     const isLoser = hasWinner && matchup.winner !== seed;
@@ -546,7 +562,7 @@ function MiniMatchupPreview({
         <div className={`relative w-full ${isWinner ? "ring-2 ring-amber-500 rounded-[3.8%]" : ""}`}>
           <CardImage
             key={`${card.illustration_id}-${seed}`}
-            src={artCropUrl(card.set_code, card.collector_number, card.image_version)}
+            src={cardUrl(card.set_code, card.collector_number, card.image_version)}
             alt={`${card.name} by ${card.artist}`}
             onClick={onVote ? () => onVote(roundIndex, matchupIndex, seed) : undefined}
             className="w-full"
