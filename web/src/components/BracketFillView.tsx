@@ -331,7 +331,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
             }}>
               {/* Connector from previous visible round */}
               {!isPast && prevRound && roundIdx > 0 && !isPast && (
-                <div className="flex flex-col justify-around flex-shrink-0 w-5 transition-opacity duration-500" style={{ opacity: roundIdx === activeRound ? 0 : 1 }}>
+                <div className={`flex flex-col justify-around ${isActive ? "flex-shrink-0 w-5" : "flex-1 min-w-5"} transition-opacity duration-500`} style={{ opacity: roundIdx === activeRound ? 0 : 1 }}>
                   {Array.from({ length: Math.ceil(prevRound.length / 2) }).map((_, pIdx) => (
                     <div key={pIdx} className="flex-1 relative">
                       <div className="absolute top-1/4 left-0 right-1/2 border-t-2 border-gray-600" />
@@ -354,7 +354,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
                 {round.map((matchup, mIdx) => (
                   <div
                     key={mIdx}
-                    className={isActive || isPast ? "mb-2" : "mx-0.5 my-0.5"}
+                    className={isActive || isPast ? "my-1" : "mx-0.5 my-0.5"}
                     ref={(el) => { if (el) matchupRefs.current.set(`desktop-${roundIdx}-${mIdx}`, el); }}
                   >
                     <MiniMatchupPreview
