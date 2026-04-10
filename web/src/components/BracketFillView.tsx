@@ -149,29 +149,38 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     }
   }, []);
 
-  // Scroll active round tab into view + scroll to top on round switch
+  // Scroll active round tab into view + center the first unvoted matchup on
+  // screen. On very large brackets the row overflows horizontally, so we
+  // center both axes. Waits two animation frames so the column height /
+  // positions are finalized (image aspect-ratios, css transitions) before
+  // measuring.
   useEffect(() => {
     const container = roundTabsRef.current;
     if (!container) return;
-    // Champion tab is the last child
     const tabIdx = Math.min(activeRound, container.children.length - 1);
     const tab = container.children[tabIdx] as HTMLElement | undefined;
     tab?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
 
     if (window.innerWidth < 768) {
-      // Mobile: scroll to top (carousel handles horizontal position)
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      // Desktop: center first matchup in viewport, in parallel with transition
-      const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
-      if (el?.offsetParent) {
-        const elRect = el.getBoundingClientRect();
-        const viewportCenter = window.innerHeight / 2;
-        const elCenter = elRect.top + elRect.height / 2;
-        const scrollBy = elCenter - viewportCenter;
-        window.scrollTo({ top: window.scrollY + scrollBy, behavior: "smooth" });
-      }
+      return;
     }
+
+    // Desktop: two rAFs to let layout + transitions settle, then center the
+    // first matchup of the active round in both axes.
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
+        if (!el || !el.offsetParent) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
