@@ -61,7 +61,7 @@ export default function BrewCreateForm() {
   const router = useRouter();
 
   // Core state
-  const [mode, setMode] = useState<Mode>("gauntlet");
+  const [mode, setMode] = useState<Mode>("bracket");
   const [source, setSource] = useState<Source>("all");
   const [selected, setSelected] = useState<SelectedItem | null>(null);
   const [bracketSize, setBracketSize] = useState<number>(16);
@@ -120,7 +120,9 @@ export default function BrewCreateForm() {
   // Fetch cached lists
   useEffect(() => {
     if (source === "expansion" && !sets) {
-      fetch("/api/sets")
+      // ?all=true includes subsets (commander, tokens, mystical archive, promos)
+      // so users can pick them directly from the expansion search
+      fetch("/api/sets?all=true")
         .then((r) => r.json())
         .then((data) => setSets(data.sets ?? data))
         .catch(() => {});
@@ -398,7 +400,7 @@ export default function BrewCreateForm() {
       <div>
         <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Mode</label>
         <div className="flex gap-2">
-          {(["gauntlet", "bracket"] as const).map((m) => (
+          {(["bracket", "gauntlet"] as const).map((m) => (
             <button
               key={m}
               onClick={() => {
