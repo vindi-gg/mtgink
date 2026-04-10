@@ -66,6 +66,8 @@ function sortCards(cards: SetCard[], key: SortKey): SetCard[] {
   return sorted;
 }
 
+type PrintingFilter = "all" | "new" | "reprints";
+
 export default function SetCardGrid({
   cards,
   setCode,
@@ -80,6 +82,9 @@ export default function SetCardGrid({
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("number");
   const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
+  const [printingFilter, setPrintingFilter] = useState<PrintingFilter>("all");
+
+  const hasReprints = useMemo(() => cards.some((c) => c.is_reprint), [cards]);
 
   const toggleRarity = (r: string) => {
     setRarityFilter((prev) => {
@@ -95,8 +100,13 @@ export default function SetCardGrid({
     if (rarityFilter.size > 0) {
       result = result.filter((card) => rarityFilter.has(card.rarity ?? "common"));
     }
+    if (printingFilter === "new") {
+      result = result.filter((card) => !card.is_reprint);
+    } else if (printingFilter === "reprints") {
+      result = result.filter((card) => card.is_reprint);
+    }
     return sortCards(result, sortKey);
-  }, [cards, rarityFilter, sortKey]);
+  }, [cards, rarityFilter, sortKey, printingFilter]);
 
   return (
     <>
@@ -164,8 +174,27 @@ export default function SetCardGrid({
           ))}
         </div>
 
+        {/* Printing filter (all / new / reprints) — only show if we have reprints */}
+        {hasReprints && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">Show:</span>
+            <select
+              value={printingFilter}
+              onChange={(e) => {
+                setPrintingFilter(e.target.value as PrintingFilter);
+                setLightboxIdx(null);
+              }}
+              className="px-2.5 py-1 text-xs rounded bg-gray-800 text-gray-200 border border-gray-700 hover:text-white cursor-pointer focus:outline-none focus:border-amber-500/50"
+            >
+              <option value="all">All</option>
+              <option value="new">New cards</option>
+              <option value="reprints">Reprints</option>
+            </select>
+          </div>
+        )}
+
         {/* Result count when filtered */}
-        {rarityFilter.size > 0 && (
+        {(rarityFilter.size > 0 || printingFilter !== "all") && (
           <span className="text-xs text-gray-500">{filtered.length} / {cards.length}</span>
         )}
       </div>

@@ -457,6 +457,19 @@ export async function getPlayableSets(): Promise<MtgSet[]> {
   return (data ?? []) as MtgSet[];
 }
 
+/** Get all non-digital sets (hides Arena/MTGO/Alchemy), ordered by release date desc.
+ *  Used as the default for the expansions browser — broader than getPlayableSets
+ *  (includes tokens, memorabilia, art series, etc.) but still excludes digital-only. */
+export async function getNonDigitalSets(): Promise<MtgSet[]> {
+  const { data } = await getAdminClient()
+    .from("sets")
+    .select("*")
+    .eq("digital", false)
+    .gt("card_count", 0)
+    .order("released_at", { ascending: false });
+  return (data ?? []) as MtgSet[];
+}
+
 /** Get all sets, ordered by release date desc */
 export async function getAllSets(): Promise<MtgSet[]> {
   const { data } = await getAdminClient()
@@ -481,7 +494,7 @@ export async function getSetByCode(setCode: string): Promise<MtgSet | null> {
 export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
   const { data } = await getAdminClient()
     .from("printings")
-    .select("scryfall_id, oracle_id, collector_number, rarity, image_version, oracle_cards!inner(name, slug, type_line, mana_cost, layout)")
+    .select("scryfall_id, oracle_id, collector_number, rarity, image_version, is_reprint, oracle_cards!inner(name, slug, type_line, mana_cost, layout)")
     .eq("set_code", setCode)
     .order("collector_number", { ascending: true });
 
@@ -498,6 +511,7 @@ export async function getCardsForSet(setCode: string): Promise<SetCard[]> {
       mana_cost: card.mana_cost,
       image_version: row.image_version,
       layout: card.layout,
+      is_reprint: row.is_reprint,
     };
   });
 }
@@ -1667,15 +1681,41 @@ export async function getGauntletIllustrationsByArtist(artistName: string, count
 export async function getGauntletIllustrationsBySet(
   setCode: string,
   count = 20,
-  filters?: { colors?: string[]; type?: string; subtype?: string; rulesText?: string; rarity?: string },
+  filters?: {
+    colors?: string[];
+    type?: string;
+    subtype?: string;
+    rulesText?: string;
+    rarity?: string;
+    includeChildren?: boolean;
+    onlyNewCards?: boolean;
+    firstIllustrationOnly?: boolean;
+  },
 ): Promise<GauntletEntry[]> {
-  let query = getAdminClient()
+  const admin = getAdminClient();
+
+  // If includeChildren, resolve child set codes first so we can filter by them
+  let setCodes: string[] = [setCode];
+  if (filters?.includeChildren) {
+    const { data: children } = await admin
+      .from("sets")
+      .select("set_code")
+      .eq("parent_set_code", setCode);
+    if (children) {
+      setCodes = [setCode, ...children.map((c) => c.set_code)];
+    }
+  }
+
+  let query = admin
     .from("printings")
-    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, released_at, rarity, sets!inner(name, digital), oracle_cards!inner(name, slug, type_line, mana_cost, colors, oracle_text)")
-    .eq("set_code", setCode)
+    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, released_at, rarity, is_reprint, sets!inner(name, digital), oracle_cards!inner(name, slug, type_line, mana_cost, colors, oracle_text)")
+    .in("set_code", setCodes)
     .not("illustration_id", "is", null)
     .eq("sets.digital", false);
 
+  if (filters?.onlyNewCards) {
+    query = query.eq("is_reprint", false);
+  }
   if (filters?.type) {
     query = query.ilike("oracle_cards.type_line", `%${filters.type}%`);
   }
@@ -1696,12 +1736,24 @@ export async function getGauntletIllustrationsBySet(
 
   if (!data || data.length === 0) return [];
 
-  // Deduplicate by illustration_id
-  const seen = new Set<string>();
+  // Parse collector number for sorting (e.g., "4" → 4, "4a" → 4, "★1" → 1)
+  const collectorNum = (cn: string): number => {
+    const m = cn.match(/\d+/);
+    return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
+  };
+
+  // Deduplicate by illustration_id, in collector number order so we see the
+  // "main" printing first (important when firstIllustrationOnly is set)
+  const sorted = [...data].sort((a, b) => collectorNum(a.collector_number) - collectorNum(b.collector_number));
+
+  const seenIllustrations = new Set<string>();
+  const seenOracles = new Set<string>();
   const all: GauntletEntry[] = [];
-  for (const p of data) {
-    if (seen.has(p.illustration_id)) continue;
-    seen.add(p.illustration_id);
+  for (const p of sorted) {
+    if (seenIllustrations.has(p.illustration_id)) continue;
+    if (filters?.firstIllustrationOnly && seenOracles.has(p.oracle_id)) continue;
+    seenIllustrations.add(p.illustration_id);
+    seenOracles.add(p.oracle_id);
     const card = p.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null };
     all.push({
       name: card.name,
@@ -1826,6 +1878,9 @@ export async function getBrewCount(
   subtype?: string,
   rulesText?: string,
   rarity?: string,
+  includeChildren?: boolean,
+  onlyNewCards?: boolean,
+  firstIllustrationOnly?: boolean,
 ): Promise<number> {
   const admin = getAdminClient();
 
@@ -1853,13 +1908,26 @@ export async function getBrewCount(
   }
 
   if (source === "expansion") {
-    // Count distinct illustrations in this set, with optional color/type filters
+    // Resolve target set codes — optionally include children
+    let setCodes = [sourceId];
+    if (includeChildren) {
+      const { data: children } = await admin
+        .from("sets")
+        .select("set_code")
+        .eq("parent_set_code", sourceId);
+      if (children) setCodes = [sourceId, ...children.map((c) => c.set_code)];
+    }
+
+    // Count distinct illustrations in the target sets, with optional filters
     let query = admin
       .from("printings")
-      .select("illustration_id, oracle_cards!inner(type_line, colors, oracle_text)")
-      .eq("set_code", sourceId)
+      .select("oracle_id, illustration_id, oracle_cards!inner(type_line, colors, oracle_text)")
+      .in("set_code", setCodes)
       .not("illustration_id", "is", null);
 
+    if (onlyNewCards) {
+      query = query.eq("is_reprint", false);
+    }
     if (type) {
       query = query.ilike("oracle_cards.type_line", `%${type}%`);
     }
@@ -1877,8 +1945,12 @@ export async function getBrewCount(
     }
 
     const { data } = await query;
-    const unique = new Set((data ?? []).map((d) => d.illustration_id));
-    return unique.size;
+    if (!data) return 0;
+
+    if (firstIllustrationOnly) {
+      return new Set(data.map((d) => d.oracle_id)).size;
+    }
+    return new Set(data.map((d) => d.illustration_id)).size;
   }
 
   if (source === "tribe") {

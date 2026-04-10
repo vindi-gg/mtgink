@@ -31,8 +31,10 @@ export default async function SetDetailPage({
   const set = await getSetByCode(set_code);
   if (!set) notFound();
 
-  const cards = await getCardsForSet(set_code);
-  const backFaceUrls = await getBackFaceUrlsForSet(set_code);
+  const [cards, backFaceUrls] = await Promise.all([
+    getCardsForSet(set_code),
+    getBackFaceUrlsForSet(set_code),
+  ]);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white py-8">

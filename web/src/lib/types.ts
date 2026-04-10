@@ -121,6 +121,7 @@ export interface SetCard {
   mana_cost: string | null;
   image_version: string | null;
   layout: string | null;
+  is_reprint: boolean;
 }
 
 export interface BracketCard {
