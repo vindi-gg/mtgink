@@ -320,21 +320,47 @@ export function isRoundComplete(state: BracketState, roundIndex: number): boolea
   return round.every((m) => m.winner !== null);
 }
 
+/** Bump this any time createBracket's tree shape changes so saved states
+ *  from older algorithms don't get restored into a UI that assumes a
+ *  different structure. Also bump when a bug might have corrupted seeds
+ *  in existing saved states (e.g. the un-vote cascade used the legacy
+ *  propagation rule before v3). */
+const SAVED_BRACKET_VERSION = 3;
+
+interface SavedBracket {
+  v: number;
+  state: BracketState;
+}
+
 /** Save bracket to localStorage (keyed by optional slug) */
 export function saveBracket(state: BracketState, slug?: string): void {
   if (typeof window === "undefined") return;
   const key = slug ? `mtgink_bracket_${slug}` : "mtgink_bracket";
-  localStorage.setItem(key, JSON.stringify(state));
+  const payload: SavedBracket = { v: SAVED_BRACKET_VERSION, state };
+  localStorage.setItem(key, JSON.stringify(payload));
 }
 
-/** Load bracket from localStorage */
+/** Load bracket from localStorage. Returns null if the saved version
+ *  doesn't match — older algorithms produced different tree shapes so
+ *  restoring them would wire seeds into the wrong matches. */
 export function loadBracket(slug?: string): BracketState | null {
   if (typeof window === "undefined") return null;
   const key = slug ? `mtgink_bracket_${slug}` : "mtgink_bracket";
   const data = localStorage.getItem(key);
   if (!data) return null;
   try {
-    return JSON.parse(data) as BracketState;
+    const parsed = JSON.parse(data) as SavedBracket | BracketState;
+    // Versioned payload
+    if (parsed && typeof parsed === "object" && "v" in parsed && "state" in parsed) {
+      if ((parsed as SavedBracket).v !== SAVED_BRACKET_VERSION) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      return (parsed as SavedBracket).state;
+    }
+    // Unversioned legacy payload — discard, it's from the old algorithm
+    localStorage.removeItem(key);
+    return null;
   } catch {
     return null;
   }

@@ -72,13 +72,34 @@ export default function BracketPageClient() {
             throw new Error("Brew pool is too small for its bracket size");
           }
 
-          // Increment play count (fire and forget)
-          fetch(`/api/brew/${brewSlug}/play`, { method: "POST" }).catch(() => {});
+          const localSlug = `brew-${brewSlug}`;
 
-          // Shuffle pool and take bracket_size for seeding
-          const picked = shuffle(brew.pool).slice(0, brew.bracket_size).map(entryToBracketCard);
+          // Reuse the same shuffled card order on refresh so saved bracket
+          // progress lines up. Only reshuffle if we've never played this brew.
+          const cardsKey = `mtgink_bracket_cards_${localSlug}`;
+          let picked: BracketCard[] | null = null;
+          const savedCardsJson = typeof window !== "undefined" ? localStorage.getItem(cardsKey) : null;
+          if (savedCardsJson) {
+            try {
+              const parsed = JSON.parse(savedCardsJson) as BracketCard[];
+              if (Array.isArray(parsed) && parsed.length === brew.bracket_size) {
+                picked = parsed;
+              }
+            } catch {
+              /* ignore, reshuffle below */
+            }
+          }
+          if (!picked) {
+            picked = shuffle(brew.pool).slice(0, brew.bracket_size).map(entryToBracketCard);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(cardsKey, JSON.stringify(picked));
+            }
+            // First time playing this brew — increment play count
+            fetch(`/api/brew/${brewSlug}/play`, { method: "POST" }).catch(() => {});
+          }
+
           if (!cancelled) {
-            setSlug(`brew-${brewSlug}`);
+            setSlug(localSlug);
             setCards(picked);
           }
         } catch (err) {

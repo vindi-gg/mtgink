@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { normalCardUrl } from "@/lib/image-utils";
 import FavoriteButton from "./FavoriteButton";
 
@@ -101,8 +102,10 @@ export default function CardPreviewOverlay({
         </svg>
       </button>
 
-      {/* Mobile card preview modal — enhanced with favorite + price */}
-      {showing && (
+      {/* Mobile card preview modal — portaled to document.body so that
+          position: fixed is relative to the viewport, not a transformed
+          ancestor (e.g. the bracket's translateX carousel). */}
+      {showing && typeof document !== "undefined" && createPortal(
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6 animate-fade-in md:hidden"
           onClick={() => setShowing(false)}
@@ -149,7 +152,8 @@ export default function CardPreviewOverlay({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Desktop card preview — follows cursor */}

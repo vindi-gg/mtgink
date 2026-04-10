@@ -13,6 +13,7 @@ import {
   getRoundName,
   isRoundComplete,
   saveBracket,
+  loadBracket,
 } from "@/lib/bracket-logic";
 import type { BracketCard, BracketState, BracketMatchup } from "@/lib/types";
 
@@ -23,8 +24,31 @@ interface BracketFillViewProps {
 }
 
 export default function BracketFillView({ cards, slug, onComplete }: BracketFillViewProps) {
-  const [bracket, setBracket] = useState<BracketState>(() => createBracket(cards));
-  const [activeRound, setActiveRound] = useState(0);
+  // On mount, try to restore saved progress from localStorage. Only restore if
+  // the saved state's cards match the ones we were handed (same illustration_ids,
+  // same order) — otherwise the bracket's seeds would point to the wrong cards.
+  // Falls back to a fresh bracket.
+  const [bracket, setBracket] = useState<BracketState>(() => {
+    if (typeof window === "undefined") return createBracket(cards);
+    const saved = loadBracket(slug);
+    if (saved && saved.cards.length === cards.length) {
+      const sameCards = saved.cards.every(
+        (c, i) => c.illustration_id === cards[i]?.illustration_id,
+      );
+      if (sameCards) return saved;
+    }
+    return createBracket(cards);
+  });
+  // Jump to the first round that still has unvoted matches. Without this,
+  // refreshing a partially-played bracket dumps you back on the already-
+  // completed Initial Round instead of where you left off.
+  const [activeRound, setActiveRound] = useState<number>(() => {
+    for (let r = 0; r < bracket.rounds.length; r++) {
+      if (bracket.rounds[r].some((m) => m.winner === null)) return r;
+    }
+    // Bracket is fully complete — jump to the champion view
+    return bracket.rounds.length;
+  });
   const roundTabsRef = useRef<HTMLDivElement>(null);
   const matchupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const justVotedRef = useRef(false);
@@ -116,22 +140,40 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     }
   }, [bracket, activeRound, championRoundIdx]);
 
-  // Pure function: undo a vote and cascade downstream
+  // Pure function: undo a vote and cascade downstream. Uses the explicit
+  // matchup.next link for propagation (needed for Initial Round brackets
+  // where byes and play-in winners go to non-power-of-2 slots). Falls back
+  // to the legacy floor(idx/2) rule for any pre-versioned saved state that
+  // somehow slips through.
   function undoBracketVote(state: BracketState, roundIndex: number, matchupIndex: number): BracketState {
     const newRounds = state.rounds.map((round) => round.map((m) => ({ ...m })));
     newRounds[roundIndex][matchupIndex].winner = null;
 
     const clearDownstream = (rIdx: number, mIdx: number) => {
-      if (rIdx >= newRounds.length - 1) return;
-      const nextRound = rIdx + 1;
-      const nextMatchupIdx = Math.floor(mIdx / 2);
-      const isFirst = mIdx % 2 === 0;
-      const nextMatchup = newRounds[nextRound][nextMatchupIdx];
+      const m = newRounds[rIdx][mIdx];
+      let targetRound: number;
+      let targetMatch: number;
+      let isFirst: boolean;
+      if (m.next !== undefined) {
+        // New-style propagation (matches createBracket's .next links)
+        if (m.next === null) return; // final match, nothing downstream
+        targetRound = m.next.round;
+        targetMatch = m.next.match;
+        isFirst = m.next.slot === "A";
+      } else {
+        // Legacy fallback
+        if (rIdx >= newRounds.length - 1) return;
+        targetRound = rIdx + 1;
+        targetMatch = Math.floor(mIdx / 2);
+        isFirst = mIdx % 2 === 0;
+      }
+      const nextMatchup = newRounds[targetRound]?.[targetMatch];
+      if (!nextMatchup) return;
       if (isFirst) nextMatchup.seedA = -1;
       else nextMatchup.seedB = -1;
       if (nextMatchup.winner !== null) {
         nextMatchup.winner = null;
-        clearDownstream(nextRound, nextMatchupIdx);
+        clearDownstream(targetRound, targetMatch);
       }
     };
     clearDownstream(roundIndex, matchupIndex);
@@ -166,20 +208,20 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
       return;
     }
 
-    // Desktop: two rAFs to let layout + transitions settle, then center the
-    // first matchup of the active round in both axes.
-    let raf1 = 0;
-    let raf2 = 0;
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
-        if (!el || !el.offsetParent) return;
-        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-      });
-    });
+    // Desktop: center the first matchup of the active round in both axes.
+    // Fire immediately for responsiveness on mount, then again after the
+    // 500ms column-width CSS transition finishes (so round-change scrolls
+    // don't measure pre-transition geometry and overshoot).
+    const scrollToActive = () => {
+      const el = matchupRefs.current.get(`desktop-${activeRound}-0`);
+      if (!el || !el.offsetParent) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    };
+    const rafId = requestAnimationFrame(scrollToActive);
+    const timer = setTimeout(scrollToActive, 550);
     return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
+      cancelAnimationFrame(rafId);
+      clearTimeout(timer);
     };
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
