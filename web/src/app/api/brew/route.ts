@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    if (mode === "bracket" && ![8, 16, 32, 64, 128, 256].includes(bracket_size)) {
-      return NextResponse.json({ error: "Bracket brews require a valid bracket_size (8, 16, 32, 64, 128, or 256)" }, { status: 400 });
+    if (mode === "bracket" && (typeof bracket_size !== "number" || bracket_size < 2 || bracket_size > 1024)) {
+      return NextResponse.json({ error: "Bracket brews require a bracket_size between 2 and 1024" }, { status: 400 });
     }
 
     // Get user if authenticated

@@ -10,7 +10,10 @@ type Source = "card" | "expansion" | "tribe" | "tag" | "art_tag" | "artist" | "a
 
 const MODE_LABELS: Record<Mode, string> = { remix: "Remix", vs: "VS", gauntlet: "Gauntlet", bracket: "Bracket" };
 
-const BRACKET_SIZES = [8, 16, 32, 64, 128] as const;
+/** Sentinel used for the "All" bracket size option. At submit time we resolve
+ *  it to the live count of matching cards. */
+const BRACKET_ALL = -1 as const;
+const BRACKET_SIZES = [8, 16, 32, 64, 128, 256] as const;
 
 const SOURCE_LABELS: Record<Source, string> = {
   all: "All Cards",
@@ -282,12 +285,16 @@ export default function BrewCreateForm() {
     (needsSelection && selected !== null) ||
     (!needsSelection && (selectedColors.length > 0 || selectedType || selectedSubtype || selectedRarity || rulesText));
 
-  const minCountForMode = mode === "bracket" ? bracketSize : 2;
+  // Effective bracket size for validation + submission. BRACKET_ALL uses the
+  // live count; otherwise use the selected power-of-2.
+  const effectiveBracketSize = bracketSize === BRACKET_ALL ? (count ?? 0) : bracketSize;
+  const minCountForMode = mode === "bracket" ? Math.max(2, bracketSize === BRACKET_ALL ? 2 : bracketSize) : 2;
   const canCreate = hasFiltersOrSelection && generatedName.length > 0 && (count === null || count >= minCountForMode);
 
-  // Auto-shrink bracket size if count drops below it
+  // Auto-shrink bracket size if count drops below it (only for fixed sizes —
+  // "All" always fits by definition)
   useEffect(() => {
-    if (mode !== "bracket" || count === null) return;
+    if (mode !== "bracket" || count === null || bracketSize === BRACKET_ALL) return;
     if (count < bracketSize) {
       const fit = [...BRACKET_SIZES].reverse().find((s) => s <= count);
       if (fit && fit !== bracketSize) setBracketSize(fit);
@@ -303,8 +310,8 @@ export default function BrewCreateForm() {
     subtype: selectedSubtype || null,
     rules_text: rulesText || null,
     rarity: selectedRarity || null,
-    pool_size: mode === "bracket" ? bracketSize : poolSize,
-    bracket_size: mode === "bracket" ? bracketSize : null,
+    pool_size: mode === "bracket" ? effectiveBracketSize : poolSize,
+    bracket_size: mode === "bracket" ? effectiveBracketSize : null,
     include_children: source === "expansion" ? includeChildren : null,
     only_new_cards: source === "expansion" ? onlyNewCards : null,
     first_illustration_only: source === "expansion" ? firstIllustrationOnly : null,
@@ -730,9 +737,35 @@ export default function BrewCreateForm() {
                 </button>
               );
             })}
+            {/* "All" — use every matching card. Odd counts get a bye each round. */}
+            {(() => {
+              const disabled = count !== null && count < 2;
+              const isSelected = bracketSize === BRACKET_ALL;
+              return (
+                <button
+                  onClick={() => {
+                    if (!disabled) {
+                      setBracketSize(BRACKET_ALL);
+                      clearPreview();
+                    }
+                  }}
+                  disabled={disabled}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    isSelected
+                      ? "bg-amber-500 text-gray-900"
+                      : disabled
+                      ? "bg-gray-900 text-gray-700 cursor-not-allowed"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700 cursor-pointer"
+                  }`}
+                  title="Use every matching card — odd counts get byes"
+                >
+                  All{count !== null ? ` (${count})` : ""}
+                </button>
+              );
+            })()}
           </div>
-          {count !== null && count < 8 && (
-            <p className="text-xs text-red-400 mt-2">Need at least 8 matching cards for a bracket.</p>
+          {count !== null && count < 2 && (
+            <p className="text-xs text-red-400 mt-2">Need at least 2 matching cards for a bracket.</p>
           )}
         </div>
       )}

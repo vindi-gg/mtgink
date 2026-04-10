@@ -1,47 +1,77 @@
 import type { BracketCard, BracketMatchup, BracketState } from "./types";
 
-/** Valid bracket sizes: must be a power of 2 between 8 and 512 */
-const VALID_SIZES = [8, 16, 32, 64, 128, 256, 512];
-
-/** Generate round names based on bracket size */
-function buildRoundNames(bracketSize: number): string[] {
-  const roundCount = Math.log2(bracketSize);
+/** Build human-readable names for each round based on how many cards enter it. */
+function buildRoundNames(cardsPerRound: number[]): string[] {
   const names: string[] = [];
-  for (let r = 0; r < roundCount; r++) {
-    const remaining = bracketSize / Math.pow(2, r);
-    if (remaining === 2) names.push("Final");
-    else if (remaining === 4) names.push("Semifinals");
-    else if (remaining === 8) names.push("Quarterfinals");
-    else names.push(`Round of ${remaining}`);
+  for (const count of cardsPerRound) {
+    if (count === 2) names.push("Final");
+    else if (count === 3 || count === 4) names.push("Semifinals");
+    else if (count >= 5 && count <= 8) names.push("Quarterfinals");
+    else names.push(`Round of ${count}`);
   }
   return names;
 }
 
-/** Create initial bracket state with adjacent pairing */
+/** Create initial bracket state. Supports any N >= 2; non-power-of-2 counts
+ *  use byes (last card in each odd round auto-advances). */
 export function createBracket(cards: BracketCard[]): BracketState {
-  if (!VALID_SIZES.includes(cards.length)) {
-    throw new Error(`Bracket size must be one of: ${VALID_SIZES.join(", ")}`);
+  if (cards.length < 2) {
+    throw new Error("Bracket needs at least 2 cards");
   }
 
-  const roundCount = Math.log2(cards.length);
+  // A slot in the bracket tree is either:
+  //  - a concrete card seed (for the first round or for bye-through carriers)
+  //  - a reference to a previous match whose winner hasn't been decided yet
+  type Slot =
+    | { kind: "card"; seed: number }
+    | { kind: "match"; round: number; matchIdx: number };
 
-  // Round 0: bracketSize/2 matchups with adjacent pairing (0v1, 2v3, ...)
-  const round0: BracketMatchup[] = [];
-  const firstRoundMatchups = cards.length / 2;
-  for (let i = 0; i < firstRoundMatchups; i++) {
-    round0.push({ index: i, seedA: i * 2, seedB: i * 2 + 1, winner: null });
-  }
+  const rounds: BracketMatchup[][] = [];
+  let pending: Slot[] = cards.map((_, i) => ({ kind: "card", seed: i }));
 
-  // Subsequent rounds: empty matchups, halving each time
-  const rounds: BracketMatchup[][] = [round0];
-  let matchupCount = firstRoundMatchups / 2;
-  for (let r = 1; r < roundCount; r++) {
+  while (pending.length > 1) {
+    const currentRoundIdx = rounds.length;
     const round: BracketMatchup[] = [];
-    for (let i = 0; i < matchupCount; i++) {
-      round.push({ index: i, seedA: -1, seedB: -1, winner: null });
+    const nextPending: Slot[] = [];
+
+    let i = 0;
+    while (i + 1 < pending.length) {
+      const slotA = pending[i];
+      const slotB = pending[i + 1];
+      const matchIdx = round.length;
+
+      round.push({
+        index: matchIdx,
+        seedA: slotA.kind === "card" ? slotA.seed : -1,
+        seedB: slotB.kind === "card" ? slotB.seed : -1,
+        winner: null,
+        next: null, // will be filled in when the next round is built
+      });
+
+      // If either slot is a reference to a previous match, wire up the
+      // propagation link on that prior match so its winner lands here.
+      if (slotA.kind === "match") {
+        const prev = rounds[slotA.round][slotA.matchIdx];
+        prev.next = { round: currentRoundIdx, match: matchIdx, slot: "A" };
+      }
+      if (slotB.kind === "match") {
+        const prev = rounds[slotB.round][slotB.matchIdx];
+        prev.next = { round: currentRoundIdx, match: matchIdx, slot: "B" };
+      }
+
+      nextPending.push({ kind: "match", round: currentRoundIdx, matchIdx });
+      i += 2;
     }
+
+    // Odd count — the last slot sits out this round (bye). The carrier
+    // passes through unchanged, so a bye card can skip multiple rounds
+    // if the following rounds are also odd.
+    if (i < pending.length) {
+      nextPending.push(pending[i]);
+    }
+
     rounds.push(round);
-    matchupCount /= 2;
+    pending = nextPending;
   }
 
   return {
@@ -54,7 +84,10 @@ export function createBracket(cards: BracketCard[]): BracketState {
   };
 }
 
-/** Record a vote for a specific matchup (immutable update) */
+/** Record a vote for a specific matchup (immutable update).
+ *  Uses the explicit matchup.next propagation link when available (new
+ *  brackets), falls back to the legacy floor(idx/2) rule for older
+ *  brackets saved in localStorage before the byes refactor. */
 export function recordVote(
   state: BracketState,
   roundIndex: number,
@@ -78,8 +111,17 @@ export function recordVote(
   // Set winner
   newRounds[roundIndex][matchupIndex].winner = winnerSeed;
 
-  // Propagate winner to next round
-  if (roundIndex < lastRound) {
+  // Propagate winner
+  const explicitNext = matchup.next;
+  if (explicitNext !== undefined) {
+    // New-style bracket with explicit propagation
+    if (explicitNext !== null) {
+      const target = newRounds[explicitNext.round][explicitNext.match];
+      if (explicitNext.slot === "A") target.seedA = winnerSeed;
+      else target.seedB = winnerSeed;
+    }
+  } else if (roundIndex < lastRound) {
+    // Legacy bracket: assume power-of-2 layout, use floor(idx/2)
     const nextRound = roundIndex + 1;
     const nextMatchupIdx = Math.floor(matchupIndex / 2);
     const isFirstOfPair = matchupIndex % 2 === 0;
@@ -91,7 +133,7 @@ export function recordVote(
     }
   }
 
-  // Check if bracket is complete (final matchup has a winner)
+  // Bracket is complete when the last round's (sole) match has a winner
   const finalMatchup = newRounds[lastRound][0];
   const completed = finalMatchup.winner !== null;
 
@@ -163,6 +205,19 @@ export function getChampion(state: BracketState): BracketCard | null {
   return state.cards[finalMatchup.winner];
 }
 
+/** Count the cards entering each round. For round 0 it's the total card
+ *  count; for later rounds it's the number of winners + byes from the
+ *  previous round. */
+function cardsPerRound(state: BracketState): number[] {
+  const counts: number[] = [state.cards.length];
+  let remaining = state.cards.length;
+  for (let r = 0; r < state.rounds.length - 1; r++) {
+    remaining = Math.ceil(remaining / 2);
+    counts.push(remaining);
+  }
+  return counts;
+}
+
 /** Get bracket progress info */
 export function getBracketProgress(state: BracketState): {
   totalMatchups: number;
@@ -172,13 +227,14 @@ export function getBracketProgress(state: BracketState): {
   roundNames: string[];
   roundProgress: { completed: number; total: number }[];
 } {
-  const bracketSize = state.cards.length;
-  const roundNames = buildRoundNames(bracketSize);
+  const roundNames = buildRoundNames(cardsPerRound(state));
   let completedMatchups = 0;
+  let totalMatchups = 0;
 
   const roundProgress = state.rounds.map((round) => {
     const completed = round.filter((m) => m.winner !== null).length;
     completedMatchups += completed;
+    totalMatchups += round.length;
     return { completed, total: round.length };
   });
 
@@ -192,7 +248,7 @@ export function getBracketProgress(state: BracketState): {
   }
 
   return {
-    totalMatchups: bracketSize - 1,
+    totalMatchups,
     completedMatchups,
     roundName: roundNames[currentRoundIndex] ?? `Round ${currentRoundIndex}`,
     currentRoundIndex,
@@ -201,9 +257,17 @@ export function getBracketProgress(state: BracketState): {
   };
 }
 
-/** Get human-readable round name */
+/** Get human-readable round name (legacy signature — bracketSize hint only
+ *  used as a fallback when we don't have the full bracket state) */
 export function getRoundName(index: number, bracketSize = 32): string {
-  const names = buildRoundNames(bracketSize);
+  // Approximate cards-per-round list assuming power-of-2 halving from bracketSize
+  const counts: number[] = [];
+  let n = bracketSize;
+  while (n >= 2) {
+    counts.push(n);
+    n = Math.ceil(n / 2);
+  }
+  const names = buildRoundNames(counts);
   return names[index] ?? `Round ${index}`;
 }
 

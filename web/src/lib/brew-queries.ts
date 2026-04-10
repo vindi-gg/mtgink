@@ -76,7 +76,9 @@ export async function createBrew(params: {
       subtype: params.subtype ?? null,
       rules_text: params.rulesText ?? null,
       rarity: params.rarity ?? null,
-      pool_size: params.poolSize ?? null,
+      // Bracket brews track size via bracket_size; leave pool_size null so we
+      // don't trip the gauntlet-oriented pool_size bound.
+      pool_size: params.mode === "bracket" ? null : (params.poolSize ?? null),
       bracket_size: params.mode === "bracket" ? params.bracketSize ?? null : null,
       pool,
       is_public: params.isPublic !== false,

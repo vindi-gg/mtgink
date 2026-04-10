@@ -142,6 +142,11 @@ export interface BracketMatchup {
   seedA: number;
   seedB: number;
   winner: number | null;
+  /** Explicit propagation link — where this match's winner goes next.
+   *  Built at bracket creation time so byes can skip rounds when N isn't
+   *  a power of 2. null means this is the final match. Optional for
+   *  backwards compat with brackets saved before the byes refactor. */
+  next?: { round: number; match: number; slot: "A" | "B" } | null;
 }
 
 export interface BracketState {
@@ -483,9 +488,6 @@ export interface DailyChallengeWithStatus extends DailyChallenge {
 
 export type BrewMode = "remix" | "vs" | "gauntlet" | "bracket";
 
-export const BRACKET_SIZES = [8, 16, 32, 64, 128, 256] as const;
-export type BracketSize = typeof BRACKET_SIZES[number];
-
 export interface Brew {
   id: string;
   user_id: string | null;
@@ -500,7 +502,7 @@ export interface Brew {
   subtype: string | null;
   rules_text: string | null;
   pool_size: number | null;
-  bracket_size: BracketSize | null;
+  bracket_size: number | null;
   pool: GauntletEntry[] | null;
   is_public: boolean;
   play_count: number;
