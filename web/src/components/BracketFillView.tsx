@@ -315,7 +315,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
       </div>
 
       {/* Desktop: All rounds as animated columns */}
-      <div className="hidden md:flex items-stretch px-4 pb-20 overflow-hidden">
+      <div className="hidden md:flex items-stretch px-4 pb-20">
         {bracket.rounds.map((round, roundIdx) => {
           const isActive = roundIdx === activeRound;
           const isPast = roundIdx < activeRound;
@@ -327,7 +327,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
               width: isPast || isActive ? "55%" : "22%",
               marginLeft: isPast ? "-55%" : "0",
               opacity: isPast ? 0 : 1,
-              overflow: "hidden",
+              pointerEvents: isPast ? "none" : undefined,
             }}>
               {/* Connector from previous visible round */}
               {!isPast && prevRound && roundIdx > 0 && !isPast && (
@@ -377,7 +377,6 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           width: activeRound === championRoundIdx ? "60%" : champion ? "22%" : "0%",
           marginLeft: activeRound > championRoundIdx ? "-60%" : "0",
           opacity: champion || activeRound === championRoundIdx ? 1 : 0,
-          overflow: "hidden",
         }}>
           {/* Connector from final */}
           {champion && (

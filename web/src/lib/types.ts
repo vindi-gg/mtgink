@@ -480,12 +480,17 @@ export interface DailyChallengeWithStatus extends DailyChallenge {
 
 // --- Brew types ---
 
+export type BrewMode = "remix" | "vs" | "gauntlet" | "bracket";
+
+export const BRACKET_SIZES = [8, 16, 32, 64, 128, 256] as const;
+export type BracketSize = typeof BRACKET_SIZES[number];
+
 export interface Brew {
   id: string;
   user_id: string | null;
   name: string;
   description: string | null;
-  mode: "remix" | "vs" | "gauntlet";
+  mode: BrewMode;
   source: "card" | "expansion" | "tribe" | "tag" | "artist" | "all";
   source_id: string;
   source_label: string;
@@ -494,6 +499,7 @@ export interface Brew {
   subtype: string | null;
   rules_text: string | null;
   pool_size: number | null;
+  bracket_size: BracketSize | null;
   pool: GauntletEntry[] | null;
   is_public: boolean;
   play_count: number;

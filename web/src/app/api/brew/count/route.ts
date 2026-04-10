@@ -15,9 +15,23 @@ export async function GET(request: NextRequest) {
   const subtype = params.get("subtype") || undefined;
   const rulesText = params.get("rules_text") || undefined;
   const rarity = params.get("rarity") || undefined;
+  const includeChildren = params.get("include_children") === "true";
+  const onlyNewCards = params.get("only_new_cards") === "true";
+  const firstIllustrationOnly = params.get("first_illustration_only") === "true";
 
   try {
-    const count = await getBrewCount(source, sourceId, colors, type, subtype, rulesText, rarity);
+    const count = await getBrewCount(
+      source,
+      sourceId,
+      colors,
+      type,
+      subtype,
+      rulesText,
+      rarity,
+      includeChildren,
+      onlyNewCards,
+      firstIllustrationOnly,
+    );
     return NextResponse.json({ count });
   } catch {
     return NextResponse.json({ count: 0 });

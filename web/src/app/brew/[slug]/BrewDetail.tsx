@@ -12,6 +12,7 @@ const MODE_COLORS: Record<string, string> = {
   remix: "bg-amber-500/20 text-amber-400",
   vs: "bg-blue-500/20 text-blue-400",
   gauntlet: "bg-red-500/20 text-red-400",
+  bracket: "bg-purple-500/20 text-purple-400",
 };
 
 interface BrewChampion {
@@ -127,7 +128,10 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
         {brew.rules_text && (
           <span>Text: <span className="text-gray-200">&ldquo;{brew.rules_text}&rdquo;</span></span>
         )}
-        {brew.pool_size && (
+        {brew.mode === "bracket" && brew.bracket_size && (
+          <span>Bracket: <span className="text-gray-200">{brew.bracket_size} cards</span></span>
+        )}
+        {brew.mode !== "bracket" && brew.pool_size && (
           <span>Pool: <span className="text-gray-200">{brew.pool_size}</span></span>
         )}
         <span>Plays: <span className="text-gray-200">{brew.play_count.toLocaleString()}</span></span>
@@ -140,7 +144,7 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
           disabled={playing}
           className="px-8 py-3 rounded-lg font-semibold text-sm bg-amber-500 text-gray-900 hover:bg-amber-400 transition-colors disabled:opacity-50"
         >
-          {playing ? "Loading..." : "Play"}
+          {playing ? "Loading..." : brew.mode === "bracket" ? "Play Bracket" : "Play"}
         </button>
 
         <button

@@ -48,6 +48,7 @@ export async function createBrew(params: {
   rulesText?: string;
   rarity?: string;
   poolSize?: number;
+  bracketSize?: number;
   isPublic?: boolean;
   pool?: GauntletEntry[];
 }): Promise<{ id: string; slug: string }> {
@@ -76,6 +77,7 @@ export async function createBrew(params: {
       rules_text: params.rulesText ?? null,
       rarity: params.rarity ?? null,
       pool_size: params.poolSize ?? null,
+      bracket_size: params.mode === "bracket" ? params.bracketSize ?? null : null,
       pool,
       is_public: params.isPublic !== false,
       slug,
@@ -101,6 +103,9 @@ export async function resolveBrewPool(params: {
   rulesText?: string;
   rarity?: string;
   poolSize?: number;
+  includeChildren?: boolean;
+  onlyNewCards?: boolean;
+  firstIllustrationOnly?: boolean;
 }): Promise<GauntletEntry[]> {
   const ps = params.poolSize ?? 10;
   const filters: CompareFilters = {
@@ -144,6 +149,9 @@ export async function resolveBrewPool(params: {
       subtype: params.subtype,
       rulesText: params.rulesText,
       rarity: params.rarity,
+      includeChildren: params.includeChildren,
+      onlyNewCards: params.onlyNewCards,
+      firstIllustrationOnly: params.firstIllustrationOnly,
     });
   }
 

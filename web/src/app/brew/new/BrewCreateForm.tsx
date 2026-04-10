@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import type { OracleCard, MtgSet, Tribe, Tag, Artist, GauntletEntry } from "@/lib/types";
 import { artCropUrl } from "@/lib/image-utils";
 
-type Mode = "remix" | "vs" | "gauntlet";
+type Mode = "remix" | "vs" | "gauntlet" | "bracket";
 type Source = "card" | "expansion" | "tribe" | "tag" | "art_tag" | "artist" | "all";
 
-const MODE_LABELS: Record<Mode, string> = { remix: "Remix", vs: "VS", gauntlet: "Gauntlet" };
+const MODE_LABELS: Record<Mode, string> = { remix: "Remix", vs: "VS", gauntlet: "Gauntlet", bracket: "Bracket" };
+
+const BRACKET_SIZES = [8, 16, 32, 64, 128] as const;
 
 const SOURCE_LABELS: Record<Source, string> = {
   all: "All Cards",
@@ -25,6 +27,7 @@ const MODE_SOURCES: Record<Mode, Source[]> = {
   remix: ["card"],
   vs: ["all", "expansion", "tribe"],
   gauntlet: ["all", "card", "expansion", "tribe", "tag", "art_tag", "artist"],
+  bracket: ["all", "card", "expansion", "tribe", "tag", "art_tag", "artist"],
 };
 
 const COLORS = ["W", "U", "B", "R", "G"] as const;
@@ -55,9 +58,13 @@ export default function BrewCreateForm() {
   const router = useRouter();
 
   // Core state
-  const mode: Mode = "gauntlet";
+  const [mode, setMode] = useState<Mode>("gauntlet");
   const [source, setSource] = useState<Source>("all");
   const [selected, setSelected] = useState<SelectedItem | null>(null);
+  const [bracketSize, setBracketSize] = useState<number>(16);
+  const [includeChildren, setIncludeChildren] = useState<boolean>(false);
+  const [onlyNewCards, setOnlyNewCards] = useState<boolean>(false);
+  const [firstIllustrationOnly, setFirstIllustrationOnly] = useState<boolean>(false);
 
   // Filters
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
@@ -218,6 +225,9 @@ export default function BrewCreateForm() {
       if (selectedSubtype) params.set("subtype", selectedSubtype);
       if (rulesText) params.set("rules_text", rulesText);
       if (selectedRarity) params.set("rarity", selectedRarity);
+      if (source === "expansion" && includeChildren) params.set("include_children", "true");
+      if (source === "expansion" && onlyNewCards) params.set("only_new_cards", "true");
+      if (source === "expansion" && firstIllustrationOnly) params.set("first_illustration_only", "true");
 
       const res = await fetch(`/api/brew/count?${params}`);
       const data = await res.json();
@@ -226,7 +236,7 @@ export default function BrewCreateForm() {
       setCount(null);
     }
     setCountLoading(false);
-  }, [selected, source, selectedColors, selectedType, selectedSubtype, selectedRarity, rulesText, needsSelection]);
+  }, [selected, source, selectedColors, selectedType, selectedSubtype, selectedRarity, rulesText, needsSelection, includeChildren, onlyNewCards, firstIllustrationOnly]);
 
   useEffect(() => {
     fetchCount();
@@ -238,7 +248,7 @@ export default function BrewCreateForm() {
   };
 
   const showFilters = true;
-  const showPoolSize = true;
+  const showPoolSize = mode !== "bracket";
 
   // Auto-generated title: "Lorwyn Eclipsed Red Creature Gauntlet"
   const generatedName = (() => {
@@ -272,7 +282,17 @@ export default function BrewCreateForm() {
     (needsSelection && selected !== null) ||
     (!needsSelection && (selectedColors.length > 0 || selectedType || selectedSubtype || selectedRarity || rulesText));
 
-  const canCreate = hasFiltersOrSelection && generatedName.length > 0 && (count === null || count >= 2);
+  const minCountForMode = mode === "bracket" ? bracketSize : 2;
+  const canCreate = hasFiltersOrSelection && generatedName.length > 0 && (count === null || count >= minCountForMode);
+
+  // Auto-shrink bracket size if count drops below it
+  useEffect(() => {
+    if (mode !== "bracket" || count === null) return;
+    if (count < bracketSize) {
+      const fit = [...BRACKET_SIZES].reverse().find((s) => s <= count);
+      if (fit && fit !== bracketSize) setBracketSize(fit);
+    }
+  }, [count, mode, bracketSize]);
 
   const buildBrewPayload = () => ({
     mode,
@@ -283,7 +303,11 @@ export default function BrewCreateForm() {
     subtype: selectedSubtype || null,
     rules_text: rulesText || null,
     rarity: selectedRarity || null,
-    pool_size: showPoolSize ? poolSize : null,
+    pool_size: mode === "bracket" ? bracketSize : poolSize,
+    bracket_size: mode === "bracket" ? bracketSize : null,
+    include_children: source === "expansion" ? includeChildren : null,
+    only_new_cards: source === "expansion" ? onlyNewCards : null,
+    first_illustration_only: source === "expansion" ? firstIllustrationOnly : null,
   });
 
   const buildSourceLabel = () => {
@@ -363,6 +387,35 @@ export default function BrewCreateForm() {
         </div>
       )}
 
+      {/* Mode toggle */}
+      <div>
+        <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Mode</label>
+        <div className="flex gap-2">
+          {(["gauntlet", "bracket"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m);
+                clearPreview();
+                // If current source isn't supported by new mode, reset to "all"
+                if (!MODE_SOURCES[m].includes(source)) {
+                  setSource("all");
+                  setSelected(null);
+                  setQuery("");
+                }
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                mode === m
+                  ? "bg-amber-500 text-gray-900"
+                  : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-300"
+              }`}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Source tabs */}
       <div>
         <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">Source</label>
@@ -436,6 +489,47 @@ export default function BrewCreateForm() {
                   &times;
                 </button>
               </span>
+            </div>
+          )}
+
+          {source === "expansion" && selected && (
+            <div className="mt-3 space-y-2">
+              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none w-fit">
+                <input
+                  type="checkbox"
+                  checked={includeChildren}
+                  onChange={(e) => {
+                    setIncludeChildren(e.target.checked);
+                    clearPreview();
+                  }}
+                  className="w-4 h-4 accent-amber-500 cursor-pointer"
+                />
+                Include child sets (commander, tokens, mystical archive, etc.)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none w-fit">
+                <input
+                  type="checkbox"
+                  checked={onlyNewCards}
+                  onChange={(e) => {
+                    setOnlyNewCards(e.target.checked);
+                    clearPreview();
+                  }}
+                  className="w-4 h-4 accent-amber-500 cursor-pointer"
+                />
+                Only new cards (exclude reprints)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none w-fit">
+                <input
+                  type="checkbox"
+                  checked={firstIllustrationOnly}
+                  onChange={(e) => {
+                    setFirstIllustrationOnly(e.target.checked);
+                    clearPreview();
+                  }}
+                  className="w-4 h-4 accent-amber-500 cursor-pointer"
+                />
+                First illustration per card (skip showcase/borderless/alt arts)
+              </label>
             </div>
           )}
         </div>
@@ -574,7 +668,7 @@ export default function BrewCreateForm() {
         </div>
       )}
 
-      {/* Pool size */}
+      {/* Pool size (gauntlet mode) */}
       {showPoolSize && (
         <div>
           {(() => {
@@ -601,6 +695,45 @@ export default function BrewCreateForm() {
               </>
             );
           })()}
+        </div>
+      )}
+
+      {/* Bracket size (bracket mode) */}
+      {mode === "bracket" && (
+        <div>
+          <label className="text-xs uppercase tracking-wider text-gray-500 mb-2 block">
+            Bracket size
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {BRACKET_SIZES.map((size) => {
+              const disabled = count !== null && count < size;
+              const isSelected = bracketSize === size;
+              return (
+                <button
+                  key={size}
+                  onClick={() => {
+                    if (!disabled) {
+                      setBracketSize(size);
+                      clearPreview();
+                    }
+                  }}
+                  disabled={disabled}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    isSelected
+                      ? "bg-amber-500 text-gray-900"
+                      : disabled
+                      ? "bg-gray-900 text-gray-700 cursor-not-allowed"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700 cursor-pointer"
+                  }`}
+                >
+                  {size}
+                </button>
+              );
+            })}
+          </div>
+          {count !== null && count < 8 && (
+            <p className="text-xs text-red-400 mt-2">Need at least 8 matching cards for a bracket.</p>
+          )}
         </div>
       )}
 
