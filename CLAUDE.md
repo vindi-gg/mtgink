@@ -220,6 +220,56 @@ SUPABASE_DB_URL=...                # Direct Postgres for Python scripts
 └── skills/          # Custom skills/commands
 ```
 
+## Authorization Required Every Time: Prod DB, Git Commits, Git Push
+
+**Production DB writes, git commits, and git pushes are NEVER auto-approved,
+no matter what.**
+
+Every one of these actions requires a fresh, explicit "yes do it" from the
+user BEFORE it runs, every single time.
+
+### What requires fresh approval
+
+- **Production Supabase writes**: any command that can modify prod state,
+  including:
+  - SQL migrations against `SUPABASE_DB_URL` from `web/.env.local`
+  - Manual `psql` commands that aren't pure `SELECT` (UPDATE, DELETE, ALTER,
+    CREATE, DROP, INSERT, TRUNCATE, GRANT, REVOKE, etc.)
+  - `supabase db push`, `supabase db reset`, or anything that targets the
+    prod project via the management API / CLI
+  - Any script in `scripts/` that writes to prod (e.g.
+    `import_data_postgres.py`, `import_prices.py`, `import_tags_postgres.py`,
+    `migrate_votes.py`)
+
+- **Git commits**: `git commit` of any kind — feature work, fixes, docs,
+  merges, reverts, amends. All of them.
+
+- **Git pushes**: `git push` to any remote branch, including the branch
+  you're currently on. Merging branches locally and then pushing counts.
+  Creating a new remote branch counts. Force-pushing always requires
+  approval AND the user must explicitly say "force push".
+
+### Prior approval does not carry over
+
+If the user said "commit and push this fix" and you finish, the authorization
+is used up. The next commit needs a new approval. Same for prod migrations:
+"go ahead and run migrations 069, 070, 071" does NOT authorize migration 072
+ten minutes later, even if it looks trivially safe.
+
+### What does NOT need fresh approval
+
+- Local-only operations: running migrations against
+  `web/.env.development.local` (the `docker exec supabase_db_mtgink psql ...`
+  setup), editing files, running the dev server, installing deps, reading
+  from prod (SELECT-only queries).
+- `git status`, `git diff`, `git log`, `git branch` — read-only git.
+- Staging changes with `git add` (reversible, not visible to anyone).
+
+### When in doubt
+
+Show the exact command/SQL/diff and ask. A 10-second pause is cheap; an
+unauthorized prod change or an unwanted commit is not.
+
 ## Core Principles
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
