@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, mode, source, source_id, source_label, colors, card_type, subtype, rules_text, rarity, pool_size, bracket_size, is_public, pool } = body;
+    const { name, description, mode, source, source_id, source_label, colors, card_type, subtype, rules_text, rarity, pool_size, bracket_size, is_public } = body;
 
     if (!name || !mode || !source || !source_label) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
       poolSize: pool_size,
       bracketSize: bracket_size,
       isPublic: is_public,
-      pool: pool ?? undefined,
     });
 
     return NextResponse.json(result, { status: 201 });

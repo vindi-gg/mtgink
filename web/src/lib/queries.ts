@@ -1775,6 +1775,24 @@ export async function getGauntletIllustrationsBySet(
 }
 
 /** Get cards by tag as gauntlet entries */
+/** Run `.in(column, ids)` in chunks to stay under the PostgREST URL
+ *  size limit. Each UUID is ~37 chars with the comma, and the default
+ *  header limit is around 8KB — 150 UUIDs per chunk keeps us well
+ *  inside that. */
+const IN_CHUNK_SIZE = 150;
+async function inChunked<T>(
+  ids: string[],
+  fetcher: (chunk: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  if (ids.length === 0) return [];
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + IN_CHUNK_SIZE);
+    out.push(...(await fetcher(chunk)));
+  }
+  return out;
+}
+
 export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<GauntletEntry[]> {
   // Get oracle_ids for this tag (could be illustration_tags or oracle_tags)
   const { data: tagData } = await getAdminClient()
@@ -1795,14 +1813,17 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
       .limit(count * 10);
     let illIds = [...new Set((itRows ?? []).map((r) => r.illustration_id))];
     if (illIds.length === 0) return [];
-    // Shuffle and cap to avoid oversized .in() queries (PostgREST URL limit)
+    // Shuffle first so a trimmed chunk set is still randomized.
     illIds = illIds.sort(() => Math.random() - 0.5).slice(0, Math.max(count * 3, 100));
-    const { data: pRows } = await getAdminClient()
-      .from("printings")
-      .select("oracle_id")
-      .in("illustration_id", illIds)
-      .not("oracle_id", "is", null);
-    const ids = new Set((pRows ?? []).map((r) => r.oracle_id));
+    const pRows = await inChunked(illIds, async (chunk) => {
+      const { data } = await getAdminClient()
+        .from("printings")
+        .select("oracle_id")
+        .in("illustration_id", chunk)
+        .not("oracle_id", "is", null);
+      return data ?? [];
+    });
+    const ids = new Set(pRows.map((r) => r.oracle_id));
     oracleIds = [...ids];
   } else {
     const { data } = await getAdminClient()
@@ -1818,27 +1839,37 @@ export async function getGauntletCardsByTag(tagId: string, count = 10): Promise<
   // Shuffle and take extra to account for filtering (excluded layouts, digital-only sets)
   const shuffled = oracleIds.sort(() => Math.random() - 0.5).slice(0, Math.max(count * 2, 100));
 
-  // Get card data + representative printing (exclude non-standard layouts)
-  const { data: cards } = await getAdminClient()
-    .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost")
-    .in("oracle_id", shuffled);
+  // Get card data + representative printing (exclude non-standard layouts).
+  // Chunked to keep the URL within PostgREST's size limit — a 460-card
+  // counterspell bracket was hitting ~17KB URLs before and silently
+  // returning empty, so the bracket save claimed "pool too small".
+  const cards = await inChunked(shuffled, async (chunk) => {
+    const { data } = await getAdminClient()
+      .from("oracle_cards")
+      .select("oracle_id, name, slug, layout, type_line, mana_cost")
+      .in("oracle_id", chunk);
+    return data ?? [];
+  });
 
-  if (!cards || cards.length === 0) return [];
+  if (cards.length === 0) return [];
   const filteredCards = cards.filter((c) => !EXCLUDED_LAYOUTS.has(c.layout ?? ""));
   if (filteredCards.length === 0) return [];
   const filteredIds = filteredCards.map((c) => c.oracle_id);
 
-  const { data: printings } = await getAdminClient()
-    .from("printings")
-    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
-    .in("oracle_id", filteredIds)
-    .not("illustration_id", "is", null)
-    .eq("sets.digital", false)
-    .order("released_at", { ascending: false });
+  const printings = await inChunked(filteredIds, async (chunk) => {
+    const { data } = await getAdminClient()
+      .from("printings")
+      .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
+      .in("oracle_id", chunk)
+      .not("illustration_id", "is", null)
+      .eq("sets.digital", false)
+      .order("released_at", { ascending: false });
+    return data ?? [];
+  });
 
-  const printingMap = new Map<string, (typeof printings extends (infer T)[] | null ? T : never)>();
-  for (const p of printings ?? []) {
+  type PrintingRow = (typeof printings)[number];
+  const printingMap = new Map<string, PrintingRow>();
+  for (const p of printings) {
     if (!printingMap.has(p.oracle_id)) {
       printingMap.set(p.oracle_id, p);
     }
