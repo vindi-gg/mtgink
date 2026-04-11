@@ -51,10 +51,13 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
     // Bracket is fully complete — jump to the champion view
     return bracket.rounds.length;
   });
+  const rootRef = useRef<HTMLDivElement>(null);
   const roundTabsRef = useRef<HTMLDivElement>(null);
   const desktopContainerRef = useRef<HTMLDivElement>(null);
   const matchupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const justVotedRef = useRef(false);
+  const lastRoundChangeRef = useRef<number>(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [showRestartModal, setShowRestartModal] = useState(false);
 
   // cardUrl picks art_crop or normal based on the W-toggle (ImageModeProvider)
@@ -62,6 +65,63 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
 
   const progress = getBracketProgress(bracket);
   const champion = getChampion(bracket);
+  const championRoundIdx = bracket.rounds.length; // virtual index for champion
+
+  // Step to prev/next round with a cooldown so a single trackpad fling or
+  // swipe gesture doesn't fly through every round in one go. 500ms matches
+  // the CSS transition duration on the round wrappers.
+  const ROUND_CHANGE_COOLDOWN = 500;
+  const navigateRound = useCallback(
+    (delta: number) => {
+      const now = Date.now();
+      if (now - lastRoundChangeRef.current < ROUND_CHANGE_COOLDOWN) return;
+      const maxIdx = champion ? championRoundIdx : bracket.rounds.length - 1;
+      const next = Math.max(0, Math.min(maxIdx, activeRound + delta));
+      if (next !== activeRound) {
+        lastRoundChangeRef.current = now;
+        setActiveRound(next);
+      }
+    },
+    [activeRound, bracket.rounds.length, champion, championRoundIdx],
+  );
+
+  // Hijack horizontal wheel/trackpad scroll: trackpad two-finger horizontal
+  // (or shift+wheel) changes rounds instead of horizontally scrolling the
+  // page. Listener is attached to the bracket root (not window) so other
+  // pages aren't affected, and passive: false is required so we can
+  // preventDefault and suppress the browser's native horizontal scroll.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const handler = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 10) {
+        e.preventDefault();
+        navigateRound(e.deltaX > 0 ? 1 : -1);
+      }
+    };
+    root.addEventListener("wheel", handler, { passive: false });
+    return () => root.removeEventListener("wheel", handler);
+  }, [navigateRound]);
+
+  // Touch swipe handlers — only evaluated on touchend so we don't block
+  // native vertical scrolling during a drag. Horizontal must dominate (>1.5×
+  // vertical delta) and exceed 50px for a swipe to count.
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      navigateRound(dx < 0 ? 1 : -1);
+    }
+  };
 
   // Auto-save on change
   useEffect(() => {
@@ -127,7 +187,6 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
   }, [bracket]);
 
   // Auto-advance: next round, or champion view when bracket completes
-  const championRoundIdx = bracket.rounds.length; // virtual index for champion
   useEffect(() => {
     if (!justVotedRef.current) return;
     justVotedRef.current = false;
@@ -279,7 +338,16 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
 
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div
+      ref={rootRef}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      // overflow-x-clip stops the wide bracket row from making the page
+      // itself horizontally scrollable. `clip` (not `hidden`) avoids
+      // creating a scroll container, so sticky top: 0 on the header still
+      // works and vertical overflow isn't affected.
+      className="min-h-screen bg-gray-950 text-white overflow-x-clip"
+    >
       {/* Sticky header: round tabs + progress bar.
           z-40 so it sits above the in-bracket card overlays:
           name/artist labels (z-10) AND CardPreviewOverlay's zoom icon
