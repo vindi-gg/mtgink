@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import { useImageMode } from "@/lib/image-mode";
+import { useNavFocus } from "@/lib/nav-focus";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import {
@@ -62,6 +63,15 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
 
   // cardUrl picks art_crop or normal based on the W-toggle (ImageModeProvider)
   const { cardUrl } = useImageMode();
+
+  // Focus mode — hide the global navbar by default on /bracket, restore
+  // on unmount. The hamburger button in the sticky header below toggles
+  // it back visible without leaving the page.
+  const { hidden: navHidden, setHidden: setNavHidden } = useNavFocus();
+  useEffect(() => {
+    setNavHidden(true);
+    return () => setNavHidden(false);
+  }, [setNavHidden]);
 
   const progress = getBracketProgress(bracket);
   const champion = getChampion(bracket);
@@ -352,12 +362,33 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
           z-40 so it sits above the in-bracket card overlays:
           name/artist labels (z-10) AND CardPreviewOverlay's zoom icon
           (z-30). Stays below the preview overlay itself (z-50) so the
-          full-card hover popup still covers the nav as intended. */}
-      <div className="sticky top-0 md:top-14 z-40 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800">
+          full-card hover popup still covers the nav as intended.
+
+          Top offset transitions between top-14 (under the global nav)
+          and top: 0 (flush to viewport when global nav is hidden), in
+          sync with the navbar's slide animation. Both mobile and desktop
+          use the same offset because the nav is sticky on mobile too
+          for focus-mode routes — see Navbar's isShowdown comment. */}
+      <div
+        className={`sticky top-0 z-40 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800 transition-[top] duration-300 ease-in-out ${navHidden ? "" : "top-14"}`}
+      >
         <div className="flex items-center">
+        {/* Hamburger — toggles the global navbar back into view. Lives
+            outside the scrollable tabs container so it stays pinned even
+            when tab overflow scrolls horizontally. */}
+        <button
+          onClick={() => setNavHidden(!navHidden)}
+          title={navHidden ? "Show site nav" : "Hide site nav"}
+          aria-label={navHidden ? "Show site nav" : "Hide site nav"}
+          className="flex-shrink-0 px-3 py-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
         <div
           ref={roundTabsRef}
-          className="flex gap-1.5 px-3 py-2 overflow-x-auto scrollbar-hide flex-1 min-w-0"
+          className="flex gap-1.5 py-2 overflow-x-auto scrollbar-hide flex-1 min-w-0"
         >
           {progress.roundNames.map((name, i) => {
             const rp = progress.roundProgress[i];

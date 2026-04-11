@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AdBanner from "@/components/AdBanner";
 import { ImageModeProvider } from "@/lib/image-mode";
+import { NavFocusProvider } from "@/lib/nav-focus";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@next/third-parties/google";
@@ -50,12 +51,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ImageModeProvider>
-          <Navbar />
-          <div className={adsEnabled ? "pb-[58px] md:pb-[98px]" : ""}>
-            {children}
-            <Footer />
-          </div>
-          {adsEnabled && <AdBanner />}
+          <NavFocusProvider>
+            <Navbar />
+            <div className={adsEnabled ? "pb-[58px] md:pb-[98px]" : ""}>
+              {children}
+              <Footer />
+            </div>
+            {adsEnabled && <AdBanner />}
+          </NavFocusProvider>
         </ImageModeProvider>
         <Analytics />
         <SpeedInsights />

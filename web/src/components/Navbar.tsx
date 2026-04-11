@@ -8,6 +8,7 @@ import type { User } from "@supabase/supabase-js";
 import SearchModal from "./SearchModal";
 import UserAvatar from "./UserAvatar";
 import { PLAY_MODES, DB_MODES, PlayModeIcon } from "@/lib/play-modes";
+import { useNavFocus } from "@/lib/nav-focus";
 
 function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/showdown/remix" && (pathname.startsWith("/showdown/remix") || pathname === "/showdown")) return true;
@@ -37,9 +38,22 @@ export default function Navbar() {
   const playMobileRef = useRef<HTMLDivElement>(null);
   const dbMenuRef = useRef<HTMLDivElement>(null);
   const dbMobileRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const [navHeight, setNavHeight] = useState(56);
   // Stable ref — survives HMR module resets without triggering re-renders
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
+
+  // Focus mode — pages like /bracket set this to true on mount, causing
+  // the nav to slide up and content below to shift up in sync.
+  const { hidden: navHidden } = useNavFocus();
+
+  // Measure actual nav height so the negative-margin collapse matches
+  // whatever the nav is currently rendering (beta banner, mobile user
+  // menu open, etc.). Re-measure when content-affecting state changes.
+  useEffect(() => {
+    if (navRef.current) setNavHeight(navRef.current.offsetHeight);
+  }, [user, menuOpen, pathname]);
 
   useEffect(() => {
     setBetaDismissed(localStorage.getItem("mtgink_beta_dismissed") === "1");
@@ -146,11 +160,26 @@ export default function Navbar() {
     user?.user_metadata?.name ||
     user?.email;
 
-  const isShowdown = pathname.startsWith("/showdown") || pathname.startsWith("/daily/gauntlet") || pathname.endsWith("/remix") || pathname.startsWith("/bracket");
+  // Showdown-family pages let the nav scroll away on mobile (not sticky)
+  // so the vote UI fills the screen. /bracket used to be in this list, but
+  // it now uses NavFocusContext to slide the nav in/out explicitly, which
+  // requires the nav to be sticky on mobile too — otherwise when the user
+  // taps the hamburger to show the nav, the nav is above the viewport
+  // (in flow at the top of the document) and invisible.
+  const isShowdown = pathname.startsWith("/showdown") || pathname.startsWith("/daily/gauntlet") || pathname.endsWith("/remix");
 
   return (
     <>
-    <nav className={`relative border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm z-[60] ${isShowdown ? "md:sticky md:top-0" : "sticky top-0"}`}>
+    <nav
+      ref={navRef}
+      className={`relative border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm z-[60] transition-[transform,margin-bottom] duration-300 ease-in-out ${isShowdown ? "md:sticky md:top-0" : "sticky top-0"}`}
+      style={{
+        // Focus mode: slide up and out of layout. Both values transition
+        // together so content below moves up in sync with the slide.
+        transform: navHidden ? "translateY(-100%)" : undefined,
+        marginBottom: navHidden ? `-${navHeight}px` : undefined,
+      }}
+    >
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex flex-col items-center font-bold pt-[5px]" style={{ lineHeight: 0.9, fontFamily: "'Futura', 'Futura Bold', 'Trebuchet MS', Arial, sans-serif" }}>
