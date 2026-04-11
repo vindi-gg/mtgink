@@ -20,10 +20,12 @@ import type { BracketCard, BracketState, BracketMatchup } from "@/lib/types";
 interface BracketFillViewProps {
   cards: BracketCard[];
   slug?: string;
+  bracketName?: string;
   onComplete?: (state: BracketState) => void;
+  onRestart?: () => void;
 }
 
-export default function BracketFillView({ cards, slug, onComplete }: BracketFillViewProps) {
+export default function BracketFillView({ cards, slug, bracketName, onComplete, onRestart }: BracketFillViewProps) {
   // On mount, try to restore saved progress from localStorage. Only restore if
   // the saved state's cards match the ones we were handed (same illustration_ids,
   // same order) — otherwise the bracket's seeds would point to the wrong cards.
@@ -53,6 +55,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
   const desktopContainerRef = useRef<HTMLDivElement>(null);
   const matchupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const justVotedRef = useRef(false);
+  const [showRestartModal, setShowRestartModal] = useState(false);
 
   // cardUrl picks art_crop or normal based on the W-toggle (ImageModeProvider)
   const { cardUrl } = useImageMode();
@@ -277,11 +280,16 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* Sticky header: round tabs + progress bar */}
-      <div className="sticky top-0 md:top-14 z-10 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800">
+      {/* Sticky header: round tabs + progress bar.
+          z-40 so it sits above the in-bracket card overlays:
+          name/artist labels (z-10) AND CardPreviewOverlay's zoom icon
+          (z-30). Stays below the preview overlay itself (z-50) so the
+          full-card hover popup still covers the nav as intended. */}
+      <div className="sticky top-0 md:top-14 z-40 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center">
         <div
           ref={roundTabsRef}
-          className="flex gap-1.5 px-3 py-2 overflow-x-auto scrollbar-hide"
+          className="flex gap-1.5 px-3 py-2 overflow-x-auto scrollbar-hide flex-1 min-w-0"
         >
           {progress.roundNames.map((name, i) => {
             const rp = progress.roundProgress[i];
@@ -327,6 +335,28 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           >
             Champion
           </button>
+        </div>
+        {/* Desktop-only right-side: bracket name + restart button. Hidden
+            on mobile; mobile placement is TBD. */}
+        <div className="hidden md:flex items-center gap-3 pl-3 pr-4 flex-shrink-0">
+          {bracketName && (
+            <span className="text-sm text-gray-300 font-medium truncate max-w-xs">
+              {bracketName}
+            </span>
+          )}
+          {onRestart && (
+            <button
+              onClick={() => setShowRestartModal(true)}
+              title="Restart bracket"
+              aria-label="Restart bracket"
+              className="flex-shrink-0 p-1.5 rounded-lg text-gray-500 hover:bg-gray-800 hover:text-red-400 transition-colors cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
         </div>
         <div className="px-4 pb-2">
           <div className="flex gap-1 h-1.5">
@@ -478,6 +508,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
                       matchupNumber={mIdx + 1}
                       totalInRound={round.length}
                       onVote={isActive || isPast ? handleVote : undefined}
+                      hideOverlays={isFuture}
                     />
                   </div>
                 ))}
@@ -521,6 +552,41 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           </div>
         </div>
       </div>
+
+      {/* Restart confirmation modal */}
+      {showRestartModal && (
+        <div
+          onClick={() => setShowRestartModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full shadow-2xl"
+          >
+            <h3 className="text-lg font-semibold text-white mb-2">Restart bracket?</h3>
+            <p className="text-sm text-gray-400 mb-6">
+              This will clear your current progress and start fresh with a new set of cards.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowRestartModal(false)}
+                className="px-4 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowRestartModal(false);
+                  onRestart?.();
+                }}
+                className="px-4 py-2 rounded-lg text-sm bg-red-600 hover:bg-red-500 text-white font-medium transition-colors cursor-pointer"
+              >
+                Restart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -633,6 +699,7 @@ function MiniMatchupPreview({
   matchupNumber,
   totalInRound,
   onVote,
+  hideOverlays = false,
 }: {
   bracket: BracketState;
   matchup: BracketMatchup;
@@ -641,6 +708,10 @@ function MiniMatchupPreview({
   matchupNumber?: number;
   totalInRound?: number;
   onVote?: (round: number, matchup: number, winner: number) => void;
+  // Suppress the zoom button + card name/artist label overlays. Used for
+  // future rounds on desktop, where cards are previews of what's coming
+  // and the overlays just add visual noise to the column.
+  hideOverlays?: boolean;
 }) {
   const { cardUrl, imageMode } = useImageMode();
   const placeholderAspect = imageMode === "card" ? "aspect-[488/680]" : "aspect-[626/457]";
@@ -668,16 +739,18 @@ function MiniMatchupPreview({
             onClick={onVote ? () => onVote(roundIndex, matchupIndex, seed) : undefined}
             className="w-full"
           />
-          <CardPreviewOverlay
-            setCode={card.set_code}
-            collectorNumber={card.collector_number}
-            imageVersion={card.image_version}
-            alt={`${card.name} by ${card.artist}`}
-            illustrationId={card.illustration_id}
-            oracleId={card.oracle_id}
-            cardName={card.name}
-            cardSlug={card.slug}
-          />
+          {!hideOverlays && (
+            <CardPreviewOverlay
+              setCode={card.set_code}
+              collectorNumber={card.collector_number}
+              imageVersion={card.image_version}
+              alt={`${card.name} by ${card.artist}`}
+              illustrationId={card.illustration_id}
+              oracleId={card.oracle_id}
+              cardName={card.name}
+              cardSlug={card.slug}
+            />
+          )}
           {isWinner && (
             <div className="absolute top-1 right-1 z-10 pointer-events-none">
               <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
@@ -687,10 +760,12 @@ function MiniMatchupPreview({
               </div>
             </div>
           )}
-          <div className="absolute bottom-1 right-1 z-10 text-right pointer-events-none">
-            <p className={`text-[10px] font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
-            <p className="text-[9px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
-          </div>
+          {!hideOverlays && (
+            <div className="absolute bottom-1 right-1 z-10 text-right pointer-events-none">
+              <p className={`text-[10px] font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
+              <p className="text-[9px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
+            </div>
+          )}
         </div>
       </div>
     );

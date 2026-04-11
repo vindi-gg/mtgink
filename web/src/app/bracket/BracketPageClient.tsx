@@ -51,6 +51,7 @@ export default function BracketPageClient() {
 
   const [cards, setCards] = useState<BracketCard[] | null>(null);
   const [slug, setSlug] = useState<string>("test");
+  const [bracketName, setBracketName] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const submittedRef = useRef<boolean>(false);
 
@@ -101,6 +102,7 @@ export default function BracketPageClient() {
           if (!cancelled) {
             setSlug(localSlug);
             setCards(picked);
+            setBracketName(brew.name);
           }
         } catch (err) {
           if (!cancelled) {
@@ -147,6 +149,24 @@ export default function BracketPageClient() {
     return () => {
       cancelled = true;
     };
+  }, [brewSlug]);
+
+  // Restart: clear saved bracket state + cards cache + submission guard,
+  // then reload so load() picks a fresh set of cards (new random pull for
+  // random brackets, new shuffle of the pool for brew brackets).
+  const handleRestart = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (brewSlug) {
+      const localSlug = `brew-${brewSlug}`;
+      localStorage.removeItem(`mtgink_bracket_${localSlug}`);
+      localStorage.removeItem(`mtgink_bracket_cards_${localSlug}`);
+      sessionStorage.removeItem(`bracket_submitted_${localSlug}`);
+    } else {
+      localStorage.removeItem("mtgink_bracket_test");
+      localStorage.removeItem(RANDOM_STORAGE_KEY);
+      sessionStorage.removeItem("bracket_submitted_test");
+    }
+    window.location.reload();
   }, [brewSlug]);
 
   const handleComplete = useCallback(async (state: BracketState) => {
@@ -225,5 +245,13 @@ export default function BracketPageClient() {
     );
   }
 
-  return <BracketFillView cards={cards} slug={slug} onComplete={handleComplete} />;
+  return (
+    <BracketFillView
+      cards={cards}
+      slug={slug}
+      bracketName={bracketName}
+      onComplete={handleComplete}
+      onRestart={handleRestart}
+    />
+  );
 }
