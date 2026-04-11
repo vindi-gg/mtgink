@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import { useImageMode } from "@/lib/image-mode";
 import { useNavFocus } from "@/lib/nav-focus";
+import { createClient } from "@/lib/supabase/client";
+import { saveCompletedBracketLocal } from "@/lib/bracket-history";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import {
@@ -22,11 +26,14 @@ interface BracketFillViewProps {
   cards: BracketCard[];
   slug?: string;
   bracketName?: string;
+  /** Brew slug (without the "brew-" prefix) when this bracket is backed
+   *  by a brew — used to build share URLs and "link to card" fallbacks. */
+  brewSlug?: string | null;
   onComplete?: (state: BracketState) => void;
   onRestart?: () => void;
 }
 
-export default function BracketFillView({ cards, slug, bracketName, onComplete, onRestart }: BracketFillViewProps) {
+export default function BracketFillView({ cards, slug, bracketName, brewSlug, onComplete, onRestart }: BracketFillViewProps) {
   // On mount, try to restore saved progress from localStorage. Only restore if
   // the saved state's cards match the ones we were handed (same illustration_ids,
   // same order) — otherwise the bracket's seeds would point to the wrong cards.
@@ -60,6 +67,42 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
   const lastRoundChangeRef = useRef<number>(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [showRestartModal, setShowRestartModal] = useState(false);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const mobileSettingsRef = useRef<HTMLDivElement>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const savedToHistoryRef = useRef(false);
+
+  // Supabase auth — determines whether to show the "My Brackets" link
+  // and whether to prompt the user to sign in on the champion screen.
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) return;
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  const isLoggedIn = !!user;
+
+  // Close the mobile settings dropdown on outside click.
+  useEffect(() => {
+    if (!mobileSettingsOpen) return;
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (
+        mobileSettingsRef.current &&
+        !mobileSettingsRef.current.contains(e.target as Node)
+      ) {
+        setMobileSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [mobileSettingsOpen]);
 
   // cardUrl picks art_crop or normal based on the W-toggle (ImageModeProvider)
   const { cardUrl } = useImageMode();
@@ -93,6 +136,43 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
       }
     },
     [activeRound, bracket.rounds.length, champion, championRoundIdx],
+  );
+
+  // Share the bracket via the Web Share API when available, falling back
+  // to clipboard copy. Two variants: "finished" phrases the share text
+  // around the result (champion reveal), "play" phrases it as an
+  // invitation to play the bracket fresh. Both variants share the same
+  // URL (current /bracket route with the brew param preserved).
+  const shareBracket = useCallback(
+    async (kind: "finished" | "play") => {
+      if (typeof window === "undefined") return;
+      const url = new URL(window.location.origin);
+      url.pathname = "/bracket";
+      if (brewSlug) url.searchParams.set("brew", brewSlug);
+
+      const name = bracketName ?? "a Magic art bracket";
+      const title = `MTG Ink — ${name}`;
+      const text =
+        kind === "finished" && champion
+          ? `I completed ${name}! Champion: ${champion.name} by ${champion.artist}.`
+          : `Play ${name} on MTG Ink — a head-to-head Magic art bracket.`;
+      const shareData = { title, text, url: url.toString() };
+
+      try {
+        if (typeof navigator !== "undefined" && "share" in navigator) {
+          await navigator.share(shareData);
+          return;
+        }
+      } catch {
+        // User cancelled or share failed — fall through to clipboard copy.
+      }
+      try {
+        await navigator.clipboard.writeText(`${text} ${url.toString()}`);
+      } catch {
+        // Ignore clipboard failures (e.g. permissions).
+      }
+    },
+    [brewSlug, bracketName, champion],
   );
 
   // Hijack horizontal wheel/trackpad scroll: trackpad two-finger horizontal
@@ -138,12 +218,62 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
     saveBracket(bracket, slug);
   }, [bracket, slug]);
 
-  // Notify on completion
+  // Notify on completion + save to "My Brackets" history. Logged-in
+  // users persist to the saved_brackets table via /api/bracket/save;
+  // anon users save to localStorage on the device. The savedToHistoryRef
+  // guard keeps this from firing twice in Strict Mode or on re-renders
+  // while bracket.completed stays true. The ref resets when the bracket
+  // goes back to incomplete (e.g. after a restart).
   useEffect(() => {
-    if (bracket.completed && onComplete) {
-      onComplete(bracket);
+    if (!bracket.completed) {
+      savedToHistoryRef.current = false;
+      return;
     }
-  }, [bracket.completed, onComplete, bracket]);
+    if (!savedToHistoryRef.current) {
+      savedToHistoryRef.current = true;
+      const champ = getChampion(bracket);
+      if (champ) {
+        const championSummary = {
+          oracle_id: champ.oracle_id,
+          illustration_id: champ.illustration_id,
+          name: champ.name,
+          artist: champ.artist,
+          set_code: champ.set_code,
+          collector_number: champ.collector_number,
+          image_version: champ.image_version,
+          slug: champ.slug,
+        };
+        if (isLoggedIn) {
+          // Persist server-side. Fire-and-forget; failure is non-fatal
+          // (the bracket is still celebrated in the UI). If the save
+          // fails we drop the ref guard so a later event can retry.
+          fetch("/api/bracket/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              brew_slug: brewSlug ?? null,
+              brew_name: bracketName ?? null,
+              card_count: bracket.cards.length,
+              champion: championSummary,
+            }),
+          }).then((res) => {
+            if (!res.ok) savedToHistoryRef.current = false;
+          }).catch(() => {
+            savedToHistoryRef.current = false;
+          });
+        } else {
+          // Anon: localStorage only.
+          saveCompletedBracketLocal({
+            brewSlug: brewSlug ?? null,
+            brewName: bracketName ?? null,
+            champion: championSummary,
+            cardCount: bracket.cards.length,
+          });
+        }
+      }
+    }
+    if (onComplete) onComplete(bracket);
+  }, [bracket.completed, onComplete, bracket, brewSlug, bracketName, isLoggedIn]);
 
   const handleVote = useCallback((roundIndex: number, matchupIndex: number, winnerSeed: number) => {
     justVotedRef.current = true;
@@ -347,6 +477,62 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
+  // Action row shown beneath the champion card once the bracket is
+  // complete. Identical markup for desktop and mobile — rendered inline
+  // in both champion views below. Anonymous users get a "sign in" prompt
+  // above the share/link buttons.
+  const championFooter = champion ? (
+    <div className="mt-6 max-w-md mx-auto px-2 space-y-3">
+      {!isLoggedIn && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left">
+          <p className="text-sm text-amber-100 mb-2">
+            Sign in to save this bracket to your account and share your history.
+          </p>
+          <Link
+            href="/auth"
+            className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-gray-900 text-xs font-semibold hover:bg-amber-400 transition-colors"
+          >
+            Sign in
+          </Link>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2 justify-center">
+        <button
+          onClick={() => shareBracket("finished")}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition-colors cursor-pointer"
+        >
+          Share result
+        </button>
+        <button
+          onClick={() => shareBracket("play")}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors cursor-pointer"
+        >
+          Share to play
+        </button>
+        <Link
+          href={`/card/${champion.slug}`}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors"
+        >
+          View {champion.name}
+        </Link>
+        <Link
+          href="/brews?mode=bracket"
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors"
+        >
+          More bracket brews
+        </Link>
+        {isLoggedIn && (
+          <Link
+            href="/my/brackets"
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors"
+          >
+            My Brackets
+          </Link>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div
       ref={rootRef}
@@ -373,22 +559,53 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
         className={`sticky top-0 z-40 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800 transition-[top] duration-300 ease-in-out ${navHidden ? "" : "top-14"}`}
       >
         <div className="flex items-center">
-        {/* Hamburger — toggles the global navbar back into view. Lives
-            outside the scrollable tabs container so it stays pinned even
-            when tab overflow scrolls horizontally. */}
+        {/* Panel-top toggle — reveals / dismisses the global navbar.
+            Outer rectangle with a bar near the top is an unambiguous
+            "top nav panel" metaphor (unlike a bare chevron, which reads
+            as "scroll to top/bottom"). The inner chevron rotates 180°
+            to indicate direction: points DOWN when nav is hidden ("tap
+            to pull it down") and UP when visible ("tap to send it up").
+            The outer shape stays fixed so the panel metaphor is always
+            present; only the inner chevron flips. Rotation duration
+            matches the nav slide so the two feel like one motion.
+            Lives outside the scrollable tabs container so it stays
+            pinned even when tab overflow scrolls. */}
         <button
           onClick={() => setNavHidden(!navHidden)}
           title={navHidden ? "Show site nav" : "Hide site nav"}
           aria-label={navHidden ? "Show site nav" : "Hide site nav"}
           className="flex-shrink-0 px-3 py-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {/* Panel outline */}
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            {/* Top bar — the nav */}
+            <line x1="3" y1="9" x2="21" y2="9" />
+            {/* Direction indicator — rotates on toggle */}
+            <g
+              className="transition-transform duration-300 ease-in-out"
+              style={{
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                transform: navHidden ? undefined : "rotate(180deg)",
+              }}
+            >
+              <path d="m9 13 3 3 3-3" />
+            </g>
           </svg>
         </button>
+        {/* Desktop: horizontally-scrollable row of all round tabs. */}
         <div
           ref={roundTabsRef}
-          className="flex gap-1.5 py-2 overflow-x-auto scrollbar-hide flex-1 min-w-0"
+          className="hidden md:flex gap-1.5 py-2 overflow-x-auto scrollbar-hide flex-1 min-w-0"
         >
           {progress.roundNames.map((name, i) => {
             const rp = progress.roundProgress[i];
@@ -435,8 +652,50 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
             Champion
           </button>
         </div>
-        {/* Desktop-only right-side: bracket name + restart button. Hidden
-            on mobile; mobile placement is TBD. */}
+
+        {/* Mobile: single-tab carousel. Shows only the active round and
+            slides horizontally to the next/prev when activeRound changes
+            (via voting, swipe, or auto-advance). Leaves room for the
+            fixed cog button on the right. */}
+        <div className="md:hidden flex-1 min-w-0 overflow-hidden py-2">
+          <div
+            className="flex transition-transform duration-300 ease-out"
+            style={{ transform: `translateX(-${activeRound * 100}%)` }}
+          >
+            {progress.roundNames.map((name, i) => {
+              const rp = progress.roundProgress[i];
+              return (
+                <div
+                  key={i}
+                  className="w-full flex-shrink-0 flex items-center justify-center"
+                >
+                  <div className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 text-gray-900">
+                    <span>{name}</span>
+                    {rp.total > 0 && (
+                      <span className="ml-1.5 opacity-70">
+                        {rp.completed}/{rp.total}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {/* Champion slide */}
+            <div className="w-full flex-shrink-0 flex items-center justify-center">
+              <div
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                  champion
+                    ? "bg-amber-500 text-gray-900"
+                    : "bg-gray-900 text-gray-600"
+                }`}
+              >
+                Champion
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop-only right-side: bracket name + restart button. */}
         <div className="hidden md:flex items-center gap-3 pl-3 pr-4 flex-shrink-0">
           {bracketName && (
             <span className="text-sm text-gray-300 font-medium truncate max-w-xs">
@@ -454,6 +713,59 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          )}
+        </div>
+
+        {/* Mobile-only right-side: cog button + dropdown with bracket
+            name and restart. Fixed-width like the hamburger on the left
+            so the carousel in the middle has a stable slot. */}
+        <div ref={mobileSettingsRef} className="md:hidden flex-shrink-0 relative pr-2">
+          <button
+            onClick={() => setMobileSettingsOpen((v) => !v)}
+            title="Bracket settings"
+            aria-label="Bracket settings"
+            className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          {mobileSettingsOpen && (
+            <div className="absolute top-full right-2 mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-1 min-w-[200px] z-50">
+              {bracketName && (
+                <div className="px-3 py-2 border-b border-gray-800">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Bracket</p>
+                  <p className="text-sm font-medium text-white truncate">{bracketName}</p>
+                </div>
+              )}
+              {isLoggedIn && (
+                <Link
+                  href="/my/brackets"
+                  onClick={() => setMobileSettingsOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  My Brackets
+                </Link>
+              )}
+              {onRestart && (
+                <button
+                  onClick={() => {
+                    setMobileSettingsOpen(false);
+                    setShowRestartModal(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-gray-800 transition-colors cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Restart bracket
+                </button>
+              )}
+            </div>
           )}
         </div>
         </div>
@@ -537,6 +849,7 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
                 />
                 <h2 className="text-3xl font-bold text-white mt-6">{champion.name}</h2>
                 <p className="text-lg text-gray-400 mt-2">{champion.artist} · {champion.set_code.toUpperCase()}</p>
+                {championFooter}
               </div>
             ) : (
               <p className="text-gray-600 text-sm">Complete all rounds to reveal the champion</p>
@@ -640,6 +953,7 @@ export default function BracketFillView({ cards, slug, bracketName, onComplete, 
                 />
                 <h2 className="text-2xl font-bold text-white mt-4">{champion.name}</h2>
                 <p className="text-sm text-gray-400 mt-1">{champion.artist} · {champion.set_code.toUpperCase()}</p>
+                {championFooter}
               </div>
             ) : (
               <div className="flex items-center justify-center h-full">

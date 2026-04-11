@@ -318,6 +318,7 @@ export default function BracketPageClient() {
       cards={cards}
       slug={slug}
       bracketName={bracketName}
+      brewSlug={brewSlug}
       onComplete={handleComplete}
       onRestart={handleRestart}
     />
