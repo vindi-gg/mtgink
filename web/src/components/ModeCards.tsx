@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PLAY_MODES, PlayModeIcon } from "@/lib/play-modes";
 
-const MODES = PLAY_MODES.filter((m) => m.label !== "Daily" && m.label !== "Brew");
+const MODES = PLAY_MODES.filter((m) => m.label !== "Daily" && m.label !== "Brews");
 
 interface ModeCardsProps {
   images?: string[];

@@ -17,7 +17,9 @@ function isActiveLink(pathname: string, href: string): boolean {
   if (href === "/deck" && (pathname === "/deck" || pathname.startsWith("/deck/"))) return true;
   if (href === "/deck-import" && pathname.startsWith("/deck")) return true;
   if (href === "/artists" && pathname.startsWith("/artists")) return true;
-  if (href === "/brew" && pathname.startsWith("/brew")) return true;
+  // "Brews" menu item highlights for the listing (/brews), the create
+  // form (/brew), and individual brew detail pages (/brew/[slug]).
+  if (href === "/brews" && (pathname === "/brews" || pathname.startsWith("/brew"))) return true;
   if (href === "/favorites" && pathname.startsWith("/favorites")) return true;
   if (href === "/history" && pathname.startsWith("/history")) return true;
   return false;
@@ -147,6 +149,7 @@ export default function Navbar() {
   const userMenuLinks = [
     { href: "/favorites", label: "Favorites" },
     { href: "/history", label: "Vote History" },
+    { href: "/my/brackets", label: "My Brackets" },
     ...(isAdmin ? [{ href: "/inkadmin", label: "Admin" }] : []),
   ];
 

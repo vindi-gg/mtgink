@@ -78,7 +78,7 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
     setDeleting(true);
     try {
       await fetch(`/api/brew/${brew.slug}`, { method: "DELETE" });
-      router.push("/brew");
+      router.push("/brews");
     } catch {
       setDeleting(false);
     }

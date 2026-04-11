@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { OracleCard, MtgSet, Tribe, Tag, Artist, GauntletEntry } from "@/lib/types";
-import { artCropUrl } from "@/lib/image-utils";
+import type { OracleCard, MtgSet, Tribe, Tag, Artist } from "@/lib/types";
 
 type Mode = "remix" | "vs" | "gauntlet" | "bracket";
 type Source = "card" | "expansion" | "tribe" | "tag" | "art_tag" | "artist" | "all";
@@ -96,10 +95,6 @@ export default function BrewCreateForm() {
   const [sets, setSets] = useState<MtgSet[] | null>(null);
   const [tribes, setTribes] = useState<Tribe[] | null>(null);
 
-  // Preview state
-  const [previewPool, setPreviewPool] = useState<GauntletEntry[] | null>(null);
-  const [previewing, setPreviewing] = useState(false);
-
   // Submit state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +102,10 @@ export default function BrewCreateForm() {
   // Whether source requires an entity selection
   const needsSelection = source !== "all";
 
-  const clearPreview = () => setPreviewPool(null);
+  // Formerly invalidated the preview pool cache; preview was removed
+  // (server always resolves fresh on create) but the filter change
+  // handlers still call this, so leave a no-op in place.
+  const clearPreview = () => {};
 
   const handleSourceChange = (s: Source) => {
     setSource(s);
@@ -330,29 +328,8 @@ export default function BrewCreateForm() {
     return selected!.label.split(" (")[0];
   };
 
-  const handlePreview = async () => {
-    setPreviewing(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/brew/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildBrewPayload()),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to preview");
-      }
-      const { pool } = await res.json();
-      setPreviewPool(pool);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to preview");
-    }
-    setPreviewing(false);
-  };
-
   const handleCreate = async () => {
-    if (!canCreate || !previewPool) return;
+    if (!canCreate) return;
     setSubmitting(true);
     setError(null);
 
@@ -365,7 +342,6 @@ export default function BrewCreateForm() {
           name: generatedName,
           source_label: buildSourceLabel(),
           is_public: true,
-          pool: previewPool,
         }),
       });
 
@@ -793,70 +769,18 @@ export default function BrewCreateForm() {
           )}
         </div>
 
-        {!previewPool && (
-          <button
-            onClick={handlePreview}
-            disabled={!canCreate || previewing}
-            className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
-              canCreate && !previewing
-                ? "bg-amber-500 text-gray-900 hover:bg-amber-400 cursor-pointer"
-                : "bg-gray-800 text-gray-600 cursor-not-allowed"
-            }`}
-          >
-            {previewing ? "Loading..." : "Preview Pool"}
-          </button>
-        )}
+        <button
+          onClick={handleCreate}
+          disabled={!canCreate || submitting}
+          className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
+            canCreate && !submitting
+              ? "bg-amber-500 text-gray-900 hover:bg-amber-400 cursor-pointer"
+              : "bg-gray-800 text-gray-600 cursor-not-allowed"
+          }`}
+        >
+          {submitting ? "Creating..." : "Create Brew"}
+        </button>
       </div>
-
-      {/* Preview grid */}
-      {previewPool && previewPool.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-300">
-              {previewPool.length} cards in pool
-            </h3>
-            <button
-              onClick={handlePreview}
-              disabled={previewing}
-              className="text-sm text-amber-400 hover:text-amber-300 transition-colors disabled:text-gray-600 cursor-pointer"
-            >
-              {previewing ? "Rolling..." : "Re-roll"}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-            {previewPool.map((entry) => (
-              <div key={`${entry.set_code}-${entry.collector_number}`} className="relative group">
-                <img
-                  src={artCropUrl(entry.set_code, entry.collector_number, entry.image_version)}
-                  alt={entry.name}
-                  className="w-full rounded-lg"
-                  style={{ aspectRatio: "626 / 457" }}
-                />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent rounded-b-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <p className="text-[10px] text-white truncate">{entry.name}</p>
-                  <p className="text-[9px] text-gray-400 truncate">{entry.artist}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Create button */}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={handleCreate}
-              disabled={submitting}
-              className={`px-8 py-3 rounded-lg font-semibold text-sm transition-colors ${
-                !submitting
-                  ? "bg-amber-500 text-gray-900 hover:bg-amber-400 cursor-pointer"
-                  : "bg-gray-800 text-gray-600 cursor-not-allowed"
-              }`}
-            >
-              {submitting ? "Creating..." : "Create Brew"}
-            </button>
-          </div>
-        </div>
-      )}
 
       {error && (
         <p className="text-red-400 text-sm">{error}</p>

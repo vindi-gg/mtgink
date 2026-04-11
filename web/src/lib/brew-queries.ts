@@ -50,7 +50,6 @@ export async function createBrew(params: {
   poolSize?: number;
   bracketSize?: number;
   isPublic?: boolean;
-  pool?: GauntletEntry[];
 }): Promise<{ id: string; slug: string }> {
   const admin = getAdminClient();
   const slug = await generateSlug(params.name);
@@ -58,8 +57,12 @@ export async function createBrew(params: {
   // Fetch preview image
   const preview = await getBrewPreviewImage(params.source, params.sourceId);
 
-  // Use provided pool (from preview) or resolve fresh
-  const pool = params.pool ?? await resolveBrewPool(params);
+  // Resolve the pool from the brew's source + filters at creation time.
+  // For bracket brews the client sends poolSize = bracketSize (see
+  // buildBrewPayload in BrewCreateForm), so resolveBrewPool returns
+  // bracketSize cards; the DB row stores the size in bracket_size and
+  // leaves pool_size null.
+  const pool = await resolveBrewPool(params);
 
   const { data, error } = await admin
     .from("brews")
@@ -180,6 +183,7 @@ export async function listPublicBrews(
   limit = 20,
   offset = 0,
   search?: string,
+  mode?: string,
 ): Promise<{ brews: Brew[]; total: number }> {
   const admin = getAdminClient();
 
@@ -188,6 +192,7 @@ export async function listPublicBrews(
     .select("*", { count: "exact", head: true })
     .eq("is_public", true);
   if (search) countQuery = countQuery.ilike("name", `%${search}%`);
+  if (mode) countQuery = countQuery.eq("mode", mode);
   const { count } = await countQuery;
 
   const orderCol = sort === "popular" ? "play_count" : "created_at";
@@ -198,6 +203,7 @@ export async function listPublicBrews(
     .order(orderCol, { ascending: false })
     .range(offset, offset + limit - 1);
   if (search) dataQuery = dataQuery.ilike("name", `%${search}%`);
+  if (mode) dataQuery = dataQuery.eq("mode", mode);
   const { data } = await dataQuery;
 
   return { brews: (data ?? []) as Brew[], total: count ?? 0 };

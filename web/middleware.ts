@@ -29,6 +29,13 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/showdown/gauntlet";
     return NextResponse.redirect(url, 307);
   }
+  // Brew routes reshuffled: /brew/new no longer exists; the create form
+  // moved to /brew, and the listing moved to /brews.
+  if (pathname === "/brew/new") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/brew";
+    return NextResponse.redirect(url, 307);
+  }
 
   // Skip session refresh on public content pages so Vercel can ISR cache them
   // Only refresh session on pages that need auth state
