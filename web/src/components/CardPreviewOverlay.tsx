@@ -156,8 +156,12 @@ export default function CardPreviewOverlay({
         document.body,
       )}
 
-      {/* Desktop card preview — follows cursor */}
-      {showing && cursorPos && (
+      {/* Desktop card preview — follows cursor. Portaled to document.body
+          so it escapes any opacity/transform stacking context from its
+          ancestor (e.g. the loser card slot in a bracket matchup sets
+          opacity-25 on its wrapper — without the portal, that dimming
+          would bleed into this hover preview too). */}
+      {showing && cursorPos && typeof document !== "undefined" && createPortal(
         <div
           className="fixed z-50 pointer-events-none hidden md:block"
           style={{
@@ -174,7 +178,8 @@ export default function CardPreviewOverlay({
               </span>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
