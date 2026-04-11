@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useImageMode } from "@/lib/image-mode";
+import CreateBracketPanel from "./CreateBracketPanel";
+import MobileBracketFab from "./MobileBracketFab";
 
 function ArtCardToggle() {
   const { imageMode, toggleImageMode } = useImageMode();
@@ -105,11 +107,15 @@ function getDetailContext(pathname: string): PlayLink[] | null {
 export default function Sidebar({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
   const playLinks = getDetailContext(pathname);
+  const isExpansionPage = /^\/db\/expansions\/[^/]+$/.test(pathname);
 
   return (
-    <aside className="hidden lg:block w-[300px] shrink-0 pt-[7rem]">
+    <>
+      {isExpansionPage && <MobileBracketFab />}
+      <aside className="hidden lg:block w-[300px] shrink-0 pt-[7rem]">
       <div className="space-y-6">
         {children}
+        {isExpansionPage && <CreateBracketPanel />}
         {playLinks && playLinks.length > 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <ArtCardToggle />
@@ -131,6 +137,7 @@ export default function Sidebar({ children }: { children?: React.ReactNode }) {
           </div>
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

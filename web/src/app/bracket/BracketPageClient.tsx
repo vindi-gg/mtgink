@@ -48,6 +48,11 @@ function shuffle<T>(arr: T[]): T[] {
 export default function BracketPageClient() {
   const searchParams = useSearchParams();
   const brewSlug = searchParams.get("brew");
+  const setCodeParam = searchParams.get("set_code");
+  const raritiesParam = searchParams.get("rarities");
+  const printingParam = searchParams.get("printing");
+  const sizeParam = searchParams.get("size");
+  const seedParam = searchParams.get("seed");
 
   const [cards, setCards] = useState<BracketCard[] | null>(null);
   const [slug, setSlug] = useState<string>("test");
@@ -59,6 +64,57 @@ export default function BracketPageClient() {
     let cancelled = false;
 
     async function load() {
+      // Set-filtered bracket — URL params fully describe the pool, so the
+      // (set+filters+size+seed) tuple is the shareable identity.
+      if (setCodeParam) {
+        const localSlug = `set-${setCodeParam}-${raritiesParam ?? ""}-${printingParam ?? "all"}-${sizeParam ?? "all"}-${seedParam ?? ""}`;
+        const cardsKey = `mtgink_bracket_cards_${localSlug}`;
+        const savedJson = typeof window !== "undefined" ? localStorage.getItem(cardsKey) : null;
+        if (savedJson) {
+          try {
+            const parsed = JSON.parse(savedJson) as BracketCard[];
+            if (Array.isArray(parsed) && parsed.length >= 2) {
+              if (!cancelled) {
+                setSlug(localSlug);
+                setCards(parsed);
+                setBracketName(`${setCodeParam.toUpperCase()} Bracket`);
+              }
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          const apiParams = new URLSearchParams();
+          apiParams.set("set_code", setCodeParam);
+          if (raritiesParam) apiParams.set("rarities", raritiesParam);
+          if (printingParam) apiParams.set("printing", printingParam);
+          if (sizeParam) apiParams.set("size", sizeParam);
+          if (seedParam) apiParams.set("seed", seedParam);
+          const res = await fetch(`/api/bracket/from-set?${apiParams.toString()}`);
+          if (!res.ok) throw new Error("Failed to build bracket");
+          const data = await res.json();
+          const fetched = (data.cards ?? []) as BracketCard[];
+          if (fetched.length < 2) {
+            throw new Error("Not enough cards match these filters for a bracket");
+          }
+          if (typeof window !== "undefined") {
+            localStorage.setItem(cardsKey, JSON.stringify(fetched));
+          }
+          if (!cancelled) {
+            setSlug(localSlug);
+            setCards(fetched);
+            setBracketName(`${setCodeParam.toUpperCase()} Bracket`);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : "Failed to load bracket");
+          }
+        }
+        return;
+      }
+
       // Brew-backed bracket
       if (brewSlug) {
         try {
@@ -149,13 +205,25 @@ export default function BracketPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [brewSlug]);
+  }, [brewSlug, setCodeParam, raritiesParam, printingParam, sizeParam, seedParam]);
 
   // Restart: clear saved bracket state + cards cache + submission guard,
   // then reload so load() picks a fresh set of cards (new random pull for
-  // random brackets, new shuffle of the pool for brew brackets).
+  // random brackets, new shuffle of the pool for brew brackets, new shuffle
+  // from filtered pool for set-filtered brackets via seed refresh).
   const handleRestart = useCallback(() => {
     if (typeof window === "undefined") return;
+    if (setCodeParam) {
+      const localSlug = `set-${setCodeParam}-${raritiesParam ?? ""}-${printingParam ?? "all"}-${sizeParam ?? "all"}-${seedParam ?? ""}`;
+      localStorage.removeItem(`mtgink_bracket_${localSlug}`);
+      localStorage.removeItem(`mtgink_bracket_cards_${localSlug}`);
+      sessionStorage.removeItem(`bracket_submitted_${localSlug}`);
+      // Refresh the URL with a new seed so the next load fetches a new shuffle
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.set("seed", Math.random().toString(36).slice(2, 10));
+      window.location.search = nextParams.toString();
+      return;
+    }
     if (brewSlug) {
       const localSlug = `brew-${brewSlug}`;
       localStorage.removeItem(`mtgink_bracket_${localSlug}`);
@@ -167,7 +235,7 @@ export default function BracketPageClient() {
       sessionStorage.removeItem("bracket_submitted_test");
     }
     window.location.reload();
-  }, [brewSlug]);
+  }, [brewSlug, setCodeParam, raritiesParam, printingParam, sizeParam, seedParam]);
 
   const handleComplete = useCallback(async (state: BracketState) => {
     // Guard against double-submit (effect may fire twice in dev/strict mode)
