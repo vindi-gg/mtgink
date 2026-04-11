@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import { useImageMode } from "@/lib/image-mode";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
@@ -50,6 +50,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     return bracket.rounds.length;
   });
   const roundTabsRef = useRef<HTMLDivElement>(null);
+  const desktopContainerRef = useRef<HTMLDivElement>(null);
   const matchupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const justVotedRef = useRef(false);
 
@@ -191,46 +192,86 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
     }
   }, []);
 
-  // Scroll active round tab into view + center the first unvoted matchup on
-  // screen. On very large brackets the row overflows horizontally, so we
-  // center both axes. Waits two animation frames so the column height /
-  // positions are finalized (image aspect-ratios, css transitions) before
-  // measuring.
+  // Scroll the active round tab into the sticky header.
   useEffect(() => {
     const container = roundTabsRef.current;
     if (!container) return;
     const tabIdx = Math.min(activeRound, container.children.length - 1);
     const tab = container.children[tabIdx] as HTMLElement | undefined;
     tab?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [activeRound]);
 
-    if (window.innerWidth < 768) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+  // Center the first unvoted matchup of the active round, in parallel with
+  // the round wrapper's width/marginLeft CSS transition.
+  //
+  //  - useLayoutEffect runs synchronously after React commits new inline
+  //    styles (width: 55%, marginLeft: 0, etc.) but BEFORE the browser's
+  //    first paint, so both animations kick off in the same frame.
+  //  - We measure the BRACKET CONTAINER (not the specific matchup) because
+  //    items-stretch makes the container height = tallest round column.
+  //    justify-around distributes matchups evenly through that height.
+  //  - document.documentElement.offsetHeight is the most aggressive layout
+  //    flush we can trigger — Firefox in particular sometimes doesn't
+  //    propagate style changes from a deeply-nested flex child when you
+  //    only read offsetHeight on that child.
+  //  - We ONLY scroll vertically. The bracket row is wider than the
+  //    viewport on many screens (flex-shrink-0 children), which makes the
+  //    document itself horizontally scrollable. Any scrollTo({left})
+  //    would horizontally scroll the WHOLE page — including sticky-top
+  //    navbar, since sticky only resists scroll on the axis it has an
+  //    offset for. Vertical-only keeps the nav glued in place.
+  //  - After the 500ms CSS transition completes, we run a correction
+  //    scroll. Chrome/Safari land the first scroll perfectly and the
+  //    correction is a no-op. Firefox's smooth-scroll animation stalls
+  //    when the document layout is mutating underneath it, so the
+  //    correction re-measures settled geometry and nudges to the exact
+  //    final target.
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || window.innerWidth < 768) {
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
-    // Desktop: wait for the 500ms width/margin CSS transition to finish
-    // before measuring + scrolling. Running earlier gives interpolated
-    // mid-transition geometry and the scroll lands at the wrong spot.
-    // The user sees the layout animate for 500ms (real "movement" feel)
-    // and THEN the scroll animates smoothly — one motion, not two.
-    //
+    const container = desktopContainerRef.current;
+    if (!container) return;
+
     // Target the first UNVOTED matchup of the active round (not match 0),
-    // so jumping back to a partially-played round lands on where you left
-    // off instead of the top.
+    // so jumping back to a partially-played round lands where you left off.
     const round = bracket.rounds[activeRound];
+    if (!round || round.length === 0) return;
     let targetIdx = 0;
-    if (round) {
-      const nextUnvoted = round.findIndex(
-        (m) => m.winner === null && m.seedA >= 0 && m.seedB >= 0,
-      );
-      if (nextUnvoted >= 0) targetIdx = nextUnvoted;
-    }
-    const timer = setTimeout(() => {
-      const el = matchupRefs.current.get(`desktop-${activeRound}-${targetIdx}`);
-      if (!el || !el.offsetParent) return;
-      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-    }, 520);
-    return () => clearTimeout(timer);
+    const nextUnvoted = round.findIndex(
+      (m) => m.winner === null && m.seedA >= 0 && m.seedB >= 0,
+    );
+    if (nextUnvoted >= 0) targetIdx = nextUnvoted;
+
+    const fractionY = (targetIdx + 0.5) / round.length;
+    const computeTarget = () => {
+      const rect = container.getBoundingClientRect();
+      const matchupCenterY = window.scrollY + rect.top + rect.height * fractionY;
+      return Math.max(0, matchupCenterY - window.innerHeight / 2);
+    };
+
+    // Aggressive layout flush — forces full-document layout so the new
+    // inline styles on the round wrappers are committed to the box model
+    // before we measure. Firefox needs this; Chrome/Safari tolerate less.
+    void document.documentElement.offsetHeight;
+
+    // First pass: runs in parallel with the CSS transition (Chrome/Safari
+    // hit the final target on this alone).
+    window.scrollTo({ top: computeTarget(), behavior: "smooth" });
+
+    // Second pass: after the CSS transition has fully settled, measure
+    // again and nudge if we ended up more than a tolerance off. Firefox
+    // uses this to recover from a stalled smooth-scroll.
+    const correctionTimer = setTimeout(() => {
+      const finalTarget = computeTarget();
+      if (Math.abs(window.scrollY - finalTarget) > 20) {
+        window.scrollTo({ top: finalTarget, behavior: "smooth" });
+      }
+    }, 550);
+
+    return () => clearTimeout(correctionTimer);
   }, [activeRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -382,7 +423,7 @@ export default function BracketFillView({ cards, slug, onComplete }: BracketFill
           body becomes horizontally scrollable (can't use overflow-x-auto
           on this container or the vertical overflow for tall columns
           would get clipped too). */}
-      <div className="hidden md:flex items-stretch px-4 pb-20">
+      <div ref={desktopContainerRef} className="hidden md:flex items-stretch px-4 pb-20">
         {bracket.rounds.map((round, roundIdx) => {
           const isActive = roundIdx === activeRound;
           const isPast = roundIdx < activeRound;
