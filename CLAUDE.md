@@ -287,3 +287,152 @@ unauthorized prod change or an unwanted commit is not.
 - TypeScript for all code, strict mode enabled
 - Path alias `@/*` maps to `web/src/*`
 - Tailwind CSS 4 with custom theme in `globals.css` (dark theme, amber accent)
+
+## Brackets: Round Structure and the Initial Round Strategy
+
+**TL;DR — what we do:**
+> Brackets support **any entry count from 2 to 1024**. If the count is
+> already a power of 2 (2, 4, 8, 16, ..., 1024), we **skip the Initial
+> Round entirely** and go straight to the named rounds (Round of N,
+> Round of N/2, ..., Final). Otherwise, we run a **single "Initial
+> Round"** that burns off the excess entries by pairing the last
+> `2 × (N − target)` cards, where `target` is the largest power of 2 ≤ N.
+> Every round after the Initial Round is then a clean power of 2. The
+> excess is always resolved in **one** Initial Round — never recursively.
+
+Algorithm lives in `web/src/lib/bracket-logic.ts` — read it first if
+you're ever debugging bracket shape/propagation bugs. The rest of this
+section is the conceptual map so you don't have to re-derive it each
+time.
+
+### Why this matters
+
+A single-elimination bracket needs each non-final round to halve cleanly
+into the next. If you have 597 entries, there's no natural way for round 1
+to halve into round 2 — 597 → 298.5 is not a thing. The two common
+workarounds:
+- **Byes distributed through round 1**: some matches are 1v1, others are
+  auto-wins. Complicates UI (you have to render "BYE" opponents) and
+  propagation (byes skip rounds).
+- **Initial Round strategy** (what we use): one irregular "play-in"
+  round burns off the excess, leaving a clean power-of-2 field from
+  round 2 onward. Localizes all the weirdness to one round and lets
+  the UI render round 1..N identically.
+
+### The algorithm (for N entries)
+
+```
+target            = 1 << floor(log2(N))    // largest power of 2 ≤ N
+playInMatches     = N - target              // how many matches in the Initial Round
+playInParticipants = 2 * playInMatches      // cards that must play in
+byes              = N - playInParticipants  // cards that skip the Initial Round
+```
+
+**Worked example — 597 cards:**
+- target = 512
+- playInMatches = 597 − 512 = 85
+- playInParticipants = 170
+- byes = 597 − 170 = 427
+
+So:
+- **Initial Round**: 85 matches (170 cards play), produces 85 winners
+- **Round of 512**: 427 byes + 85 Initial Round winners = 512 (256 matches)
+- **Round of 256**, **Round of 128**, ..., **Semifinals**, **Final**
+  — all clean power-of-2 rounds
+
+For power-of-2 `N` (e.g. 512 cards), the `n === target` branch in
+`createBracket()` seeds every card directly into round 0 and the loop
+produces the named rounds with no Initial Round at all.
+
+### Who plays in the Initial Round
+
+In `createBracket()`, seeds `[0, byes)` get byes (they sit out round 0)
+and seeds `[byes, N)` play in the Initial Round. Since the caller
+pre-shuffles `cards` for unseeded tournaments, this is effectively
+random — it's just the first `byes` of the shuffled list that sit out.
+
+### Tree shape and propagation (the `.next` link)
+
+Old bracket code assumed a power-of-2 tree and used `floor(matchIdx / 2)`
+to figure out where a winner propagates. That **breaks** with the
+Initial Round, because byes and play-in winners land in non-contiguous
+Round-of-target slots. Instead, each `BracketMatchup` carries an
+explicit `next` field set at creation time:
+
+```ts
+interface BracketMatchup {
+  index: number;
+  seedA: number;
+  seedB: number;
+  winner: number | null;
+  next?: { round: number; match: number; slot: "A" | "B" } | null;
+}
+```
+
+- `next === null` means "final match — no downstream slot"
+- `next === undefined` means "legacy saved bracket from before this
+  field existed" (fallback to `floor(matchIdx/2)` rule — kept for safety
+  but shouldn't be hit now that SAVED_BRACKET_VERSION is 3)
+
+`recordVote()` uses `matchup.next` when propagating a winner.
+`undoBracketVote()` uses the same link to cascade un-votes downstream
+(clearing winner + seedA/seedB on affected future matches).
+
+### Adjacent placement in Round of `target`
+
+The Round of `target` pending list is built in a fixed order:
+1. All `byes` cards first (seeds `0..byes-1`)
+2. Then the Initial Round match references (one per match, in order)
+
+So Initial Round winners land in specific, deterministic slots — the
+full future bracket is visible from creation time even though the
+winners are TBD. This lets the UI show every column from the first
+render, not just the currently-resolvable ones.
+
+### Round naming
+
+`buildRoundNames(state)` derives human labels:
+- If entries are **not** a power of 2 → round 0 is **"Initial Round"**
+- From round 1 (or round 0 for power-of-2 brackets) onward, round name
+  comes from participant count: Final (2), Semifinals (4), Quarterfinals
+  (8), Round of N (everything else)
+
+Participant count for round `i` (post-Initial-Round) = `round.length * 2`.
+
+### Saved-bracket versioning
+
+`SAVED_BRACKET_VERSION` in `bracket-logic.ts` is a hard cut: bump it
+anytime `createBracket`'s tree shape changes (or when a propagation bug
+might have corrupted existing saved state — e.g. the un-vote cascade
+used the legacy rule before v3). `loadBracket()` **discards any saved
+state with a mismatched version** so stale localStorage doesn't get
+restored into a UI that expects a different shape. The versioned
+payload shape is `{ v: number, state: BracketState }`; unversioned
+legacy payloads are discarded on sight.
+
+### Pool resolution for tag-backed brackets (the ~8KB URL trap)
+
+`getGauntletCardsByTag()` in `web/src/lib/queries.ts` feeds the pool
+for tag-source brackets. It originally did a single
+`.in("oracle_id", [...])` with the shuffled ID list — fine for small
+pools, **silently empty** for large ones (a ~460-card Counterspell
+bracket built a ~17KB URL, exceeding PostgREST's default header
+limit). The `.in()` calls are now chunked (150 UUIDs per request via
+`inChunked()`), both in the illustration-tag → printings lookup and
+the oracle_cards + printings fetches. If you add another tag-based
+pool query, use `inChunked` for the ID-list fan-out — don't `.in()`
+thousands of UUIDs at once.
+
+### Bracket save/restore — which storage?
+
+- **In-flight progress**: always localStorage (keyed by slug,
+  versioned). Anon and logged-in users both get client-side save so
+  refreshing mid-bracket doesn't lose votes.
+- **Completed bracket history** (for `/my/brackets`):
+  - **Logged in** → POST `/api/bracket/save` → `saved_brackets` table
+    (RLS-scoped to `auth.uid()`). Migration `073_saved_brackets.sql`.
+  - **Anon** → `mtgink_bracket_history` localStorage list via
+    `saveCompletedBracketLocal()` in `web/src/lib/bracket-history.ts`.
+  - `/my/brackets` page checks auth and pulls from the appropriate
+    source — both paths produce the same `BracketHistoryEntry[]` shape
+    so the rendering code doesn't branch.
