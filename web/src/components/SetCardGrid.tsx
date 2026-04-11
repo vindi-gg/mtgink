@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useImageMode } from "@/lib/image-mode";
 import { useGridDensity, GRID_CLASSES } from "@/lib/grid-density";
+import { parseSetFilterParams, type PrintingFilter } from "@/lib/set-filters";
+import { usePublishExpansionCounts } from "@/lib/expansion-context";
 import GridDensitySelector from "./GridDensitySelector";
 import CardLightbox from "./CardLightbox";
 import CardFaceToggle from "./CardFaceToggle";
@@ -66,8 +69,6 @@ function sortCards(cards: SetCard[], key: SortKey): SetCard[] {
   return sorted;
 }
 
-type PrintingFilter = "all" | "new" | "reprints";
-
 export default function SetCardGrid({
   cards,
   setCode,
@@ -77,20 +78,47 @@ export default function SetCardGrid({
   setCode: string;
   backFaceUrls?: Record<string, { normal: string; art_crop?: string }>;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const publishCounts = usePublishExpansionCounts();
+
   const { imageMode, toggleImageMode, cardUrl } = useImageMode();
   const { density, setDensity } = useGridDensity();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("number");
-  const [rarityFilter, setRarityFilter] = useState<Set<string>>(new Set());
-  const [printingFilter, setPrintingFilter] = useState<PrintingFilter>("all");
+
+  const { rarities: rarityFilter, printing: printingFilter } = useMemo(
+    () => parseSetFilterParams(searchParams),
+    [searchParams],
+  );
 
   const hasReprints = useMemo(() => cards.some((c) => c.is_reprint), [cards]);
 
+  const updateUrlParams = useCallback(
+    (mutator: (sp: URLSearchParams) => void) => {
+      const next = new URLSearchParams(searchParams?.toString() ?? "");
+      mutator(next);
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
+
   const toggleRarity = (r: string) => {
-    setRarityFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(r)) next.delete(r); else next.add(r);
-      return next;
+    updateUrlParams((sp) => {
+      const current = new Set((sp.get("rarities") ?? "").split(",").filter(Boolean));
+      if (current.has(r)) current.delete(r); else current.add(r);
+      if (current.size > 0) sp.set("rarities", Array.from(current).join(","));
+      else sp.delete("rarities");
+    });
+    setLightboxIdx(null);
+  };
+
+  const setPrintingFilter = (value: PrintingFilter) => {
+    updateUrlParams((sp) => {
+      if (value === "all") sp.delete("printing");
+      else sp.set("printing", value);
     });
     setLightboxIdx(null);
   };
@@ -107,6 +135,23 @@ export default function SetCardGrid({
     }
     return sortCards(result, sortKey);
   }, [cards, rarityFilter, sortKey, printingFilter]);
+
+  // Publish unique-oracle counts to the sidebar bracket panel. The bracket
+  // pool is built server-side by deduping printings to one-per-oracle_id, so
+  // these counts must match or the size picker will offer sizes larger than
+  // the actual pool (and createBracket() will fall back to an Initial Round
+  // for a non-power-of-2 sub-selection).
+  const uniqueFilteredCount = useMemo(
+    () => new Set(filtered.map((c) => c.oracle_id)).size,
+    [filtered],
+  );
+  const uniqueTotalCount = useMemo(
+    () => new Set(cards.map((c) => c.oracle_id)).size,
+    [cards],
+  );
+  useEffect(() => {
+    publishCounts({ setCode, filteredCount: uniqueFilteredCount, totalCount: uniqueTotalCount });
+  }, [publishCounts, setCode, uniqueFilteredCount, uniqueTotalCount]);
 
   return (
     <>

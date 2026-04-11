@@ -22,3 +22,6 @@ export function PlayModeIcon({ d, className = "w-5 h-5" }: { d: string; classNam
     </svg>
   );
 }
+
+// Bracket-tree icon: four seeds → two → one final. Heroicons v1 outline style.
+export const BRACKET_ICON = "M4 5 H8 M4 9 H8 M4 15 H8 M4 19 H8 M8 5 V9 M8 15 V19 M8 7 H12 M8 17 H12 M12 7 V17 M12 12 H20";
