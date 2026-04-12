@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { useImageMode } from "@/lib/image-mode";
+import StackedCardLayout from "./StackedCardLayout";
 
 interface VoteGridProps {
   renderLeft: (onClick: () => void) => React.ReactNode;
@@ -62,13 +63,12 @@ export default forwardRef<VoteGridHandle, VoteGridProps>(function VoteGrid({ ren
           {wrapSide(left, 0)}
           {wrapSide(right, 1)}
         </div>
-        <div className="md:hidden relative w-[90%] mx-auto" style={{ aspectRatio: "488 / 830" }}>
-          <div className={`absolute top-0 left-0 w-[75%] transition-all duration-200 ${selectedCard === 0 ? "z-30" : "z-10"}`}>
-            {wrapSide(left, 0)}
-          </div>
-          <div className={`absolute bottom-[5%] right-0 w-[75%] transition-all duration-200 ${selectedCard === 1 || selectedCard === null ? "z-20" : "z-10"}`}>
-            {wrapSide(right, 1)}
-          </div>
+        <div className="md:hidden">
+          <StackedCardLayout
+            leftOnTop={selectedCard === 0}
+            left={wrapSide(left, 0)}
+            right={wrapSide(right, 1)}
+          />
         </div>
       </>
     );

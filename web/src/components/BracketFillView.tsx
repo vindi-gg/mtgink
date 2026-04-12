@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { saveCompletedBracketLocal } from "@/lib/bracket-history";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
+import StackedCardLayout from "./StackedCardLayout";
 import {
   createBracket,
   recordVote,
@@ -105,7 +106,7 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
   }, [mobileSettingsOpen]);
 
   // cardUrl picks art_crop or normal based on the W-toggle (ImageModeProvider)
-  const { cardUrl } = useImageMode();
+  const { cardUrl, imageMode, toggleImageMode } = useImageMode();
 
   // Focus mode — hide the global navbar by default on /bracket, restore
   // on unmount. The hamburger button in the sticky header below toggles
@@ -695,31 +696,24 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
           </div>
         </div>
 
-        {/* Desktop-only right-side: bracket name + restart button. */}
-        <div className="hidden md:flex items-center gap-3 pl-3 pr-4 flex-shrink-0">
+        {/* Right-side: truncated bracket name + cog dropdown (both
+            breakpoints). The cog holds image toggle, restart, and close.
+            Bracket name is capped at ~20 chars visually via max-w and
+            truncate, with a native title tooltip for the full name. */}
+        <div className="flex items-center gap-2 pl-2 pr-3 flex-shrink-0">
           {bracketName && (
-            <span className="text-sm text-gray-300 font-medium truncate max-w-xs">
-              {bracketName}
+            <span className="hidden md:inline relative group">
+              <span className="text-xs text-gray-400 font-medium truncate max-w-[140px] block cursor-default">
+                {bracketName}
+              </span>
+              {/* CSS-only tooltip on hover — shows the full name below */}
+              <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded bg-gray-800 border border-gray-700 text-xs text-gray-200 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+                {bracketName}
+              </span>
             </span>
           )}
-          {onRestart && (
-            <button
-              onClick={() => setShowRestartModal(true)}
-              title="Restart bracket"
-              aria-label="Restart bracket"
-              className="flex-shrink-0 p-1.5 rounded-lg text-gray-500 hover:bg-gray-800 hover:text-red-400 transition-colors cursor-pointer"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
         </div>
-
-        {/* Mobile-only right-side: cog button + dropdown with bracket
-            name and restart. Fixed-width like the hamburger on the left
-            so the carousel in the middle has a stable slot. */}
-        <div ref={mobileSettingsRef} className="md:hidden flex-shrink-0 relative pr-2">
+        <div ref={mobileSettingsRef} className="flex-shrink-0 relative pr-2">
           <button
             onClick={() => setMobileSettingsOpen((v) => !v)}
             title="Bracket settings"
@@ -739,32 +733,43 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
                   <p className="text-sm font-medium text-white truncate">{bracketName}</p>
                 </div>
               )}
-              {isLoggedIn && (
-                <Link
-                  href="/my/brackets"
-                  onClick={() => setMobileSettingsOpen(false)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  My Brackets
-                </Link>
-              )}
-              {onRestart && (
+              {/* Card / Art toggle */}
+              <div className="px-3 py-2">
                 <button
-                  onClick={() => {
-                    setMobileSettingsOpen(false);
-                    setShowRestartModal(true);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-gray-800 transition-colors cursor-pointer"
+                  onClick={() => { toggleImageMode(); setMobileSettingsOpen(false); }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/40 transition-colors cursor-pointer"
                 >
+                  {/* Toggle icon: two arrows forming a cycle */}
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
                   </svg>
-                  Restart bracket
+                  {imageMode === "art" ? "Art" : "Card"} mode <span className="hidden md:inline text-amber-400/50 text-xs">(W)</span>
                 </button>
+              </div>
+              {onRestart && (
+                <div className="px-3 py-1.5">
+                  <button
+                    onClick={() => {
+                      setMobileSettingsOpen(false);
+                      setShowRestartModal(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 transition-colors cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Restart bracket
+                  </button>
+                </div>
               )}
+              <div className="px-3 pt-1 pb-2">
+                <button
+                  onClick={() => setMobileSettingsOpen(false)}
+                  className="w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white border border-gray-700 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1027,6 +1032,38 @@ function MatchupCard({
   const placeholderAspect = imageMode === "card" ? "aspect-[488/680]" : "aspect-[626/457]";
   const cards = getMatchupCards(bracket, roundIndex, matchupIndex);
   const hasWinner = matchup.winner !== null;
+  const isCardMode = imageMode === "card";
+
+  // Mobile card-mode selection state — first tap selects (shows amber
+  // ring + "Tap again to vote"), second tap on the same card confirms.
+  // For already-voted matchups the selection step is skipped (single
+  // tap undoes or switches the vote).
+  const [selectedSeed, setSelectedSeed] = useState<number | null>(null);
+
+  // Reset selection when the matchup changes (round advance / swipe).
+  useEffect(() => {
+    setSelectedSeed(null);
+  }, [roundIndex, matchupIndex]);
+
+  const isMobileCard = isCardMode && typeof window !== "undefined" && window.innerWidth < 768;
+
+  function handleClick(seed: number) {
+    if (hasWinner) {
+      // Already voted — single tap to toggle/undo.
+      onVote(roundIndex, matchupIndex, seed);
+      return;
+    }
+    if (isMobileCard) {
+      if (selectedSeed === seed) {
+        setSelectedSeed(null);
+        onVote(roundIndex, matchupIndex, seed);
+      } else {
+        setSelectedSeed(seed);
+      }
+      return;
+    }
+    onVote(roundIndex, matchupIndex, seed);
+  }
 
   // Not ready yet — seeds not determined
   if (!cards) {
@@ -1045,7 +1082,7 @@ function MatchupCard({
 
   const { cardA, cardB, seedA, seedB } = cards;
 
-  function renderSide(card: BracketCard, seed: number) {
+  function renderSide(card: BracketCard, seed: number, hideOverlays = false) {
     const isWinner = hasWinner && matchup.winner === seed;
     const isLoser = hasWinner && matchup.winner !== seed;
     const artUrl = cardUrl(card.set_code, card.collector_number, card.image_version);
@@ -1057,19 +1094,21 @@ function MatchupCard({
             key={`${card.illustration_id}-${seed}`}
             src={artUrl}
             alt={`${card.name} by ${card.artist}`}
-            onClick={() => onVote(roundIndex, matchupIndex, seed)}
+            onClick={() => handleClick(seed)}
             className="w-full"
           />
-          <CardPreviewOverlay
-            setCode={card.set_code}
-            collectorNumber={card.collector_number}
-            imageVersion={card.image_version}
-            alt={`${card.name} by ${card.artist}`}
-            illustrationId={card.illustration_id}
-            oracleId={card.oracle_id}
-            cardName={card.name}
-            cardSlug={card.slug}
-          />
+          {!hideOverlays && (
+            <CardPreviewOverlay
+              setCode={card.set_code}
+              collectorNumber={card.collector_number}
+              imageVersion={card.image_version}
+              alt={`${card.name} by ${card.artist}`}
+              illustrationId={card.illustration_id}
+              oracleId={card.oracle_id}
+              cardName={card.name}
+              cardSlug={card.slug}
+            />
+          )}
           {isWinner && (
             <div className="absolute top-2 right-2 z-10 pointer-events-none">
               <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center shadow-lg">
@@ -1079,12 +1118,33 @@ function MatchupCard({
               </div>
             </div>
           )}
-          <div className="absolute bottom-2 right-2 z-10 text-right pointer-events-none">
-            <p className={`text-xs font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
-            <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
-            <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.set_code.toUpperCase()}</p>
-          </div>
+          {!hideOverlays && (
+            <div className="absolute bottom-2 right-2 z-10 text-right pointer-events-none">
+              <p className={`text-xs font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
+              <p className="text-xs font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
+              <p className="text-[10px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.set_code.toUpperCase()}</p>
+            </div>
+          )}
         </div>
+      </div>
+    );
+  }
+
+  /** Wrap a card in the selection ring + "Tap again to vote" overlay
+   *  for mobile card mode. Mirrors VoteGrid's wrapSide pattern. */
+  function wrapSelected(node: React.ReactNode, seed: number) {
+    const isSelected = selectedSeed === seed && isMobileCard && !hasWinner;
+    return (
+      <div className={`relative transition-shadow duration-200 rounded-[5%] ${isSelected ? "ring-2 ring-inset ring-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]" : ""}`}>
+        {node}
+        {isSelected && (
+          <div className="absolute bottom-0 left-0 right-0 rounded-b-[5%] pointer-events-none">
+            <div className="h-12 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+            <div className="bg-black/90 px-3 py-1.5 rounded-b-[5%]">
+              <p className="text-center text-xs font-medium text-amber-400">Tap again to vote</p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1094,10 +1154,29 @@ function MatchupCard({
       <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1 px-1">
         Match {matchupNumber} of {totalInRound}
       </p>
-      <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
-        {renderSide(cardA, seedA)}
-        {renderSide(cardB, seedB)}
-      </div>
+      {/* Card mode on mobile: stacked/fanned layout (same as showdown),
+          no overlays, two-tap selection. Selected card comes to front
+          via z-index boost. Desktop + art mode: side-by-side grid. */}
+      {isCardMode ? (
+        <>
+          <div className="md:hidden">
+            <StackedCardLayout
+              leftOnTop={selectedSeed === seedA}
+              left={wrapSelected(renderSide(cardA, seedA, true), seedA)}
+              right={wrapSelected(renderSide(cardB, seedB, true), seedB)}
+            />
+          </div>
+          <div className="hidden md:grid md:grid-cols-2 md:gap-6">
+            {renderSide(cardA, seedA, true)}
+            {renderSide(cardB, seedB, true)}
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-1 landscape:grid-cols-2 md:grid-cols-2 gap-2 md:gap-6">
+          {renderSide(cardA, seedA)}
+          {renderSide(cardB, seedB)}
+        </div>
+      )}
     </div>
   );
 }
@@ -1127,6 +1206,9 @@ function MiniMatchupPreview({
   hideOverlays?: boolean;
 }) {
   const { cardUrl, imageMode } = useImageMode();
+  // In card mode the full card already shows name/artist/set — overlays
+  // are redundant and obscure the card frame.
+  const effectiveHideOverlays = hideOverlays || imageMode === "card";
   const placeholderAspect = imageMode === "card" ? "aspect-[488/680]" : "aspect-[626/457]";
   const seedAReady = matchup.seedA >= 0;
   const seedBReady = matchup.seedB >= 0;
@@ -1152,7 +1234,7 @@ function MiniMatchupPreview({
             onClick={onVote ? () => onVote(roundIndex, matchupIndex, seed) : undefined}
             className="w-full"
           />
-          {!hideOverlays && (
+          {!effectiveHideOverlays && (
             <CardPreviewOverlay
               setCode={card.set_code}
               collectorNumber={card.collector_number}
@@ -1173,7 +1255,7 @@ function MiniMatchupPreview({
               </div>
             </div>
           )}
-          {!hideOverlays && (
+          {!effectiveHideOverlays && (
             <div className="absolute bottom-1 right-1 z-10 text-right pointer-events-none">
               <p className={`text-[10px] font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${isWinner ? "text-amber-300" : "text-white"}`}>{card.name}</p>
               <p className="text-[9px] text-gray-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{card.artist}</p>
