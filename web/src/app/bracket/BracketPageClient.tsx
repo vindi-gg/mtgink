@@ -6,7 +6,7 @@ import BracketFillView from "@/components/BracketFillView";
 import type { BracketCard, BracketState, Brew, GauntletEntry } from "@/lib/types";
 
 const RANDOM_STORAGE_KEY = "mtgink_bracket_cards";
-const RANDOM_BRACKET_SIZE = 8;
+const RANDOM_BRACKET_SIZE = 16;
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -168,15 +168,19 @@ export default function BracketPageClient() {
         return;
       }
 
-      // Random bracket (default)
-      const saved = localStorage.getItem(RANDOM_STORAGE_KEY);
-      if (saved) {
+      // Random themed bracket (default)
+      const savedData = localStorage.getItem(RANDOM_STORAGE_KEY);
+      if (savedData) {
         try {
-          const parsed = JSON.parse(saved) as BracketCard[];
-          if (parsed.length === RANDOM_BRACKET_SIZE) {
+          const parsed = JSON.parse(savedData) as { cards: BracketCard[]; name: string | null };
+          // Support both old format (plain array) and new format ({ cards, name })
+          const cards = Array.isArray(parsed) ? parsed : parsed.cards;
+          const savedName = Array.isArray(parsed) ? null : parsed.name;
+          if (cards.length === RANDOM_BRACKET_SIZE) {
             if (!cancelled) {
               setSlug("test");
-              setCards(parsed);
+              setCards(cards);
+              if (savedName) setBracketName(savedName);
             }
             return;
           }
@@ -189,10 +193,12 @@ export default function BracketPageClient() {
         const res = await fetch(`/api/bracket?count=${RANDOM_BRACKET_SIZE}`);
         const data = await res.json();
         const c = data.cards as BracketCard[];
-        localStorage.setItem(RANDOM_STORAGE_KEY, JSON.stringify(c));
+        const themeName = data.name as string | null;
+        localStorage.setItem(RANDOM_STORAGE_KEY, JSON.stringify({ cards: c, name: themeName }));
         if (!cancelled) {
           setSlug("test");
           setCards(c);
+          if (themeName) setBracketName(themeName);
         }
       } catch (err) {
         if (!cancelled) {

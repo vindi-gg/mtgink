@@ -35,9 +35,11 @@ export default async function HomePage() {
         .limit(50),
     ]);
 
-    // Generate challenges only on first request of the day (rare)
+    // Generate challenges on first request of the day, or if fewer than
+    // expected (e.g. bracket was added after gauntlet already existed).
+    // The stored proc is idempotent — ON CONFLICT DO NOTHING for existing types.
     let dailyChallenges = challengeRows;
-    if (!dailyChallenges || dailyChallenges.length === 0) {
+    if (!dailyChallenges || dailyChallenges.length < 2) {
       await admin.rpc("generate_daily_challenges", { p_date: today });
       const { data: fresh } = await admin.from("daily_challenges")
         .select("*, daily_challenge_stats(*)")
@@ -54,6 +56,7 @@ export default async function HomePage() {
         champion_counts: null,
         avg_champion_wins: null,
         max_champion_wins: 0,
+        bracket_matchups: null,
       };
 
       challenges = (dailyChallenges as (DailyChallenge & { daily_challenge_stats: DailyChallengeStats | null })[])

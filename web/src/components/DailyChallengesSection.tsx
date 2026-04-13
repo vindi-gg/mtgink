@@ -44,18 +44,26 @@ export default function DailyChallengesSection({ challenges: serverChallenges }:
 
   if (challenges.length === 0) return null;
 
+  // Sort so bracket comes first, then gauntlet, then everything else.
+  const sorted = [...challenges].sort((a, b) => {
+    const order: Record<string, number> = { bracket: 0, gauntlet: 1 };
+    return (order[a.challenge_type] ?? 2) - (order[b.challenge_type] ?? 2);
+  });
+
   return (
     <div className="mb-8">
       <h2 className="text-xs font-bold uppercase tracking-widest text-amber-400 mb-3">
-        Today&apos;s Challenge
+        Today&apos;s Challenges
       </h2>
-      {challenges.map((c) => (
-        <DailyChallengeCard
-          key={c.id}
-          challenge={{ ...c, participated: participated.has(c.id) }}
-        />
-      ))}
-
+      <div className="space-y-3">
+        {sorted.map((c) => (
+          <DailyChallengeCard
+            key={c.id}
+            challenge={{ ...c, participated: participated.has(c.id) }}
+            compact={c.challenge_type === "gauntlet"}
+          />
+        ))}
+      </div>
     </div>
   );
 }

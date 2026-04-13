@@ -8,7 +8,7 @@ export async function POST(
 ) {
   const { type } = await params;
 
-  if (!["remix", "vs", "gauntlet"].includes(type)) {
+  if (!["remix", "vs", "gauntlet", "bracket"].includes(type)) {
     return NextResponse.json({ error: "Invalid challenge type" }, { status: 400 });
   }
 

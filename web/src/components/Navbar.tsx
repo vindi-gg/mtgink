@@ -20,6 +20,9 @@ function isActiveLink(pathname: string, href: string): boolean {
   // "Brews" menu item highlights for the listing (/brews), the create
   // form (/brew), and individual brew detail pages (/brew/[slug]).
   if (href === "/brews" && (pathname === "/brews" || pathname.startsWith("/brew"))) return true;
+  if (href === "/bracket" && pathname.startsWith("/bracket")) return true;
+  if (href === "/daily/bracket" && pathname.startsWith("/daily/bracket")) return true;
+  if (href === "/daily/gauntlet" && pathname.startsWith("/daily/gauntlet")) return true;
   if (href === "/favorites" && pathname.startsWith("/favorites")) return true;
   if (href === "/history" && pathname.startsWith("/history")) return true;
   return false;

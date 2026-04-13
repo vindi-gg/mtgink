@@ -32,9 +32,18 @@ interface BracketFillViewProps {
   brewSlug?: string | null;
   onComplete?: (state: BracketState) => void;
   onRestart?: () => void;
+  /** When true, skip the built-in save-to-history logic (both the
+   *  /api/bracket/save POST for logged-in users and the localStorage
+   *  save for anon). Used by daily brackets where the caller handles
+   *  its own save with different metadata. */
+  disableAutoSave?: boolean;
+  /** Extra content rendered below the champion card when the bracket is
+   *  complete. Replaces the default championFooter (share/link buttons).
+   *  Used by daily brackets to show the "come back tomorrow" countdown. */
+  championExtra?: React.ReactNode;
 }
 
-export default function BracketFillView({ cards, slug, bracketName, brewSlug, onComplete, onRestart }: BracketFillViewProps) {
+export default function BracketFillView({ cards, slug, bracketName, brewSlug, onComplete, onRestart, disableAutoSave = false, championExtra }: BracketFillViewProps) {
   // On mount, try to restore saved progress from localStorage. Only restore if
   // the saved state's cards match the ones we were handed (same illustration_ids,
   // same order) — otherwise the bracket's seeds would point to the wrong cards.
@@ -230,7 +239,7 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
       savedToHistoryRef.current = false;
       return;
     }
-    if (!savedToHistoryRef.current) {
+    if (!savedToHistoryRef.current && !disableAutoSave) {
       savedToHistoryRef.current = true;
       const champ = getChampion(bracket);
       if (champ) {
@@ -437,6 +446,27 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
 
     const container = desktopContainerRef.current;
     if (!container) return;
+
+    // Champion round: the container is tall (items-stretch matches the
+    // tallest round column) but the champion content sits at the vertical
+    // center via justify-center. Scroll so that center is in the viewport.
+    if (activeRound === championRoundIdx) {
+      void document.documentElement.offsetHeight;
+      const rect = container.getBoundingClientRect();
+      const containerCenterY = window.scrollY + rect.top + rect.height / 2;
+      const targetY = Math.max(0, containerCenterY - window.innerHeight / 2);
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+
+      const correctionTimer = setTimeout(() => {
+        const r = container.getBoundingClientRect();
+        const cy = window.scrollY + r.top + r.height / 2;
+        const t = Math.max(0, cy - window.innerHeight / 2);
+        if (Math.abs(window.scrollY - t) > 20) {
+          window.scrollTo({ top: t, behavior: "smooth" });
+        }
+      }, 550);
+      return () => clearTimeout(correctionTimer);
+    }
 
     // Target the first UNVOTED matchup of the active round (not match 0),
     // so jumping back to a partially-played round lands where you left off.
@@ -854,7 +884,7 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
                 />
                 <h2 className="text-3xl font-bold text-white mt-6">{champion.name}</h2>
                 <p className="text-lg text-gray-400 mt-2">{champion.artist} · {champion.set_code.toUpperCase()}</p>
-                {championFooter}
+                {championExtra ?? championFooter}
               </div>
             ) : (
               <p className="text-gray-600 text-sm">Complete all rounds to reveal the champion</p>
@@ -947,7 +977,7 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
               </div>
             </div>
           )}
-          <div className="flex flex-col justify-around flex-1 min-w-0">
+          <div className="flex flex-col justify-center flex-1 min-w-0">
             {champion ? (
               <div className="text-center py-8">
                 <p className="text-sm uppercase tracking-[0.3em] text-amber-400 mb-4">Champion</p>
@@ -958,7 +988,7 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
                 />
                 <h2 className="text-2xl font-bold text-white mt-4">{champion.name}</h2>
                 <p className="text-sm text-gray-400 mt-1">{champion.artist} · {champion.set_code.toUpperCase()}</p>
-                {championFooter}
+                {championExtra ?? championFooter}
               </div>
             ) : (
               <div className="flex items-center justify-center h-full">

@@ -1288,8 +1288,10 @@ export async function getDailyChallenges(sessionId: string): Promise<DailyChalle
     .select("*")
     .eq("challenge_date", today);
 
-  // Only call the stored proc if no challenges exist yet
-  if (!challenges || challenges.length === 0) {
+  // Call the stored proc if fewer than expected challenges exist (e.g.
+  // bracket was added after gauntlet was already generated for today).
+  // The proc is idempotent — ON CONFLICT DO NOTHING for existing types.
+  if (!challenges || challenges.length < 2) {
     const { data, error } = await admin.rpc("generate_daily_challenges", {
       p_date: today,
     });
@@ -1331,6 +1333,7 @@ export async function getDailyChallenges(sessionId: string): Promise<DailyChalle
       champion_counts: null,
       avg_champion_wins: null,
       max_champion_wins: 0,
+      bracket_matchups: null,
     },
     participated: participatedSet.has(c.id),
   }));
@@ -1416,6 +1419,7 @@ export async function recordDailyParticipation(
     champion_counts: row.champion_counts as Record<string, number> | null,
     avg_champion_wins: row.avg_champion_wins as number | null,
     max_champion_wins: row.max_champion_wins as number,
+    bracket_matchups: null, // RPC doesn't return this column; read from stats table if needed
   };
 }
 
@@ -1690,6 +1694,7 @@ export async function getGauntletIllustrationsBySet(
     includeChildren?: boolean;
     onlyNewCards?: boolean;
     firstIllustrationOnly?: boolean;
+    lastIllustrationOnly?: boolean;
   },
 ): Promise<GauntletEntry[]> {
   const admin = getAdminClient();
@@ -1725,8 +1730,14 @@ export async function getGauntletIllustrationsBySet(
   if (filters?.rulesText) {
     query = query.ilike("oracle_cards.oracle_text", `%${filters.rulesText}%`);
   }
-  if (filters?.colors && filters.colors.length > 0) {
-    query = query.filter("oracle_cards.colors", "cs", JSON.stringify(filters.colors));
+  // Split out pseudo-colors (M=multicolor, C=colorless) from real WUBRG colors.
+  const realColors = filters?.colors?.filter((c) => "WUBRG".includes(c)) ?? [];
+  const wantMulti = filters?.colors?.includes("M") ?? false;
+  const wantColorless = filters?.colors?.includes("C") ?? false;
+
+  // Apply real color filter at the DB level (contains check on oracle_cards.colors)
+  if (realColors.length > 0) {
+    query = query.filter("oracle_cards.colors", "cs", JSON.stringify(realColors));
   }
   if (filters?.rarity) {
     query = query.eq("rarity", filters.rarity.toLowerCase());
@@ -1736,22 +1747,57 @@ export async function getGauntletIllustrationsBySet(
 
   if (!data || data.length === 0) return [];
 
+  // Post-fetch: apply multi-color / colorless / mono-only filtering.
+  // The DB "cs" filter returns cards that CONTAIN the selected colors,
+  // which includes multi-color cards. If the user didn't select "M",
+  // we need to exclude multi-color cards (keep mono only).
+  const colorFiltered = realColors.length > 0 || wantColorless
+    ? data.filter((p) => {
+        const card = p.oracle_cards as unknown as { colors: string[] | null };
+        const cardColors = card.colors ?? [];
+
+        // Colorless cards: include only if C is selected
+        if (cardColors.length === 0) return wantColorless;
+
+        // Multi-color cards: include only if M is selected
+        if (cardColors.length > 1) return wantMulti;
+
+        // Mono-color cards: include if their single color is in realColors
+        // (the DB query already filtered for "contains", but this catches edge cases)
+        if (realColors.length > 0) return realColors.includes(cardColors[0]);
+
+        return true;
+      })
+    : data;
+
+  if (colorFiltered.length === 0) return [];
+
   // Parse collector number for sorting (e.g., "4" → 4, "4a" → 4, "★1" → 1)
   const collectorNum = (cn: string): number => {
     const m = cn.match(/\d+/);
     return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
   };
 
-  // Deduplicate by illustration_id, in collector number order so we see the
-  // "main" printing first (important when firstIllustrationOnly is set)
-  const sorted = [...data].sort((a, b) => collectorNum(a.collector_number) - collectorNum(b.collector_number));
+  // Sort by collector number. lastIllustrationOnly flips to DESC so the
+  // highest collector # (showcase/borderless/alt) is seen first during
+  // dedup — this controls which PRINTING represents each illustration_id
+  // even when all illustrations are included.
+  const desc = !!filters?.lastIllustrationOnly;
+  const sorted = [...colorFiltered].sort((a, b) =>
+    desc
+      ? collectorNum(b.collector_number) - collectorNum(a.collector_number)
+      : collectorNum(a.collector_number) - collectorNum(b.collector_number),
+  );
 
+  // firstIllustrationOnly = one illustration per oracle_id (one-per-card).
+  // When false, all distinct illustration_ids are kept.
+  const onePerCard = !!filters?.firstIllustrationOnly;
   const seenIllustrations = new Set<string>();
   const seenOracles = new Set<string>();
   const all: GauntletEntry[] = [];
   for (const p of sorted) {
     if (seenIllustrations.has(p.illustration_id)) continue;
-    if (filters?.firstIllustrationOnly && seenOracles.has(p.oracle_id)) continue;
+    if (onePerCard && seenOracles.has(p.oracle_id)) continue;
     seenIllustrations.add(p.illustration_id);
     seenOracles.add(p.oracle_id);
     const card = p.oracle_cards as unknown as { name: string; slug: string; type_line: string | null; mana_cost: string | null };
@@ -1968,8 +2014,13 @@ export async function getBrewCount(
     if (rulesText) {
       query = query.ilike("oracle_cards.oracle_text", `%${rulesText}%`);
     }
-    if (colors && colors.length > 0) {
-      query = query.filter("oracle_cards.colors", "cs", JSON.stringify(colors));
+    // Split pseudo-colors (M=multicolor, C=colorless) from real WUBRG
+    const realColors = colors?.filter((c) => "WUBRG".includes(c)) ?? [];
+    const wantMulti = colors?.includes("M") ?? false;
+    const wantColorless = colors?.includes("C") ?? false;
+
+    if (realColors.length > 0) {
+      query = query.filter("oracle_cards.colors", "cs", JSON.stringify(realColors));
     }
     if (rarity) {
       query = query.eq("rarity", rarity.toLowerCase());
@@ -1978,10 +2029,22 @@ export async function getBrewCount(
     const { data } = await query;
     if (!data) return 0;
 
+    // Post-fetch color filtering (same logic as getGauntletIllustrationsBySet)
+    const filtered = (realColors.length > 0 || wantColorless)
+      ? data.filter((p) => {
+          const card = p.oracle_cards as unknown as { colors: string[] | null };
+          const cc = card.colors ?? [];
+          if (cc.length === 0) return wantColorless;
+          if (cc.length > 1) return wantMulti;
+          if (realColors.length > 0) return realColors.includes(cc[0]);
+          return true;
+        })
+      : data;
+
     if (firstIllustrationOnly) {
-      return new Set(data.map((d) => d.oracle_id)).size;
+      return new Set(filtered.map((d) => d.oracle_id)).size;
     }
-    return new Set(data.map((d) => d.illustration_id)).size;
+    return new Set(filtered.map((d) => d.illustration_id)).size;
   }
 
   if (source === "tribe") {

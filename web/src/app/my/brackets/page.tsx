@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { loadBracketHistoryLocal, type BracketHistoryEntry } from "@/lib/bracket-history";
+import { loadBracketHistoryLocal, clearBracketHistoryLocal, type BracketHistoryEntry } from "@/lib/bracket-history";
 import { artCropUrl } from "@/lib/image-utils";
 
 function formatDate(iso: string): string {
@@ -36,6 +36,34 @@ export default function MyBracketsPage() {
       }
 
       if (user) {
+        // Migrate any localStorage entries to the DB (covers the case
+        // where a user completed brackets anonymously then signed up).
+        const localEntries = loadBracketHistoryLocal();
+        // Clear immediately so a Strict Mode double-fire or re-render
+        // doesn't re-read and re-migrate the same entries.
+        if (localEntries.length > 0) clearBracketHistoryLocal();
+
+        // Only migrate entries that have a valid champion (completed brackets).
+        const completedEntries = localEntries.filter(
+          (e) => e.champion && e.champion.oracle_id && e.champion.illustration_id && e.champion.slug && e.cardCount >= 2,
+        );
+        if (completedEntries.length > 0) {
+          await Promise.allSettled(
+            completedEntries.map((entry) =>
+              fetch("/api/bracket/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  brew_slug: entry.brewSlug,
+                  brew_name: entry.brewName,
+                  card_count: entry.cardCount,
+                  champion: entry.champion,
+                }),
+              }).catch(() => null),
+            ),
+          );
+        }
+
         try {
           const res = await fetch("/api/bracket/saved");
           if (res.ok) {
@@ -104,9 +132,15 @@ export default function MyBracketsPage() {
           {history.map((entry) => {
             const champ = entry.champion;
             const img = artCropUrl(champ.set_code, champ.collector_number, champ.image_version);
-            const bracketHref = entry.brewSlug
+            const isDaily = !!entry.brewName?.startsWith("Daily Bracket");
+            const replayHref = entry.brewSlug
               ? `/bracket?brew=${entry.brewSlug}`
               : "/bracket";
+            // Daily brackets link to results page; regular brackets link
+            // back to the bracket page (localStorage has the saved state).
+            const viewHref = isDaily
+              ? `/daily/bracket/results?date=${entry.completedAt.slice(0, 10)}`
+              : replayHref;
             return (
               <div
                 key={entry.id}
@@ -120,9 +154,16 @@ export default function MyBracketsPage() {
                   />
                 </Link>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs uppercase tracking-wide text-amber-400 mb-0.5">
-                    Champion
-                  </p>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-xs uppercase tracking-wide text-amber-400">
+                      Champion
+                    </p>
+                    {isDaily && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-400 tracking-wide">
+                        Daily
+                      </span>
+                    )}
+                  </div>
                   <Link
                     href={`/card/${champ.slug}`}
                     className="block font-semibold text-white truncate hover:text-amber-300 transition-colors"
@@ -137,12 +178,20 @@ export default function MyBracketsPage() {
                     {entry.cardCount} cards · {formatDate(entry.completedAt)}
                   </p>
                 </div>
-                <Link
-                  href={bracketHref}
-                  className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors"
-                >
-                  Replay
-                </Link>
+                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                  <Link
+                    href={viewHref}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition-colors text-center"
+                  >
+                    View
+                  </Link>
+                  <Link
+                    href={`/card/${champ.slug}`}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors text-center"
+                  >
+                    Card
+                  </Link>
+                </div>
               </div>
             );
           })}

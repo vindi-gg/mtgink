@@ -452,7 +452,7 @@ export interface GauntletTheme {
 export interface DailyChallenge {
   id: number;
   challenge_date: string;
-  challenge_type: "remix" | "vs" | "gauntlet";
+  challenge_type: "remix" | "vs" | "gauntlet" | "bracket";
   oracle_id: string | null;
   oracle_id_a: string | null;
   oracle_id_b: string | null;
@@ -466,6 +466,7 @@ export interface DailyChallenge {
   preview_set_code: string | null;
   preview_collector_number: string | null;
   preview_image_version: string | null;
+  bracket_size: number | null;
   created_at: string;
 }
 
@@ -477,6 +478,7 @@ export interface DailyChallengeStats {
   champion_counts: Record<string, number> | null;
   avg_champion_wins: number | null;
   max_champion_wins: number;
+  bracket_matchups: Record<string, Record<string, number>> | null;
 }
 
 export interface DailyChallengeWithStatus extends DailyChallenge {
@@ -510,6 +512,10 @@ export interface Brew {
   preview_set_code: string | null;
   preview_collector_number: string | null;
   preview_image_version: string | null;
+  include_children: boolean;
+  only_new_cards: boolean;
+  first_illustration_only: boolean;
+  last_illustration_only: boolean;
   created_at: string;
   updated_at: string;
 }
