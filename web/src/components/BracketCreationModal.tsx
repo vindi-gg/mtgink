@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { artCropUrl } from "@/lib/image-utils";
 
@@ -48,12 +48,15 @@ export default function BracketCreationModal({ open, onClose }: BracketCreationM
     setLoadingTheme(false);
   }, []);
 
-  // Fetch a random theme on open
+  // Fetch a random theme only on initial open — not on re-roll
+  // (re-roll calls fetchRandomTheme directly from the click handler).
+  const initialFetchDone = useRef(false);
   useEffect(() => {
-    if (open && !theme) {
+    if (open && !initialFetchDone.current) {
+      initialFetchDone.current = true;
       fetchRandomTheme(bracketSize);
     }
-  }, [open, theme, bracketSize, fetchRandomTheme]);
+  }, [open, bracketSize, fetchRandomTheme]);
 
   const handleSizeChange = (size: number) => {
     setBracketSize(size);
@@ -158,10 +161,7 @@ export default function BracketCreationModal({ open, onClose }: BracketCreationM
               )}
             </div>
             <button
-              onClick={() => {
-                setTheme(null);
-                fetchRandomTheme(bracketSize);
-              }}
+              onClick={() => fetchRandomTheme(bracketSize)}
               disabled={loadingTheme}
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 transition-colors cursor-pointer disabled:opacity-50"
             >
