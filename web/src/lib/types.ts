@@ -523,6 +523,32 @@ export interface Brew {
 
 // --- Pricing types ---
 
+// --- Bracket seed + completion types ---
+
+export interface BracketSeed {
+  id: string;
+  params: Record<string, unknown>;
+  label: string;
+  bracket_size: number;
+  seed: string;
+  pool: BracketCard[];
+  created_by: string | null;
+  created_at: string;
+  play_count: number;
+}
+
+export interface BracketCompletion {
+  id: string;
+  seed_id: string;
+  user_id: string;
+  champion_illustration_id: string;
+  champion_name: string;
+  bracket_state: BracketState;
+  completed_at: string;
+}
+
+// --- Marketplace types ---
+
 export interface Marketplace {
   id: number;
   name: string;

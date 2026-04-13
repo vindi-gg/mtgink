@@ -6,7 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import { useImageMode } from "@/lib/image-mode";
 import { useNavFocus } from "@/lib/nav-focus";
 import { createClient } from "@/lib/supabase/client";
-import { saveCompletedBracketLocal } from "@/lib/bracket-history";
+import { saveCompletedBracketLocal, clearBracketHistoryLocal } from "@/lib/bracket-history";
 import CardImage from "./CardImage";
 import CardPreviewOverlay from "./CardPreviewOverlay";
 import StackedCardLayout from "./StackedCardLayout";
@@ -30,6 +30,12 @@ interface BracketFillViewProps {
   /** Brew slug (without the "brew-" prefix) when this bracket is backed
    *  by a brew — used to build share URLs and "link to card" fallbacks. */
   brewSlug?: string | null;
+  /** Seed ID when this bracket was created via the creation modal.
+   *  Used to build shareable play links: /bracket?seed={seedId} */
+  seedId?: string | null;
+  /** Completion ID after the bracket is saved — used for shareable
+   *  results link: /bracket/results/{completionId} */
+  completionId?: string | null;
   onComplete?: (state: BracketState) => void;
   onRestart?: () => void;
   /** When true, skip the built-in save-to-history logic (both the
@@ -43,7 +49,7 @@ interface BracketFillViewProps {
   championExtra?: React.ReactNode;
 }
 
-export default function BracketFillView({ cards, slug, bracketName, brewSlug, onComplete, onRestart, disableAutoSave = false, championExtra }: BracketFillViewProps) {
+export default function BracketFillView({ cards, slug, bracketName, brewSlug, seedId, completionId, onComplete, onRestart, disableAutoSave = false, championExtra }: BracketFillViewProps) {
   // On mount, try to restore saved progress from localStorage. Only restore if
   // the saved state's cards match the ones we were handed (same illustration_ids,
   // same order) — otherwise the bracket's seeds would point to the wrong cards.
@@ -153,37 +159,28 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
   // around the result (champion reveal), "play" phrases it as an
   // invitation to play the bracket fresh. Both variants share the same
   // URL (current /bracket route with the brew param preserved).
-  const shareBracket = useCallback(
-    async (kind: "finished" | "play") => {
-      if (typeof window === "undefined") return;
-      const url = new URL(window.location.origin);
-      url.pathname = "/bracket";
-      if (brewSlug) url.searchParams.set("brew", brewSlug);
+  const [copied, setCopied] = useState<string | null>(null);
 
-      const name = bracketName ?? "a Magic art bracket";
-      const title = `MTG Ink — ${name}`;
-      const text =
-        kind === "finished" && champion
-          ? `I completed ${name}! Champion: ${champion.name} by ${champion.artist}.`
-          : `Play ${name} on MTG Ink — a head-to-head Magic art bracket.`;
-      const shareData = { title, text, url: url.toString() };
+  const copyPlayLink = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    const url = seedId
+      ? `${window.location.origin}/bracket?seed=${seedId}`
+      : window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied("play");
+      setTimeout(() => setCopied(null), 2000);
+    } catch { /* ignore */ }
+  }, [seedId]);
 
-      try {
-        if (typeof navigator !== "undefined" && "share" in navigator) {
-          await navigator.share(shareData);
-          return;
-        }
-      } catch {
-        // User cancelled or share failed — fall through to clipboard copy.
-      }
-      try {
-        await navigator.clipboard.writeText(`${text} ${url.toString()}`);
-      } catch {
-        // Ignore clipboard failures (e.g. permissions).
-      }
-    },
-    [brewSlug, bracketName, champion],
-  );
+  const copyResultsLink = useCallback(async () => {
+    if (typeof window === "undefined" || !completionId) return;
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/bracket/results/${completionId}`);
+      setCopied("results");
+      setTimeout(() => setCopied(null), 2000);
+    } catch { /* ignore */ }
+  }, [completionId]);
 
   // Hijack horizontal wheel/trackpad scroll: trackpad two-finger horizontal
   // (or shift+wheel) changes rounds instead of horizontally scrolling the
@@ -239,8 +236,13 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
       savedToHistoryRef.current = false;
       return;
     }
-    if (!savedToHistoryRef.current && !disableAutoSave) {
+    // Use sessionStorage to persist the guard across re-mounts (e.g. returning
+    // from auth). The ref alone resets on mount, causing duplicate saves.
+    const historyKey = `bracket_history_saved_${slug}`;
+    const alreadySaved = typeof window !== "undefined" && sessionStorage.getItem(historyKey);
+    if (!savedToHistoryRef.current && !disableAutoSave && !alreadySaved) {
       savedToHistoryRef.current = true;
+      if (typeof window !== "undefined") sessionStorage.setItem(historyKey, "1");
       const champ = getChampion(bracket);
       if (champ) {
         const championSummary = {
@@ -267,7 +269,13 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
               champion: championSummary,
             }),
           }).then((res) => {
-            if (!res.ok) savedToHistoryRef.current = false;
+            if (res.ok) {
+              // Clear localStorage so the /my/brackets migration doesn't
+              // create a duplicate from the same entry.
+              clearBracketHistoryLocal();
+            } else {
+              savedToHistoryRef.current = false;
+            }
           }).catch(() => {
             savedToHistoryRef.current = false;
           });
@@ -520,7 +528,7 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
             Sign in to save this bracket to your account and share your history.
           </p>
           <Link
-            href="/auth"
+            href={`/auth?returnTo=${typeof window !== "undefined" ? encodeURIComponent(window.location.pathname + window.location.search) : "/my/brackets"}`}
             className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-gray-900 text-xs font-semibold hover:bg-amber-400 transition-colors"
           >
             Sign in
@@ -528,18 +536,22 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
         </div>
       )}
       <div className="flex flex-wrap gap-2 justify-center">
-        <button
-          onClick={() => shareBracket("finished")}
-          className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition-colors cursor-pointer"
-        >
-          Share result
-        </button>
-        <button
-          onClick={() => shareBracket("play")}
-          className="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors cursor-pointer"
-        >
-          Share to play
-        </button>
+        {seedId && (
+          <button
+            onClick={copyPlayLink}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition-colors cursor-pointer"
+          >
+            {copied === "play" ? "Copied!" : "Copy Play Link"}
+          </button>
+        )}
+        {completionId && (
+          <button
+            onClick={copyResultsLink}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition-colors cursor-pointer"
+          >
+            {copied === "results" ? "Copied!" : "Copy Results"}
+          </button>
+        )}
         <Link
           href={`/card/${champion.slug}`}
           className="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors"
@@ -775,6 +787,19 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
                   </svg>
                   {imageMode === "art" ? "Art" : "Card"} mode <span className="hidden md:inline text-amber-400/50 text-xs">(W)</span>
                 </button>
+              </div>
+              {/* New Bracket — navigates to /bracket to show the creation modal */}
+              <div className="px-3 py-1.5">
+                <a
+                  href="/bracket"
+                  onClick={() => setMobileSettingsOpen(false)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Bracket
+                </a>
               </div>
               {onRestart && (
                 <div className="px-3 py-1.5">
@@ -1025,7 +1050,16 @@ export default function BracketFillView({ cards, slug, bracketName, brewSlug, on
               <button
                 onClick={() => {
                   setShowRestartModal(false);
-                  onRestart?.();
+                  // Reset the bracket in-place: same cards, fresh votes.
+                  const fresh = createBracket(cards);
+                  setBracket(fresh);
+                  saveBracket(fresh, slug);
+                  setActiveRound(0);
+                  savedToHistoryRef.current = false;
+                  // Clear the submission guard so ELO can be recorded again
+                  if (typeof window !== "undefined") {
+                    sessionStorage.removeItem(`bracket_submitted_${slug}`);
+                  }
                 }}
                 className="px-4 py-2 rounded-lg text-sm bg-red-600 hover:bg-red-500 text-white font-medium transition-colors cursor-pointer"
               >

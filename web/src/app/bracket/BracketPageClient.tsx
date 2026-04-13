@@ -3,10 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import BracketFillView from "@/components/BracketFillView";
+import BracketCreationModal from "@/components/BracketCreationModal";
 import type { BracketCard, BracketState, Brew, GauntletEntry } from "@/lib/types";
-
-const RANDOM_STORAGE_KEY = "mtgink_bracket_cards";
-const RANDOM_BRACKET_SIZE = 16;
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -57,6 +55,9 @@ export default function BracketPageClient() {
   const [cards, setCards] = useState<BracketCard[] | null>(null);
   const [slug, setSlug] = useState<string>("test");
   const [bracketName, setBracketName] = useState<string | undefined>(undefined);
+  const [seedId, setSeedId] = useState<string | null>(null);
+  const [completionId, setCompletionId] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submittedRef = useRef<boolean>(false);
 
@@ -106,6 +107,52 @@ export default function BracketPageClient() {
             setSlug(localSlug);
             setCards(fetched);
             setBracketName(`${setCodeParam.toUpperCase()} Bracket`);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : "Failed to load bracket");
+          }
+        }
+        return;
+      }
+
+      // Seed-backed bracket (from creation modal or shared play link).
+      // Distinguished from set-filtered seeds by having no set_code param.
+      if (seedParam && !setCodeParam) {
+        try {
+          const localSlug = `seed-${seedParam}`;
+          const cardsKey = `mtgink_bracket_cards_${localSlug}`;
+
+          // Reuse cached cards on refresh
+          const savedJson = typeof window !== "undefined" ? localStorage.getItem(cardsKey) : null;
+          if (savedJson) {
+            try {
+              const parsed = JSON.parse(savedJson) as { cards: BracketCard[]; label: string };
+              if (parsed.cards?.length >= 2) {
+                if (!cancelled) {
+                  setSlug(localSlug);
+                  setCards(parsed.cards);
+                  setBracketName(parsed.label);
+                  setSeedId(seedParam);
+                  setShowModal(false);
+                }
+                return;
+              }
+            } catch { /* ignore, refetch */ }
+          }
+
+          const res = await fetch(`/api/bracket/seed/${seedParam}`);
+          if (!res.ok) throw new Error("Bracket not found");
+          const data = await res.json();
+          const pool = data.pool as BracketCard[];
+
+          localStorage.setItem(cardsKey, JSON.stringify({ cards: pool, label: data.label }));
+          if (!cancelled) {
+            setSlug(localSlug);
+            setCards(pool);
+            setBracketName(data.label);
+            setSeedId(seedParam);
+            setShowModal(false);
           }
         } catch (err) {
           if (!cancelled) {
@@ -168,42 +215,9 @@ export default function BracketPageClient() {
         return;
       }
 
-      // Random themed bracket (default)
-      const savedData = localStorage.getItem(RANDOM_STORAGE_KEY);
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData) as { cards: BracketCard[]; name: string | null };
-          // Support both old format (plain array) and new format ({ cards, name })
-          const cards = Array.isArray(parsed) ? parsed : parsed.cards;
-          const savedName = Array.isArray(parsed) ? null : parsed.name;
-          if (cards.length === RANDOM_BRACKET_SIZE) {
-            if (!cancelled) {
-              setSlug("test");
-              setCards(cards);
-              if (savedName) setBracketName(savedName);
-            }
-            return;
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-
-      try {
-        const res = await fetch(`/api/bracket?count=${RANDOM_BRACKET_SIZE}`);
-        const data = await res.json();
-        const c = data.cards as BracketCard[];
-        const themeName = data.name as string | null;
-        localStorage.setItem(RANDOM_STORAGE_KEY, JSON.stringify({ cards: c, name: themeName }));
-        if (!cancelled) {
-          setSlug("test");
-          setCards(c);
-          if (themeName) setBracketName(themeName);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load bracket");
-        }
+      // No specific bracket source — show the creation modal.
+      if (!cancelled) {
+        setShowModal(true);
       }
     }
 
@@ -236,9 +250,9 @@ export default function BracketPageClient() {
       localStorage.removeItem(`mtgink_bracket_cards_${localSlug}`);
       sessionStorage.removeItem(`bracket_submitted_${localSlug}`);
     } else {
-      localStorage.removeItem("mtgink_bracket_test");
-      localStorage.removeItem(RANDOM_STORAGE_KEY);
-      sessionStorage.removeItem("bracket_submitted_test");
+      // No specific source — navigate to /bracket to show the creation modal
+      window.location.href = "/bracket";
+      return;
     }
     window.location.reload();
   }, [brewSlug, setCodeParam, raritiesParam, printingParam, sizeParam, seedParam]);
@@ -277,31 +291,77 @@ export default function BracketPageClient() {
 
     if (matchups.length === 0) return;
 
+    // Find champion for the completion payload
+    const lastRound = state.rounds[state.rounds.length - 1];
+    const finalMatch = lastRound?.[0];
+    const champCard = finalMatch?.winner != null ? state.cards[finalMatch.winner] : null;
+
     try {
-      const res = await fetch("/api/bracket/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: getSessionId(),
-          matchups,
-          brew_slug: brewSlug ?? null,
-        }),
-      });
-      if (res.ok && typeof window !== "undefined") {
-        sessionStorage.setItem(key, "1");
-      } else if (!res.ok) {
-        submittedRef.current = false;
+      if (seedId && champCard) {
+        // Seed-backed bracket: save full state for shareable results
+        const res = await fetch("/api/bracket/complete-with-state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seed_id: seedId,
+            session_id: getSessionId(),
+            bracket_state: state,
+            matchups,
+            champion: {
+              oracle_id: champCard.oracle_id,
+              illustration_id: champCard.illustration_id,
+              name: champCard.name,
+              artist: champCard.artist,
+              set_code: champCard.set_code,
+              collector_number: champCard.collector_number,
+              image_version: champCard.image_version,
+              slug: champCard.slug,
+            },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.completion_id) setCompletionId(data.completion_id);
+          if (typeof window !== "undefined") sessionStorage.setItem(key, "1");
+        } else {
+          submittedRef.current = false;
+        }
+      } else {
+        // Non-seed bracket: use existing ELO-only API
+        const res = await fetch("/api/bracket/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: getSessionId(),
+            matchups,
+            brew_slug: brewSlug ?? null,
+          }),
+        });
+        if (res.ok && typeof window !== "undefined") {
+          sessionStorage.setItem(key, "1");
+        } else if (!res.ok) {
+          submittedRef.current = false;
+        }
       }
     } catch {
       submittedRef.current = false;
     }
-  }, [slug, brewSlug]);
+  }, [slug, brewSlug, seedId]);
 
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
         <p className="text-red-400 text-sm">{error}</p>
       </div>
+    );
+  }
+
+  if (showModal) {
+    return (
+      <BracketCreationModal
+        open={true}
+        onClose={() => setShowModal(false)}
+      />
     );
   }
 
@@ -325,6 +385,8 @@ export default function BracketPageClient() {
       slug={slug}
       bracketName={bracketName}
       brewSlug={brewSlug}
+      seedId={seedId}
+      completionId={completionId}
       onComplete={handleComplete}
       onRestart={handleRestart}
     />

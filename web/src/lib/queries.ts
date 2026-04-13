@@ -1607,11 +1607,15 @@ export async function getGauntletCards(
 
   // Batch fetch one representative printing per card (newest non-digital first)
   const oracleIds = filtered.map((c) => c.oracle_id);
+  // Foreign-only sets whose card images are non-English
+  const FOREIGN_SETS = ["4bb", "fbb", "bchr", "ren", "rin"];
+
   const { data: printings } = await getAdminClient()
     .from("printings")
     .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
     .in("oracle_id", oracleIds)
     .not("illustration_id", "is", null)
+    .not("set_code", "in", `(${FOREIGN_SETS.join(",")})`)
     .eq("sets.digital", false)
     .order("released_at", { ascending: false });
 

@@ -210,7 +210,7 @@ export default function DailyBracketClient({ challenge, cards }: DailyBracketCli
             Sign in to save this bracket to your account and track your history.
           </p>
           <Link
-            href="/auth"
+            href={`/auth?returnTo=${typeof window !== "undefined" ? encodeURIComponent(window.location.pathname + window.location.search) : "/my/brackets"}`}
             className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 text-gray-900 text-xs font-semibold hover:bg-amber-400 transition-colors"
           >
             Sign in

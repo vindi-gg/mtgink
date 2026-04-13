@@ -29,6 +29,8 @@ export interface BracketHistoryEntry {
   id: string;
   brewSlug: string | null;
   brewName: string | null;
+  seedId?: string | null;
+  completionId?: string | null;
   champion: ChampionSummary;
   completedAt: string; // ISO datetime
   cardCount: number;

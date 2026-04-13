@@ -36,32 +36,31 @@ export default function MyBracketsPage() {
       }
 
       if (user) {
-        // Migrate any localStorage entries to the DB (covers the case
-        // where a user completed brackets anonymously then signed up).
+        // Migrate localStorage entries to DB. Only runs if there are
+        // entries to migrate — no flag needed since we clear immediately.
         const localEntries = loadBracketHistoryLocal();
-        // Clear immediately so a Strict Mode double-fire or re-render
-        // doesn't re-read and re-migrate the same entries.
-        if (localEntries.length > 0) clearBracketHistoryLocal();
-
-        // Only migrate entries that have a valid champion (completed brackets).
-        const completedEntries = localEntries.filter(
-          (e) => e.champion && e.champion.oracle_id && e.champion.illustration_id && e.champion.slug && e.cardCount >= 2,
-        );
-        if (completedEntries.length > 0) {
-          await Promise.allSettled(
-            completedEntries.map((entry) =>
-              fetch("/api/bracket/save", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  brew_slug: entry.brewSlug,
-                  brew_name: entry.brewName,
-                  card_count: entry.cardCount,
-                  champion: entry.champion,
-                }),
-              }).catch(() => null),
-            ),
+        if (localEntries.length > 0) {
+          // Clear synchronously FIRST so a double-fire reads empty.
+          clearBracketHistoryLocal();
+          const completedEntries = localEntries.filter(
+            (e) => e.champion && e.champion.oracle_id && e.champion.illustration_id && e.champion.slug && e.cardCount >= 2,
           );
+          if (completedEntries.length > 0) {
+            await Promise.allSettled(
+              completedEntries.map((entry) =>
+                fetch("/api/bracket/save", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    brew_slug: entry.brewSlug,
+                    brew_name: entry.brewName,
+                    card_count: entry.cardCount,
+                    champion: entry.champion,
+                  }),
+                }).catch(() => null),
+              ),
+            );
+          }
         }
 
         try {
@@ -133,14 +132,20 @@ export default function MyBracketsPage() {
             const champ = entry.champion;
             const img = artCropUrl(champ.set_code, champ.collector_number, champ.image_version);
             const isDaily = !!entry.brewName?.startsWith("Daily Bracket");
-            const replayHref = entry.brewSlug
-              ? `/bracket?brew=${entry.brewSlug}`
-              : "/bracket";
-            // Daily brackets link to results page; regular brackets link
-            // back to the bracket page (localStorage has the saved state).
-            const viewHref = isDaily
-              ? `/daily/bracket/results?date=${entry.completedAt.slice(0, 10)}`
-              : replayHref;
+            // View: completion results page if available, else daily results, else bracket page
+            const viewHref = entry.completionId
+              ? `/bracket/results/${entry.completionId}`
+              : isDaily
+                ? `/daily/bracket/results?date=${entry.completedAt.slice(0, 10)}`
+                : entry.brewSlug
+                  ? `/bracket?brew=${entry.brewSlug}`
+                  : "/bracket";
+            // Share play link: seed URL if available, else brew URL
+            const playHref = entry.seedId
+              ? `/bracket?seed=${entry.seedId}`
+              : entry.brewSlug
+                ? `/bracket?brew=${entry.brewSlug}`
+                : null;
             return (
               <div
                 key={entry.id}
@@ -183,14 +188,16 @@ export default function MyBracketsPage() {
                     href={viewHref}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition-colors text-center"
                   >
-                    View
+                    View Bracket
                   </Link>
-                  <Link
-                    href={`/card/${champ.slug}`}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors text-center"
-                  >
-                    Card
-                  </Link>
+                  {playHref && (
+                    <Link
+                      href={playHref}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700 transition-colors text-center"
+                    >
+                      Share (Play)
+                    </Link>
+                  )}
                 </div>
               </div>
             );

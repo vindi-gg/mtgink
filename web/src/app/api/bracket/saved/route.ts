@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from("saved_brackets")
       .select(
-        "id, brew_slug, brew_name, card_count, completed_at, champion_oracle_id, champion_illustration_id, champion_name, champion_artist, champion_set_code, champion_collector_number, champion_image_version, champion_slug",
+        "id, brew_slug, brew_name, card_count, completed_at, seed_id, completion_id, champion_oracle_id, champion_illustration_id, champion_name, champion_artist, champion_set_code, champion_collector_number, champion_image_version, champion_slug",
       )
       .eq("user_id", user.id)
       .order("completed_at", { ascending: false })
@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
       brewName: row.brew_name,
       cardCount: row.card_count,
       completedAt: row.completed_at,
+      seedId: row.seed_id,
+      completionId: row.completion_id,
       champion: {
         oracle_id: row.champion_oracle_id,
         illustration_id: row.champion_illustration_id,
