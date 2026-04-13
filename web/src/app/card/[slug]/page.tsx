@@ -282,6 +282,22 @@ export default async function CardPage({
             </a>
           </div>
         )}
+        {card.subtypes && card.subtypes.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Subtypes</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {card.subtypes.map((st) => (
+                <a
+                  key={st}
+                  href={`/db/tribes/${st.toLowerCase()}`}
+                  className="px-2 py-1 rounded-md text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 hover:text-amber-200 transition-colors"
+                >
+                  {st}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {tags.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
             {oracleTags.length > 0 && (

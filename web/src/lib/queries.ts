@@ -219,11 +219,11 @@ export async function getCardBySlug(slug: string): Promise<OracleCard | null> {
   // Direct slug lookup (slug is pre-computed in DB)
   const { data } = await getAdminClient()
     .from("oracle_cards")
-    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version")
+    .select("oracle_id, name, slug, layout, type_line, mana_cost, colors, cmc, og_version, subtypes")
     .eq("slug", slug)
     .maybeSingle();
 
-  if (data) return { ...data, colors: data.colors ? JSON.stringify(data.colors) : null };
+  if (data) return { ...data, colors: data.colors ? JSON.stringify(data.colors) : null, subtypes: data.subtypes ?? [] };
 
   // Fallback: try with -token suffix or oracle_id prefix disambiguation
   let searchSlug = slug;

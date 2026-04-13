@@ -15,6 +15,21 @@ BULK_DIR = Path(__file__).parent.parent / "data" / "bulk"
 SUPABASE_DB_URL = os.environ["SUPABASE_DB_URL"]
 
 
+def parse_subtypes(type_line: str | None) -> list[str]:
+    """Extract subtypes from a type_line. Handles multi-face ('//') cards."""
+    if not type_line:
+        return []
+    subtypes: set[str] = set()
+    for face in type_line.split(" // "):
+        if "—" not in face:
+            continue
+        right = face.split("—", 1)[1].strip()
+        for word in right.split():
+            if word:
+                subtypes.add(word)
+    return sorted(subtypes)
+
+
 def slugify(name):
     """Convert a card name to a URL slug (matches TypeScript slugify)."""
     s = name.lower()
@@ -144,6 +159,7 @@ def import_oracle_cards(cur, conn, slugs):
             card.get("defense"),
             json.dumps(card.get("legalities") or {}),
             bool(card.get("reserved")),
+            json.dumps(parse_subtypes(card.get("type_line"))),
         ))
 
         if len(batch) >= 5000:
@@ -163,12 +179,13 @@ def _insert_oracle_batch(cur, conn, batch):
         """INSERT INTO oracle_cards
            (oracle_id, name, slug, layout, mana_cost, cmc, type_line, oracle_text,
             colors, color_identity, keywords, power, toughness, loyalty, defense,
-            legalities, reserved)
+            legalities, reserved, subtypes)
            VALUES %s
            ON CONFLICT (oracle_id) DO UPDATE SET
              name = EXCLUDED.name, slug = EXCLUDED.slug, layout = EXCLUDED.layout,
              type_line = EXCLUDED.type_line, colors = EXCLUDED.colors,
-             mana_cost = EXCLUDED.mana_cost, cmc = EXCLUDED.cmc""",
+             mana_cost = EXCLUDED.mana_cost, cmc = EXCLUDED.cmc,
+             subtypes = EXCLUDED.subtypes""",
         batch,
     )
     conn.commit()

@@ -8,6 +8,7 @@ export interface OracleCard {
   colors: string | null;
   cmc: number | null;
   og_version: number | null;
+  subtypes?: string[];
 }
 
 /** DFC layout types that have two card faces */
