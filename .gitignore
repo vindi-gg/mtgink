@@ -26,6 +26,7 @@ web/.next/
 # Environment
 .env
 .env.local
+.env.prod
 .env*.local
 
 # Supabase seed data

@@ -148,7 +148,7 @@ def main():
 
     db_url = os.environ.get("SUPABASE_DB_URL")
     if not db_url:
-        for env_file in ["web/.env.development.local", "web/.env.local"]:
+        for env_file in ["web/.env.local", "web/.env.prod"]:
             p = Path(__file__).parent.parent / env_file
             if p.exists():
                 for line in p.read_text().splitlines():

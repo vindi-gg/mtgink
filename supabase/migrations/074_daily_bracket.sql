@@ -5,7 +5,62 @@
 -- revealed the following day.
 
 -- =========================================================================
--- 0. Store brew creation filter flags so the edit page can re-resolve pools
+-- 0a. Fix get_random_cards subtype matching: use exact word match via
+--     string_to_array instead of ILIKE '%Rat%' which matched 'Pirate'.
+-- =========================================================================
+
+DROP FUNCTION IF EXISTS get_random_cards(INTEGER, INTEGER, TEXT[], TEXT, TEXT, TEXT, TEXT);
+CREATE OR REPLACE FUNCTION get_random_cards(
+  p_count INTEGER,
+  p_min_illustrations INTEGER DEFAULT 1,
+  p_colors TEXT[] DEFAULT NULL,
+  p_type TEXT DEFAULT NULL,
+  p_subtype TEXT DEFAULT NULL,
+  p_set_code TEXT DEFAULT NULL,
+  p_rules_text TEXT DEFAULT NULL
+)
+RETURNS TABLE(oracle_id UUID, name TEXT, slug TEXT, layout TEXT, type_line TEXT, mana_cost TEXT, colors JSONB, cmc REAL)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF p_colors IS NULL AND p_type IS NULL AND p_subtype IS NULL THEN
+    RETURN QUERY
+    SELECT o.oracle_id, o.name, o.slug, o.layout, o.type_line, o.mana_cost, o.colors, o.cmc
+    FROM oracle_cards o
+    WHERE o.illustration_count >= p_min_illustrations
+      AND o.digital_only = FALSE
+      AND (p_set_code IS NULL OR EXISTS (SELECT 1 FROM printings p WHERE p.oracle_id = o.oracle_id AND p.set_code = p_set_code))
+    ORDER BY RANDOM() LIMIT p_count;
+  END IF;
+  IF p_type IS NULL AND p_subtype IS NULL THEN
+    RETURN QUERY
+    SELECT o.oracle_id, o.name, o.slug, o.layout, o.type_line, o.mana_cost, o.colors, o.cmc
+    FROM oracle_cards o
+    WHERE o.illustration_count >= p_min_illustrations
+      AND o.digital_only = FALSE
+      AND (p_colors IS NULL OR o.colors @> to_jsonb(p_colors))
+      AND (p_set_code IS NULL OR EXISTS (SELECT 1 FROM printings p WHERE p.oracle_id = o.oracle_id AND p.set_code = p_set_code))
+    ORDER BY RANDOM() LIMIT p_count;
+  END IF;
+  RETURN QUERY
+  SELECT o.oracle_id, o.name, o.slug, o.layout, o.type_line, o.mana_cost, o.colors, o.cmc
+  FROM oracle_cards o
+  WHERE o.illustration_count >= p_min_illustrations
+    AND o.digital_only = FALSE
+    AND (p_colors IS NULL OR o.colors @> to_jsonb(p_colors))
+    AND (p_set_code IS NULL OR EXISTS (SELECT 1 FROM printings p WHERE p.oracle_id = o.oracle_id AND p.set_code = p_set_code))
+    AND (p_type IS NULL OR o.type_line ILIKE '%' || p_type || '%')
+    AND (p_subtype IS NULL OR (
+      o.type_line LIKE '%—%'
+      AND p_subtype = ANY(string_to_array(trim(split_part(o.type_line, '—', 2)), ' '))
+    ))
+    AND (p_rules_text IS NULL OR o.oracle_text ILIKE '%' || p_rules_text || '%')
+  ORDER BY RANDOM() LIMIT p_count;
+END;
+$$;
+
+-- =========================================================================
+-- 0b. Store brew creation filter flags so the edit page can re-resolve pools
 -- =========================================================================
 
 ALTER TABLE brews ADD COLUMN IF NOT EXISTS include_children BOOLEAN DEFAULT FALSE;

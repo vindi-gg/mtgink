@@ -161,12 +161,12 @@ supabase/migrations/
 ### Database Migrations (Supabase)
 Migrations live in `supabase/migrations/`. Run them manually via psql:
 ```bash
-# Production (from repo root or web/):
-export SUPABASE_DB_URL=$(grep SUPABASE_DB_URL web/.env.local | cut -d= -f2-)
-/opt/homebrew/opt/libpq/bin/psql "$SUPABASE_DB_URL" -f supabase/migrations/<filename>.sql
+# Production (from web/):
+export SUPABASE_DB_URL=$(grep SUPABASE_DB_URL .env.prod | cut -d= -f2-)
+/opt/homebrew/opt/libpq/bin/psql "$SUPABASE_DB_URL" -f ../supabase/migrations/<filename>.sql
 
 # If libpq isn't installed, use the local Supabase container's psql:
-docker exec -i supabase_db_mtgink psql "$SUPABASE_DB_URL" < supabase/migrations/<filename>.sql
+docker exec -i supabase_db_mtgink psql "$SUPABASE_DB_URL" < ../supabase/migrations/<filename>.sql
 
 # Local dev (from web/):
 docker exec -i supabase_db_mtgink psql -U postgres -d postgres < ../supabase/migrations/<filename>.sql
@@ -178,11 +178,16 @@ docker exec -i supabase_db_mtgink psql -U postgres -d postgres < ../supabase/mig
 - Always test migrations locally first, then apply to prod with explicit approval
 
 ## Env Vars
+
+Two env files in `web/`:
+- **`.env.local`** — Local dev (Supabase container at 127.0.0.1:54322)
+- **`.env.prod`** — Production (Supabase cloud). Used by migration scripts. Gitignored.
+
 ```
 NEXT_PUBLIC_SUPABASE_URL=...       # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...  # Public anon key (RLS-protected)
 SUPABASE_SERVICE_ROLE_KEY=...      # Server writes bypassing RLS
-SUPABASE_DB_URL=...                # Direct Postgres for Python scripts
+SUPABASE_DB_URL=...                # Direct Postgres connection string
 ```
 
 ## Workflow Orchestration
@@ -240,7 +245,7 @@ user BEFORE it runs, every single time.
 
 - **Production Supabase writes**: any command that can modify prod state,
   including:
-  - SQL migrations against `SUPABASE_DB_URL` from `web/.env.local`
+  - SQL migrations against `SUPABASE_DB_URL` from `web/.env.prod`
   - Manual `psql` commands that aren't pure `SELECT` (UPDATE, DELETE, ALTER,
     CREATE, DROP, INSERT, TRUNCATE, GRANT, REVOKE, etc.)
   - `supabase db push`, `supabase db reset`, or anything that targets the
@@ -267,7 +272,7 @@ ten minutes later, even if it looks trivially safe.
 ### What does NOT need fresh approval
 
 - Local-only operations: running migrations against
-  `web/.env.development.local` (the `docker exec supabase_db_mtgink psql ...`
+  `web/.env.local` (the `docker exec supabase_db_mtgink psql ...`
   setup), editing files, running the dev server, installing deps, reading
   from prod (SELECT-only queries).
 - `git status`, `git diff`, `git log`, `git branch` — read-only git.

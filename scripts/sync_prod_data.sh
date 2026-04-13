@@ -11,15 +11,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Load prod DB URL from .env.local
-PROD_DB_URL=$(grep '^SUPABASE_DB_URL=' "$PROJECT_DIR/web/.env.local" | cut -d= -f2-)
+# Load prod DB URL from .env.prod
+PROD_DB_URL=$(grep '^SUPABASE_DB_URL=' "$PROJECT_DIR/web/.env.prod" | cut -d= -f2-)
 # Host-mapped port for external access, internal port for docker exec
 LOCAL_DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 LOCAL_DB_URL_INTERNAL="postgresql://postgres:postgres@127.0.0.1:5432/postgres"
 DUMP_FILE="/tmp/mtgink_prod_data.sql"
 
 if [ -z "$PROD_DB_URL" ]; then
-  echo "ERROR: SUPABASE_DB_URL not found in web/.env.local"
+  echo "ERROR: SUPABASE_DB_URL not found in web/.env.prod"
   exit 1
 fi
 

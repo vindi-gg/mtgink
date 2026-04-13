@@ -625,7 +625,7 @@ def main():
     if not SUPABASE_DB_URL:
         print("ERROR: Set SUPABASE_DB_URL environment variable")
         print(
-            "  export SUPABASE_DB_URL=$(grep SUPABASE_DB_URL web/.env.local | cut -d= -f2-)"
+            "  export SUPABASE_DB_URL=$(grep SUPABASE_DB_URL web/.env.prod | cut -d= -f2-)"
         )
         sys.exit(1)
 
