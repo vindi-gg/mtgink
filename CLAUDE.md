@@ -161,13 +161,21 @@ supabase/migrations/
 ### Database Migrations (Supabase)
 Migrations live in `supabase/migrations/`. Run them manually via psql:
 ```bash
+# Production (from repo root or web/):
 export SUPABASE_DB_URL=$(grep SUPABASE_DB_URL web/.env.local | cut -d= -f2-)
 /opt/homebrew/opt/libpq/bin/psql "$SUPABASE_DB_URL" -f supabase/migrations/<filename>.sql
+
+# If libpq isn't installed, use the local Supabase container's psql:
+docker exec -i supabase_db_mtgink psql "$SUPABASE_DB_URL" < supabase/migrations/<filename>.sql
+
+# Local dev (from web/):
+docker exec -i supabase_db_mtgink psql -U postgres -d postgres < ../supabase/migrations/<filename>.sql
 ```
-- `psql` is installed via `brew install libpq` (not in PATH by default, use full path above)
+- `psql` is installed via `brew install libpq` (keg-only, not in PATH — use full path above)
+- Docker fallback: the local Supabase container has psql built in and can connect to any URL including prod
 - No `exec_sql` RPC on Supabase — must use psql directly
 - No Supabase CLI `migration up` — the `SUPABASE_DB_URL` format doesn't work with it
-- Always test migrations locally or review SQL before running against prod
+- Always test migrations locally first, then apply to prod with explicit approval
 
 ## Env Vars
 ```

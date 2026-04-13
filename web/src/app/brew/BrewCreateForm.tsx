@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { OracleCard, MtgSet, Tribe, Tag, Artist } from "@/lib/types";
 
 type Mode = "remix" | "vs" | "gauntlet" | "bracket";
@@ -33,8 +34,7 @@ const MODE_SOURCES: Record<Mode, Source[]> = {
 };
 
 const COLORS = ["W", "U", "B", "R", "G"] as const;
-const COLOR_LABELS: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green" };
-const COLOR_SYMBOLS: Record<string, string> = { W: "W", U: "U", B: "B", R: "R", G: "G" };
+const COLOR_LABELS: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green", M: "Multicolor", C: "Colorless" };
 
 const CARD_TYPES = ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Land"];
 const RARITIES = [
@@ -66,7 +66,12 @@ export default function BrewCreateForm() {
   const [bracketSize, setBracketSize] = useState<number>(16);
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
   const [onlyNewCards, setOnlyNewCards] = useState<boolean>(false);
-  const [firstIllustrationOnly, setFirstIllustrationOnly] = useState<boolean>(false);
+  // "Include all illustrations" = include every distinct illustration_id per
+  // card (default: OFF = one illustration per card). When OFF, "Prefer First"
+  // or "Prefer Last" controls which illustration is kept.
+  const [includeAllIllustrations, setIncludeAllIllustrations] = useState<boolean>(false);
+  // "first" = lowest collector #, "last" = highest collector #, null = default sort
+  const [illustrationPreference, setIllustrationPreference] = useState<"first" | "last" | null>(null);
 
   // Filters
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
@@ -94,6 +99,18 @@ export default function BrewCreateForm() {
   // Cached lists
   const [sets, setSets] = useState<MtgSet[] | null>(null);
   const [tribes, setTribes] = useState<Tribe[] | null>(null);
+
+  // Admin state — daily challenge brews are private + admin-only
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isDailyBrew, setIsDailyBrew] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) return;
+    supabase.auth.getUser().then(({ data }) => {
+      setIsAdmin(!!data.user?.user_metadata?.is_admin);
+    });
+  }, []);
 
   // Submit state
   const [submitting, setSubmitting] = useState(false);
@@ -230,7 +247,9 @@ export default function BrewCreateForm() {
       if (selectedRarity) params.set("rarity", selectedRarity);
       if (source === "expansion" && includeChildren) params.set("include_children", "true");
       if (source === "expansion" && onlyNewCards) params.set("only_new_cards", "true");
-      if (source === "expansion" && firstIllustrationOnly) params.set("first_illustration_only", "true");
+      // When not including all illustrations, one-per-card mode is active.
+      // The count is the same regardless of first/last preference.
+      if (source === "expansion" && !includeAllIllustrations) params.set("first_illustration_only", "true");
 
       const res = await fetch(`/api/brew/count?${params}`);
       const data = await res.json();
@@ -239,7 +258,7 @@ export default function BrewCreateForm() {
       setCount(null);
     }
     setCountLoading(false);
-  }, [selected, source, selectedColors, selectedType, selectedSubtype, selectedRarity, rulesText, needsSelection, includeChildren, onlyNewCards, firstIllustrationOnly]);
+  }, [selected, source, selectedColors, selectedType, selectedSubtype, selectedRarity, rulesText, needsSelection, includeChildren, onlyNewCards, includeAllIllustrations]);
 
   useEffect(() => {
     fetchCount();
@@ -314,7 +333,12 @@ export default function BrewCreateForm() {
     bracket_size: mode === "bracket" ? effectiveBracketSize : null,
     include_children: source === "expansion" ? includeChildren : null,
     only_new_cards: source === "expansion" ? onlyNewCards : null,
-    first_illustration_only: source === "expansion" ? firstIllustrationOnly : null,
+    // includeAllIllustrations controls oracle_id dedup (all vs one-per-card).
+    // The preference controls collector # sort order for both modes:
+    // - all illustrations: which printing represents each illustration_id
+    // - one-per-card: which illustration is kept per oracle_id
+    first_illustration_only: source === "expansion" && !includeAllIllustrations && illustrationPreference !== "last" ? true : null,
+    last_illustration_only: source === "expansion" && illustrationPreference === "last" ? true : null,
   });
 
   const buildSourceLabel = () => {
@@ -341,7 +365,7 @@ export default function BrewCreateForm() {
           ...buildBrewPayload(),
           name: generatedName,
           source_label: buildSourceLabel(),
-          is_public: true,
+          is_public: !isDailyBrew,
         }),
       });
 
@@ -399,6 +423,21 @@ export default function BrewCreateForm() {
             </button>
           ))}
         </div>
+
+        {/* Daily Challenge toggle — admin only. Daily brews are private
+            and only accessible via the admin daily challenge assignment. */}
+        {isAdmin && (
+          <label className="flex items-center gap-2 mt-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isDailyBrew}
+              onChange={(e) => setIsDailyBrew(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 text-amber-500 bg-gray-800 focus:ring-amber-500 cursor-pointer"
+            />
+            <span className="text-sm text-amber-400 font-medium">Daily Challenge</span>
+            <span className="text-[10px] text-gray-500">(private — assign via Admin &gt; Daily)</span>
+          </label>
+        )}
       </div>
 
       {/* Source tabs */}
@@ -479,42 +518,76 @@ export default function BrewCreateForm() {
 
           {source === "expansion" && selected && (
             <div className="mt-3 space-y-2">
-              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none w-fit">
-                <input
-                  type="checkbox"
-                  checked={includeChildren}
-                  onChange={(e) => {
-                    setIncludeChildren(e.target.checked);
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setIncludeChildren((v) => !v); clearPreview(); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                    includeChildren
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                      : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                  }`}
+                >
+                  Include child sets
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setOnlyNewCards((v) => !v); clearPreview(); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                    onlyNewCards
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                      : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                  }`}
+                >
+                  Only new cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIncludeAllIllustrations((v) => !v); clearPreview(); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                    includeAllIllustrations
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                      : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                  }`}
+                >
+                  Include all illustrations
+                </button>
+              </div>
+              {/* Prefer first / last — controls which printing represents
+                  each illustration_id (when including all illustrations)
+                  or which illustration is kept per card (when one-per-card).
+                  Mutually exclusive, can have neither (= default sort). */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-600 uppercase tracking-wide">Prefer:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIllustrationPreference((v) => v === "first" ? null : "first");
                     clearPreview();
                   }}
-                  className="w-4 h-4 accent-amber-500 cursor-pointer"
-                />
-                Include child sets (commander, tokens, mystical archive, etc.)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none w-fit">
-                <input
-                  type="checkbox"
-                  checked={onlyNewCards}
-                  onChange={(e) => {
-                    setOnlyNewCards(e.target.checked);
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                    illustrationPreference === "first"
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                      : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                  }`}
+                >
+                  First card #
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIllustrationPreference((v) => v === "last" ? null : "last");
                     clearPreview();
                   }}
-                  className="w-4 h-4 accent-amber-500 cursor-pointer"
-                />
-                Only new cards (exclude reprints)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none w-fit">
-                <input
-                  type="checkbox"
-                  checked={firstIllustrationOnly}
-                  onChange={(e) => {
-                    setFirstIllustrationOnly(e.target.checked);
-                    clearPreview();
-                  }}
-                  className="w-4 h-4 accent-amber-500 cursor-pointer"
-                />
-                First illustration per card (skip showcase/borderless/alt arts)
-              </label>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                    illustrationPreference === "last"
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                      : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                  }`}
+                >
+                  Highest card #
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -525,7 +598,7 @@ export default function BrewCreateForm() {
         <div className="space-y-4 p-4 bg-gray-900/50 rounded-xl border border-gray-800">
           <label className="text-xs uppercase tracking-wider text-gray-500 block">Filters</label>
 
-          {/* Colors */}
+          {/* Colors — WUBRG mana circles + Multicolor + Colorless */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-gray-500">Colors</label>
@@ -533,22 +606,61 @@ export default function BrewCreateForm() {
                 <button onClick={() => { setSelectedColors([]); clearPreview(); }} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">&times; Clear</button>
               )}
             </div>
-            <div className="flex gap-2">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => toggleColor(c)}
-                  title={COLOR_LABELS[c]}
-                  className={`w-10 h-10 rounded-lg text-sm font-bold transition-colors cursor-pointer ${
-                    selectedColors.includes(c)
-                      ? "bg-amber-500 text-gray-900"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                  }`}
-                >
-                  {COLOR_SYMBOLS[c]}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* WUBRG mana symbols from Scryfall */}
+              {COLORS.map((c) => {
+                const active = selectedColors.includes(c);
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => toggleColor(c)}
+                    title={COLOR_LABELS[c]}
+                    className={`w-9 h-9 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                      active ? "ring-2 ring-amber-400 scale-110" : "opacity-50 hover:opacity-90 hover:scale-105"
+                    }`}
+                  >
+                    <img
+                      src={`https://svgs.scryfall.io/card-symbols/${c}.svg`}
+                      alt={COLOR_LABELS[c]}
+                      className="w-8 h-8"
+                    />
+                  </button>
+                );
+              })}
+              <div className="w-px h-6 bg-gray-700" />
+              {/* Multicolor toggle — when ON with colors selected, includes
+                  multi-color cards containing those colors. When OFF, only
+                  mono-color cards of the selected colors. */}
+              <button
+                type="button"
+                onClick={() => toggleColor("M")}
+                title="Include multicolor cards"
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                  selectedColors.includes("M")
+                    ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                    : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                }`}
+              >
+                Multi
+              </button>
+              {/* Colorless toggle */}
+              <button
+                type="button"
+                onClick={() => toggleColor("C")}
+                title="Include colorless cards"
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
+                  selectedColors.includes("C")
+                    ? "bg-gray-600/30 text-gray-300 border-gray-500"
+                    : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-300"
+                }`}
+              >
+                Colorless
+              </button>
             </div>
+            {selectedColors.some(c => COLORS.includes(c as typeof COLORS[number])) && !selectedColors.includes("M") && (
+              <p className="text-[10px] text-gray-600 mt-1">Mono-color only. Add Multi to include multi-color cards.</p>
+            )}
           </div>
 
           {/* Type */}

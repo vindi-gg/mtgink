@@ -91,8 +91,39 @@ export default function AdminDailyClient({ days }: { days: number }) {
   const [brewQuery, setBrewQuery] = useState("");
   const [brewResults, setBrewResults] = useState<BrewResult[]>([]);
   const [searchingBrews, setSearchingBrews] = useState(false);
+  // Pending action that needs confirmation (reset today's challenge).
+  const [pendingAction, setPendingAction] = useState<{
+    challengeId: number;
+    label: string;
+    execute: () => Promise<void>;
+  } | null>(null);
 
   const totalPages = Math.ceil(days / PAGE_SIZE);
+
+  /** Check if a challenge is for today (modifying it resets submissions). */
+  function isTodayChallenge(c: Challenge): boolean {
+    const today = new Date().toISOString().slice(0, 10);
+    return c.challenge_date === today;
+  }
+
+  /** Wrap an action: if the challenge is today, show confirmation first. */
+  function withResetGuard(challenge: Challenge, action: () => Promise<void>) {
+    const c = challenges.find((ch) => ch.id === challenge.id) ?? challenge;
+    if (isTodayChallenge(c)) {
+      setPendingAction({
+        challengeId: c.id,
+        label: c.title,
+        execute: async () => {
+          // Delete submissions + reset stats before executing
+          await fetch(`/api/admin/daily/${c.id}/reset`, { method: "POST" });
+          await action();
+          setPendingAction(null);
+        },
+      });
+    } else {
+      action();
+    }
+  }
 
   const fetchPage = useCallback(async (p: number) => {
     setLoading(true);
@@ -107,7 +138,7 @@ export default function AdminDailyClient({ days }: { days: number }) {
     fetchPage(page);
   }, [page, fetchPage]);
 
-  async function handleRandomTheme(challengeId: number, type?: string) {
+  async function doRandomTheme(challengeId: number, type?: string) {
     setRegenerating(challengeId);
     const typeParam = type ? `&type=${type}` : "";
     const res = await fetch(`/api/admin/themes?random=1${typeParam}`);
@@ -127,7 +158,16 @@ export default function AdminDailyClient({ days }: { days: number }) {
     setEditingId(null);
   }
 
-  async function handleSelectTheme(challengeId: number, themeId: number) {
+  function handleRandomTheme(challengeId: number, type?: string) {
+    const c = challenges.find((ch) => ch.id === challengeId);
+    if (c) {
+      withResetGuard(c, () => doRandomTheme(challengeId, type));
+    } else {
+      doRandomTheme(challengeId, type);
+    }
+  }
+
+  async function doSelectTheme(challengeId: number, themeId: number) {
     setRegenerating(challengeId);
     const res = await fetch(`/api/admin/daily/${challengeId}/regenerate`, {
       method: "POST",
@@ -144,6 +184,15 @@ export default function AdminDailyClient({ days }: { days: number }) {
     setSearchResults([]);
   }
 
+  function handleSelectTheme(challengeId: number, themeId: number) {
+    const c = challenges.find((ch) => ch.id === challengeId);
+    if (c) {
+      withResetGuard(c, () => doSelectTheme(challengeId, themeId));
+    } else {
+      doSelectTheme(challengeId, themeId);
+    }
+  }
+
   async function handleSearch(q: string) {
     setSearchQuery(q);
     if (q.length < 2) { setSearchResults([]); return; }
@@ -158,14 +207,37 @@ export default function AdminDailyClient({ days }: { days: number }) {
     setBrewQuery(q);
     if (q.length < 2) { setBrewResults([]); return; }
     setSearchingBrews(true);
-    const res = await fetch(`/api/brew?q=${encodeURIComponent(q)}&sort=newest&limit=10`);
+
+    // Check if the input looks like a direct URL or slug (contains "/" or
+    // no spaces). If so, try a direct slug lookup first — this is the
+    // "paste a URL to override" escape hatch for assigning public brews.
+    const slugMatch = q.match(/\/brew\/([a-z0-9-]+)/i)?.[1] ?? (!/\s/.test(q) ? q : null);
+    if (slugMatch) {
+      try {
+        const directRes = await fetch(`/api/brew/${slugMatch}`);
+        if (directRes.ok) {
+          const brew = await directRes.json();
+          if (brew && brew.id) {
+            setBrewResults([brew]);
+            setSearchingBrews(false);
+            return;
+          }
+        }
+      } catch { /* fall through to search */ }
+    }
+
+    // Default: only show private (daily-only) brews in search.
+    const res = await fetch(`/api/brew?q=${encodeURIComponent(q)}&sort=newest&limit=10&all=true&daily_only=true`);
     const { brews } = await res.json();
     setBrewResults(brews ?? []);
     setSearchingBrews(false);
   }
 
-  async function handleAssignBrew(challengeId: number, brew: BrewResult) {
+  async function doAssignBrew(challengeId: number, brew: BrewResult) {
     setRegenerating(challengeId);
+    const challenge = challenges.find((c) => c.id === challengeId);
+    const isBracket = challenge?.challenge_type === "bracket";
+    const poolSize = brew.pool?.length ?? 0;
     const res = await fetch(`/api/admin/daily/${challengeId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -174,7 +246,11 @@ export default function AdminDailyClient({ days }: { days: number }) {
         pool: brew.pool,
         gauntlet_mode: brew.mode === "remix" ? "remix" : "vs",
         title: brew.name,
-        description: `Brew: ${brew.source_label}`,
+        description: isBracket
+          ? `${poolSize}-card bracket: ${brew.source_label}`
+          : `Brew: ${brew.source_label}`,
+        // For bracket challenges, match bracket_size to the brew's pool
+        ...(isBracket && poolSize > 0 ? { bracket_size: poolSize } : {}),
       }),
     });
     if (res.ok) {
@@ -185,6 +261,15 @@ export default function AdminDailyClient({ days }: { days: number }) {
     setEditingId(null);
     setBrewQuery("");
     setBrewResults([]);
+  }
+
+  function handleAssignBrew(challengeId: number, brew: BrewResult) {
+    const c = challenges.find((ch) => ch.id === challengeId);
+    if (c) {
+      withResetGuard(c, () => doAssignBrew(challengeId, brew));
+    } else {
+      doAssignBrew(challengeId, brew);
+    }
   }
 
   // Group by date
@@ -338,8 +423,8 @@ export default function AdminDailyClient({ days }: { days: number }) {
                         </div>
                       )}
 
-                      {/* Theme editing — gauntlet only */}
-                      {c.challenge_type === "gauntlet" && (
+                      {/* Theme editing — gauntlet + bracket */}
+                      {(c.challenge_type === "gauntlet" || c.challenge_type === "bracket") && (
                         <div className="mt-3 pt-3 border-t border-gray-800">
                           {editingId === c.id ? (
                             <div className="space-y-2">
@@ -371,7 +456,7 @@ export default function AdminDailyClient({ days }: { days: number }) {
                                     type="text"
                                     value={brewQuery}
                                     onChange={(e) => handleBrewSearch(e.target.value)}
-                                    placeholder="Search brews by name..."
+                                    placeholder="Search daily brews or paste a brew URL..."
                                     className="w-full px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500"
                                   />
                                   {searchingBrews && <p className="text-xs text-gray-500">Searching...</p>}
@@ -466,6 +551,41 @@ export default function AdminDailyClient({ days }: { days: number }) {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Reset confirmation modal */}
+      {pendingAction && (
+        <div
+          onClick={() => setPendingAction(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-gray-900 border border-red-500/30 rounded-xl p-6 max-w-sm w-full shadow-2xl"
+          >
+            <h3 className="text-lg font-semibold text-red-400 mb-2">Reset active challenge?</h3>
+            <p className="text-sm text-gray-300 mb-1">
+              <strong>{pendingAction.label}</strong> is today&apos;s live challenge.
+            </p>
+            <p className="text-sm text-gray-400 mb-6">
+              Changing it will <strong className="text-red-400">delete all current submissions</strong> and
+              reset participation stats. Players who already completed it will be able to play again.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setPendingAction(null)}
+                className="px-4 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => pendingAction.execute()}
+                className="px-4 py-2 rounded-lg text-sm bg-red-600 hover:bg-red-500 text-white font-medium transition-colors cursor-pointer"
+              >
+                Reset &amp; Update
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>

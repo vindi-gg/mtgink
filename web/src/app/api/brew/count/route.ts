@@ -18,8 +18,10 @@ export async function GET(request: NextRequest) {
   const includeChildren = params.get("include_children") === "true";
   const onlyNewCards = params.get("only_new_cards") === "true";
   const firstIllustrationOnly = params.get("first_illustration_only") === "true";
+  const lastIllustrationOnly = params.get("last_illustration_only") === "true";
 
   try {
+    // Both first and last illustration mean "one per card" for counting
     const count = await getBrewCount(
       source,
       sourceId,
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
       rarity,
       includeChildren,
       onlyNewCards,
-      firstIllustrationOnly,
+      firstIllustrationOnly || lastIllustrationOnly,
     );
     return NextResponse.json({ count });
   } catch {

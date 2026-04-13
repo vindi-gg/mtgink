@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getBrewBySlug } from "@/lib/brew-queries";
+import { createClient } from "@/lib/supabase/server";
 import BrewDetail from "./BrewDetail";
 
 export const revalidate = 60;
@@ -18,6 +19,13 @@ export default async function BrewDetailPage({ params }: { params: Promise<{ slu
   const { slug } = await params;
   const brew = await getBrewBySlug(slug);
   if (!brew) notFound();
+
+  // Private brews (daily-only) are admin-gated.
+  if (!brew.is_public) {
+    const supabase = await createClient();
+    const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+    if (!user?.user_metadata?.is_admin) notFound();
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white px-4 py-8">

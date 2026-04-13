@@ -46,7 +46,8 @@ export async function PUT(
     }
 
     const brew = await getBrewBySlug(slug);
-    if (!brew || brew.user_id !== user.id) {
+    const isAdmin = !!user.user_metadata?.is_admin;
+    if (!brew || (brew.user_id !== user.id && !isAdmin)) {
       return NextResponse.json({ error: "Brew not found" }, { status: 404 });
     }
 
@@ -55,6 +56,9 @@ export async function PUT(
       name: body.name,
       description: body.description,
       isPublic: body.is_public,
+      pool: body.pool,
+      bracketSize: body.bracket_size,
+      poolSize: body.pool_size,
     });
 
     return NextResponse.json({ ok: true });
@@ -80,7 +84,8 @@ export async function DELETE(
     }
 
     const brew = await getBrewBySlug(slug);
-    if (!brew || brew.user_id !== user.id) {
+    const isAdmin = !!user.user_metadata?.is_admin;
+    if (!brew || (brew.user_id !== user.id && !isAdmin)) {
       return NextResponse.json({ error: "Brew not found" }, { status: 404 });
     }
 

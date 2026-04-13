@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Brew } from "@/lib/types";
 import { brewToShowdownUrl } from "@/lib/brew-utils";
 import { artCropUrl } from "@/lib/image-utils";
@@ -39,18 +40,29 @@ interface BrewResults {
 
 export default function BrewDetail({ brew }: { brew: Brew }) {
   const router = useRouter();
-  const { cardUrl } = useImageMode();
+  const { cardUrl, imageMode, toggleImageMode } = useImageMode();
   const [playing, setPlaying] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [results, setResults] = useState<BrewResults | null>(null);
+
+  const canEdit = isOwner || isAdmin;
+
+  // Check if pool contains multi-colored cards
+  const hasMultiColor = (brew.pool ?? []).some((entry) => {
+    if (!entry.mana_cost) return false;
+    const colors = new Set(entry.mana_cost.match(/\{([WUBRG])\}/g)?.map((m) => m[1]) ?? []);
+    return colors.size > 1;
+  });
 
   useEffect(() => {
     const supabase = createClient();
     if (supabase) {
       supabase.auth.getUser().then(({ data: { user } }) => {
         if (user && user.id === brew.user_id) setIsOwner(true);
+        if (user?.user_metadata?.is_admin) setIsAdmin(true);
       });
     }
   }, [brew.user_id]);
@@ -77,9 +89,16 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
     if (!confirm("Delete this brew?")) return;
     setDeleting(true);
     try {
-      await fetch(`/api/brew/${brew.slug}`, { method: "DELETE" });
-      router.push("/brews");
+      const res = await fetch(`/api/brew/${brew.slug}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push(brew.is_public ? "/brews" : "/inkadmin/brews");
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(`Delete failed: ${data?.error ?? res.statusText}`);
+        setDeleting(false);
+      }
     } catch {
+      alert("Delete failed — network error");
       setDeleting(false);
     }
   };
@@ -135,6 +154,7 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
           <span>Pool: <span className="text-gray-200">{brew.pool_size}</span></span>
         )}
         <span>Plays: <span className="text-gray-200">{brew.play_count.toLocaleString()}</span></span>
+        <span>Multi-color: <span className={hasMultiColor ? "text-amber-400" : "text-gray-200"}>{hasMultiColor ? "Yes" : "No"}</span></span>
       </div>
 
       {/* Actions */}
@@ -154,7 +174,16 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
           {copied ? "Copied!" : "Copy Link"}
         </button>
 
-        {isOwner && (
+        {canEdit && (
+          <Link
+            href={`/brew/${brew.slug}/edit`}
+            className="px-6 py-3 rounded-lg text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+          >
+            Edit
+          </Link>
+        )}
+
+        {canEdit && (
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -164,6 +193,41 @@ export default function BrewDetail({ brew }: { brew: Brew }) {
           </button>
         )}
       </div>
+
+      {/* Pool preview */}
+      {brew.pool && brew.pool.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-gray-300">
+              Pool <span className="text-gray-600 font-normal">({brew.pool.length} cards)</span>
+            </h2>
+            <button
+              onClick={toggleImageMode}
+              className="px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 transition-colors cursor-pointer"
+            >
+              {imageMode === "art" ? "Art" : "Card"} <span className="text-gray-500">(W)</span>
+            </button>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            {brew.pool.map((entry) => (
+              <div key={`${entry.set_code}-${entry.collector_number}`} className="relative group">
+                <img
+                  src={cardUrl(entry.set_code, entry.collector_number, entry.image_version)}
+                  alt={entry.name}
+                  className="w-full rounded-lg"
+                  style={{ aspectRatio: imageMode === "card" ? "488 / 680" : "626 / 457" }}
+                />
+                {imageMode !== "card" && (
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent rounded-b-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[10px] text-white truncate">{entry.name}</p>
+                    <p className="text-[9px] text-gray-400 truncate">{entry.artist}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Showdown URL preview */}
       <div className="text-xs text-gray-600">

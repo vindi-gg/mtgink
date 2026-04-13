@@ -8,9 +8,26 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(parseInt(params.get("limit") ?? "20") || 20, 100);
   const offset = parseInt(params.get("offset") ?? "0") || 0;
   const q = params.get("q");
+  const includeAll = params.get("all") === "true";
+  const dailyOnly = params.get("daily_only") === "true";
+  const mode = params.get("mode") ?? undefined;
 
   try {
-    const result = await listPublicBrews(sort, limit, offset, q ?? undefined);
+    // all=true or daily_only=true need admin auth.
+    if (includeAll || dailyOnly) {
+      const supabase = await createClient();
+      const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+      if (!user?.user_metadata?.is_admin) {
+        return NextResponse.json({ brews: [], total: 0 });
+      }
+      const result = await listPublicBrews(
+        sort, limit, offset, q ?? undefined, mode,
+        includeAll ? true : false,
+        dailyOnly ? true : false,
+      );
+      return NextResponse.json(result);
+    }
+    const result = await listPublicBrews(sort, limit, offset, q ?? undefined, mode);
     return NextResponse.json(result);
   } catch {
     return NextResponse.json({ brews: [], total: 0 }, { status: 500 });
@@ -20,7 +37,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, mode, source, source_id, source_label, colors, card_type, subtype, rules_text, rarity, pool_size, bracket_size, is_public } = body;
+    const { name, description, mode, source, source_id, source_label, colors, card_type, subtype, rules_text, rarity, pool_size, bracket_size, is_public, include_children, only_new_cards, first_illustration_only, last_illustration_only } = body;
 
     if (!name || !mode || !source || !source_label) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -54,6 +71,10 @@ export async function POST(request: NextRequest) {
       poolSize: pool_size,
       bracketSize: bracket_size,
       isPublic: is_public,
+      includeChildren: include_children ?? undefined,
+      onlyNewCards: only_new_cards ?? undefined,
+      firstIllustrationOnly: first_illustration_only ?? undefined,
+      lastIllustrationOnly: last_illustration_only ?? undefined,
     });
 
     return NextResponse.json(result, { status: 201 });

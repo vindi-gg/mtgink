@@ -50,6 +50,10 @@ export async function createBrew(params: {
   poolSize?: number;
   bracketSize?: number;
   isPublic?: boolean;
+  includeChildren?: boolean;
+  onlyNewCards?: boolean;
+  firstIllustrationOnly?: boolean;
+  lastIllustrationOnly?: boolean;
 }): Promise<{ id: string; slug: string }> {
   const admin = getAdminClient();
   const slug = await generateSlug(params.name);
@@ -85,6 +89,10 @@ export async function createBrew(params: {
       bracket_size: params.mode === "bracket" ? params.bracketSize ?? null : null,
       pool,
       is_public: params.isPublic !== false,
+      include_children: params.includeChildren ?? false,
+      only_new_cards: params.onlyNewCards ?? false,
+      first_illustration_only: params.firstIllustrationOnly ?? false,
+      last_illustration_only: params.lastIllustrationOnly ?? false,
       slug,
       preview_set_code: preview?.set_code ?? null,
       preview_collector_number: preview?.collector_number ?? null,
@@ -111,6 +119,7 @@ export async function resolveBrewPool(params: {
   includeChildren?: boolean;
   onlyNewCards?: boolean;
   firstIllustrationOnly?: boolean;
+  lastIllustrationOnly?: boolean;
 }): Promise<GauntletEntry[]> {
   const ps = params.poolSize ?? 10;
   const filters: CompareFilters = {
@@ -157,6 +166,7 @@ export async function resolveBrewPool(params: {
       includeChildren: params.includeChildren,
       onlyNewCards: params.onlyNewCards,
       firstIllustrationOnly: params.firstIllustrationOnly,
+      lastIllustrationOnly: params.lastIllustrationOnly,
     });
   }
 
@@ -184,13 +194,23 @@ export async function listPublicBrews(
   offset = 0,
   search?: string,
   mode?: string,
+  /** When true, include private (daily-only) brews. Admin-gated at the
+   *  API layer — this function doesn't check auth. */
+  includePrivate = false,
+  /** When true, show ONLY private brews (is_public = false). Implies
+   *  includePrivate. Used by the admin daily brew assignment search. */
+  dailyOnly = false,
 ): Promise<{ brews: Brew[]; total: number }> {
   const admin = getAdminClient();
 
   let countQuery = admin
     .from("brews")
-    .select("*", { count: "exact", head: true })
-    .eq("is_public", true);
+    .select("*", { count: "exact", head: true });
+  if (dailyOnly) {
+    countQuery = countQuery.eq("is_public", false);
+  } else if (!includePrivate) {
+    countQuery = countQuery.eq("is_public", true);
+  }
   if (search) countQuery = countQuery.ilike("name", `%${search}%`);
   if (mode) countQuery = countQuery.eq("mode", mode);
   const { count } = await countQuery;
@@ -198,8 +218,13 @@ export async function listPublicBrews(
   const orderCol = sort === "popular" ? "play_count" : "created_at";
   let dataQuery = admin
     .from("brews")
-    .select("*")
-    .eq("is_public", true)
+    .select("*");
+  if (dailyOnly) {
+    dataQuery = dataQuery.eq("is_public", false);
+  } else if (!includePrivate) {
+    dataQuery = dataQuery.eq("is_public", true);
+  }
+  dataQuery = dataQuery
     .order(orderCol, { ascending: false })
     .range(offset, offset + limit - 1);
   if (search) dataQuery = dataQuery.ilike("name", `%${search}%`);
@@ -226,11 +251,15 @@ export async function getBrewsByUser(
 
 export async function updateBrew(
   brewId: string,
-  updates: { name?: string; description?: string; isPublic?: boolean }
+  updates: {
+    name?: string;
+    description?: string;
+    isPublic?: boolean;
+    pool?: GauntletEntry[];
+    bracketSize?: number;
+    poolSize?: number;
+  }
 ): Promise<void> {
-  const supabase = await createClient();
-  if (!supabase) return;
-
   const updateData: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -238,14 +267,23 @@ export async function updateBrew(
   if (updates.description !== undefined)
     updateData.description = updates.description;
   if (updates.isPublic !== undefined) updateData.is_public = updates.isPublic;
+  if (updates.pool !== undefined) updateData.pool = updates.pool;
+  if (updates.bracketSize !== undefined) updateData.bracket_size = updates.bracketSize;
+  if (updates.poolSize !== undefined) updateData.pool_size = updates.poolSize;
 
-  await supabase.from("brews").update(updateData).eq("id", brewId);
+  await getAdminClient().from("brews").update(updateData).eq("id", brewId);
 }
 
+/** Delete a brew. Throws if the brew is still assigned to a daily
+ *  challenge (FK constraint prevents orphaning active challenges). */
 export async function deleteBrew(brewId: string): Promise<void> {
-  const supabase = await createClient();
-  if (!supabase) return;
-  await supabase.from("brews").delete().eq("id", brewId);
+  const { error } = await getAdminClient().from("brews").delete().eq("id", brewId);
+  if (error) {
+    if (error.code === "23503") {
+      throw new Error("This brew is assigned to a daily challenge. Unassign it first before deleting.");
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function incrementPlayCount(brewId: string): Promise<void> {
