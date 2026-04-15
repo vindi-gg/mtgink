@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 export async function PATCH(
@@ -28,6 +29,11 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  revalidatePath("/daily/bracket");
+  revalidatePath("/daily/gauntlet");
+  revalidatePath("/daily/bracket/results");
+  revalidatePath("/daily/gauntlet/results");
 
   return NextResponse.json({ challenge: data });
 }

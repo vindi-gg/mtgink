@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
@@ -54,6 +55,11 @@ export async function POST(
   if (statsErr) {
     return NextResponse.json({ error: statsErr.message }, { status: 500 });
   }
+
+  revalidatePath("/daily/bracket");
+  revalidatePath("/daily/gauntlet");
+  revalidatePath("/daily/bracket/results");
+  revalidatePath("/daily/gauntlet/results");
 
   return NextResponse.json({ ok: true, challenge_id: challengeId });
 }
