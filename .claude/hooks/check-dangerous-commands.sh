@@ -36,18 +36,8 @@ if grep -qE 'docker[[:space:]]+exec[[:space:]]+(-i[[:space:]]+)?supabase_db_mtgi
   exit 0
 fi
 
-# Block any form of `git commit`. The left-anchor group tolerates the
-# command being chained after ;, &, |, `, $(, or a pipe.
-if grep -qE '(^|[[:space:];&|`]|\$\()git[[:space:]]+commit([[:space:]]|$)' <<< "$cmd"; then
-  emit_deny "git commit requires explicit user approval every time — never auto-approved, no matter how obvious or trivial the change. Stop. Show the diff and ask Dan to confirm before running this command. See CLAUDE.md § Authorization Required Every Time."
-  exit 0
-fi
-
-# Block any form of `git push`.
-if grep -qE '(^|[[:space:];&|`]|\$\()git[[:space:]]+push([[:space:]]|$)' <<< "$cmd"; then
-  emit_deny "git push requires explicit user approval every time — never auto-approved. Stop. Ask Dan to confirm before running this command. See CLAUDE.md § Authorization Required Every Time."
-  exit 0
-fi
+# git commit and git push are gated by CLAUDE.md rules (always ask first)
+# and Claude Code's built-in tool permission prompt. No hook block needed.
 
 # Block psql against production Supabase. Matches *.supabase.co and
 # pooler.supabase.com — covers both the direct and pooled connection

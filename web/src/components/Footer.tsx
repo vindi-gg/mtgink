@@ -17,7 +17,7 @@ export default function Footer() {
           <nav className="flex gap-6 text-xs text-gray-500">
             <Link href="/privacy" className="hover:text-gray-300 transition-colors">Privacy</Link>
             <Link href="/terms" className="hover:text-gray-300 transition-colors">Terms</Link>
-            <a href="mailto:dan@mtg.ink" className="hover:text-gray-300 transition-colors">Contact</a>
+            <a href="mailto:hello@mtg.ink" className="hover:text-gray-300 transition-colors">Contact</a>
           </nav>
         </div>
         <p className="mt-6 text-[11px] text-gray-600/60">
