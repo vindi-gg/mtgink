@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import BracketFillView from "@/components/BracketFillView";
 import BracketCreationModal from "@/components/BracketCreationModal";
 import type { BracketCard, BracketState, Brew, GauntletEntry } from "@/lib/types";
@@ -44,6 +44,7 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 export default function BracketPageClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const brewSlug = searchParams.get("brew");
   const setCodeParam = searchParams.get("set_code");
@@ -360,7 +361,15 @@ export default function BracketPageClient() {
     return (
       <BracketCreationModal
         open={true}
-        onClose={() => setShowModal(false)}
+        onClose={() => {
+          // If no bracket is loaded behind the modal, navigate away
+          // instead of showing a dead "Loading bracket..." spinner.
+          if (!cards) {
+            router.back();
+          } else {
+            setShowModal(false);
+          }
+        }}
       />
     );
   }

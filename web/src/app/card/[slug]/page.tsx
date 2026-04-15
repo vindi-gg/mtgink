@@ -12,6 +12,7 @@ import {
   slugify,
 } from "@/lib/queries";
 import ArtGallery from "@/components/ArtGallery";
+import BracketPanel from "@/components/BracketPanel";
 import CardFaceToggle from "@/components/CardFaceToggle";
 import FavoriteCardButton from "@/components/FavoriteCardButton";
 import PrintingCard from "@/components/PrintingCard";
@@ -281,6 +282,14 @@ export default async function CardPage({
               Gauntlet
             </a>
           </div>
+        )}
+        {illustrations.length >= 5 && (
+          <BracketPanel
+            sourceType="card"
+            sourceParam={card.oracle_id}
+            totalCount={illustrations.length}
+            label={card.name}
+          />
         )}
         {card.subtypes && card.subtypes.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">

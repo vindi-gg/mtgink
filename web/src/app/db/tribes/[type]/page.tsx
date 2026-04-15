@@ -4,6 +4,7 @@ import { Suspense, cache } from "react";
 import { notFound } from "next/navigation";
 import { getCardsByTribe, getCreatureTribes } from "@/lib/queries";
 import { collectionPageJsonLd, breadcrumbJsonLd, JsonLd } from "@/lib/jsonld";
+import { BracketSourcePublisher } from "@/lib/bracket-source-context";
 import CardGrid from "@/components/CardGrid";
 import Pagination from "@/components/Pagination";
 
@@ -119,6 +120,13 @@ export default async function TribeDetailPage({
             </div>
           </div>
         </div>
+
+        <BracketSourcePublisher
+          sourceType="tribe"
+          sourceParam={tribe.tribe}
+          totalCount={total}
+          label={tribe.tribe}
+        />
 
         <CardGrid cards={cards} />
 

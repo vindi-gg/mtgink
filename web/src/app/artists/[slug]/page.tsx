@@ -6,6 +6,7 @@ import {
   getArtistStats,
 } from "@/lib/queries";
 import { artCropUrl } from "@/lib/image-utils";
+import { BracketSourcePublisher } from "@/lib/bracket-source-context";
 import ArtistGallery from "@/components/ArtistGallery";
 import type { Metadata } from "next";
 
@@ -92,6 +93,13 @@ export default async function ArtistDetailPage({
             </span>
           )}
         </div>
+        <BracketSourcePublisher
+          sourceType="artist"
+          sourceParam={artist.name}
+          totalCount={artist.illustration_count}
+          label={artist.name}
+        />
+
         {sorted.length >= 3 && (
           <div className="flex gap-2 mb-6 lg:hidden">
             <Link

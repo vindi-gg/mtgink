@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useImageMode } from "@/lib/image-mode";
+import { useBracketSource } from "@/lib/bracket-source-context";
+import { PlayModeIcon, BRACKET_ICON } from "@/lib/play-modes";
 import CreateBracketPanel from "./CreateBracketPanel";
 import MobileBracketFab from "./MobileBracketFab";
+import BracketPanel from "./BracketPanel";
 
 function ArtCardToggle() {
   const { imageMode, toggleImageMode } = useImageMode();
@@ -104,18 +108,99 @@ function getDetailContext(pathname: string): PlayLink[] | null {
   return null;
 }
 
+function GenericBracketFab({ sourceType, sourceParam, totalCount, label }: {
+  sourceType: "tribe" | "artist" | "card";
+  sourceParam: string;
+  totalCount: number;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="lg:hidden fixed bottom-4 right-4 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-amber-500 text-gray-900 font-bold text-sm shadow-lg shadow-black/40 hover:bg-amber-400 transition-colors cursor-pointer"
+        aria-label="Create bracket"
+      >
+        <span>Play</span>
+        <PlayModeIcon d={BRACKET_ICON} className="w-5 h-5" />
+      </button>
+      {open && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 bg-black/70 flex items-end justify-center"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-gray-900 border-t border-gray-800 rounded-t-2xl p-4 pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center mb-3">
+              <div className="w-10 h-1 rounded-full bg-gray-700" />
+            </div>
+            <BracketPanel
+              compact
+              sourceType={sourceType}
+              sourceParam={sourceParam}
+              totalCount={totalCount}
+              label={label}
+            />
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="mt-4 w-full py-2 text-xs font-medium text-gray-400 hover:text-white cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const MIN_BRACKET_COUNT = 5;
+
 export default function Sidebar({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
   const playLinks = getDetailContext(pathname);
   const isExpansionPage = /^\/db\/expansions\/[^/]+$/.test(pathname);
+  const bracketSource = useBracketSource();
+  const showGenericBracket = bracketSource.sourceType !== null && bracketSource.totalCount >= MIN_BRACKET_COUNT;
 
   return (
     <>
       {isExpansionPage && <MobileBracketFab />}
+      {!isExpansionPage && showGenericBracket && (
+        <GenericBracketFab
+          sourceType={bracketSource.sourceType!}
+          sourceParam={bracketSource.sourceParam}
+          totalCount={bracketSource.totalCount}
+          label={bracketSource.label}
+        />
+      )}
       <aside className="hidden lg:block w-[300px] shrink-0 pt-[7rem]">
       <div className="space-y-6">
         {children}
         {isExpansionPage && <CreateBracketPanel />}
+        {showGenericBracket && (
+          <BracketPanel
+            sourceType={bracketSource.sourceType!}
+            sourceParam={bracketSource.sourceParam}
+            totalCount={bracketSource.totalCount}
+            label={bracketSource.label}
+          />
+        )}
         {playLinks && playLinks.length > 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <ArtCardToggle />

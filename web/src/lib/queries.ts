@@ -1610,18 +1610,23 @@ export async function getGauntletCards(
   // Foreign-only sets whose card images are non-English
   const FOREIGN_SETS = ["4bb", "fbb", "bchr", "ren", "rin"];
 
-  const { data: printings } = await getAdminClient()
-    .from("printings")
-    .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
-    .in("oracle_id", oracleIds)
-    .not("illustration_id", "is", null)
-    .not("set_code", "in", `(${FOREIGN_SETS.join(",")})`)
-    .eq("sets.digital", false)
-    .order("released_at", { ascending: false });
+  // Chunked to keep the URL within PostgREST's ~8KB header limit —
+  // large tribe pools (600+ cards) would silently return empty otherwise.
+  const allPrintings = await inChunked(oracleIds, async (chunk) => {
+    const { data } = await getAdminClient()
+      .from("printings")
+      .select("oracle_id, illustration_id, artist, set_code, collector_number, image_version, sets!inner(name, digital)")
+      .in("oracle_id", chunk)
+      .not("illustration_id", "is", null)
+      .not("set_code", "in", `(${FOREIGN_SETS.join(",")})`)
+      .eq("sets.digital", false)
+      .order("released_at", { ascending: false });
+    return data ?? [];
+  });
 
   // Deduplicate — one printing per oracle_id (newest first)
-  const printingMap = new Map<string, (typeof printings extends (infer T)[] | null ? T : never)>();
-  for (const p of printings ?? []) {
+  const printingMap = new Map<string, (typeof allPrintings)[number]>();
+  for (const p of allPrintings) {
     if (!printingMap.has(p.oracle_id)) {
       printingMap.set(p.oracle_id, p);
     }
