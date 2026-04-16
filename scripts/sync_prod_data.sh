@@ -39,6 +39,9 @@ TABLES=(
   marketplaces
   prices
   gauntlet_themes
+  brews
+  bracket_seeds
+  bracket_completions
 )
 
 echo "==> Dumping data from prod..."

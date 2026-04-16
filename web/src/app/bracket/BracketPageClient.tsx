@@ -173,9 +173,11 @@ export default function BracketPageClient() {
           if (brew.mode !== "bracket") {
             throw new Error("This brew is not a bracket");
           }
-          if (!brew.bracket_size || !brew.pool || brew.pool.length < brew.bracket_size) {
-            throw new Error("Brew pool is too small for its bracket size");
+          if (!brew.pool || brew.pool.length < 2) {
+            throw new Error("Brew pool is too small for a bracket");
           }
+          // Use actual pool size if smaller than requested bracket_size
+          const effectiveBracketSize = Math.min(brew.bracket_size ?? brew.pool.length, brew.pool.length);
 
           const localSlug = `brew-${brewSlug}`;
 
@@ -187,7 +189,7 @@ export default function BracketPageClient() {
           if (savedCardsJson) {
             try {
               const parsed = JSON.parse(savedCardsJson) as BracketCard[];
-              if (Array.isArray(parsed) && parsed.length === brew.bracket_size) {
+              if (Array.isArray(parsed) && parsed.length === effectiveBracketSize) {
                 picked = parsed;
               }
             } catch {
@@ -195,7 +197,7 @@ export default function BracketPageClient() {
             }
           }
           if (!picked) {
-            picked = shuffle(brew.pool).slice(0, brew.bracket_size).map(entryToBracketCard);
+            picked = shuffle(brew.pool).slice(0, effectiveBracketSize).map(entryToBracketCard);
             if (typeof window !== "undefined") {
               localStorage.setItem(cardsKey, JSON.stringify(picked));
             }

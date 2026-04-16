@@ -58,15 +58,18 @@ export async function createBrew(params: {
   const admin = getAdminClient();
   const slug = await generateSlug(params.name);
 
-  // Fetch preview image
-  const preview = await getBrewPreviewImage(params.source, params.sourceId);
-
   // Resolve the pool from the brew's source + filters at creation time.
   // For bracket brews the client sends poolSize = bracketSize (see
   // buildBrewPayload in BrewCreateForm), so resolveBrewPool returns
   // bracketSize cards; the DB row stores the size in bracket_size and
   // leaves pool_size null.
   const pool = await resolveBrewPool(params);
+
+  // Fetch preview image — fall back to first pool entry if source-based lookup misses
+  let preview = await getBrewPreviewImage(params.source, params.sourceId);
+  if (!preview && pool.length > 0) {
+    preview = { set_code: pool[0].set_code, collector_number: pool[0].collector_number, image_version: pool[0].image_version };
+  }
 
   const { data, error } = await admin
     .from("brews")
