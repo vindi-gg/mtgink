@@ -21,7 +21,7 @@ function getSessionId(): string {
 }
 
 export default function DailyChallengesSection({ challenges: serverChallenges }: DailyChallengesSectionProps) {
-  const [challenges, setChallenges] = useState(serverChallenges);
+  const [challenges, setChallenges] = useState<(DailyChallenge & { stats: DailyChallengeStats })[] | null>(null);
   const [participated, setParticipated] = useState<Set<number>>(new Set());
   // Fetch fresh challenges client-side to avoid ISR/router-cache staleness
   useEffect(() => {
@@ -37,10 +37,17 @@ export default function DailyChallengesSection({ challenges: serverChallenges }:
             data.filter((c: DailyChallenge & { participated?: boolean }) => c.participated).map((c: DailyChallenge) => c.id)
           );
           setParticipated(done);
+        } else {
+          // API failed — fall back to server-rendered data
+          setChallenges(serverChallenges);
         }
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        setChallenges(serverChallenges);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!challenges || challenges.length === 0) return null;
 
   if (challenges.length === 0) return null;
 
