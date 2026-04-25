@@ -13,8 +13,9 @@ const SUBS = [
 ];
 
 export async function GET() {
+  const lastmod = new Date().toISOString();
   const entries = SUBS.map((s) =>
-    `  <sitemap><loc>${BASE_URL}/${s}</loc></sitemap>`
+    `  <sitemap><loc>${BASE_URL}/${s}</loc><lastmod>${lastmod}</lastmod></sitemap>`
   ).join("\n");
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

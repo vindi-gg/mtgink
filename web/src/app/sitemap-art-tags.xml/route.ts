@@ -1,7 +1,17 @@
 import { getAdminClient } from "@/lib/supabase/admin";
-import { buildSitemap } from "@/lib/sitemap-utils";
+import { buildSitemap, fetchAllRows } from "@/lib/sitemap-utils";
+
 export const revalidate = 86400;
+
 export async function GET() {
-  const { data } = await getAdminClient().from("tags").select("slug").eq("type", "illustration").order("label");
-  return buildSitemap((data ?? []).map((t) => ({ loc: `/db/art-tags/${t.slug}`, priority: 0.5 })));
+  const lastmod = new Date().toISOString();
+  const rows = await fetchAllRows<{ slug: string }>((from, to) =>
+    getAdminClient()
+      .from("tags")
+      .select("slug")
+      .eq("type", "illustration")
+      .order("label")
+      .range(from, to),
+  );
+  return buildSitemap(rows.map((t) => ({ loc: `/db/art-tags/${t.slug}`, priority: 0.5, lastmod })));
 }
