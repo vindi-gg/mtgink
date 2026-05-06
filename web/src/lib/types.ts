@@ -9,6 +9,9 @@ export interface OracleCard {
   cmc: number | null;
   og_version: number | null;
   subtypes?: string[];
+  /** First-print info, populated during Scryfall import. */
+  original_set_code?: string | null;
+  original_released_at?: string | null;
 }
 
 /** DFC layout types that have two card faces */
@@ -35,6 +38,13 @@ export interface Illustration {
   released_at: string | null;
   image_version: string | null;
   cheapest_price?: number | null;
+  /** True for borderless / showcase / extended-art / full-art treatments
+   *  — lightbox should show the full card image rather than art_crop. */
+  is_full_art?: boolean;
+  /** Scryfall ID of the chosen representative printing. */
+  scryfall_id?: string;
+  /** True when we've downloaded a TCGPlayer HD variant locally. */
+  has_image_hd?: boolean;
 }
 
 export interface ArtRating {
@@ -109,6 +119,45 @@ export interface MtgSet {
   block_code: string | null;
   block: string | null;
   digital: boolean;
+  is_preview?: boolean;
+  /** Cached representative-printing reference for this set's hero
+   *  illustration — populated by `scripts/compute_set_heroes.sql`.
+   *  Hero is the most-popular illustration EXCLUSIVE to this set
+   *  family (no reprints elsewhere). */
+  hero_illustration_id?: string | null;
+  hero_set_code?: string | null;
+  hero_collector_number?: string | null;
+  hero_image_version?: string | null;
+}
+
+export type SetArtSort = "popularity" | "az" | "price" | "latest";
+
+export interface SetIllustration {
+  illustration_id: string;
+  oracle_id: string;
+  card_name: string;
+  card_slug: string;
+  artist: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  released_at: string | null;
+  image_version: string | null;
+  elo_rating: number;
+  vote_count: number;
+  cheapest_price: number | null;
+  /** True for borderless / showcase / extended-art / full-art treatments. */
+  is_full_art: boolean;
+  /** Scryfall ID of the chosen representative printing — used to construct
+   *  Scryfall CDN URLs for HD lightbox imagery. */
+  scryfall_id: string;
+  /** True when we've downloaded a TCGPlayer HD variant locally. */
+  has_image_hd: boolean;
+}
+
+export interface SetArtPage {
+  illustrations: SetIllustration[];
+  total: number;
 }
 
 export interface SetCard {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import ArtCard from "./ArtCard";
 import CardLightbox from "./CardLightbox";
 import { useFavorites } from "@/hooks/useFavorites";
-import { useImageMode } from "@/lib/image-mode";
+import { artCropUrl, largeCardUrl } from "@/lib/image-utils";
 import type { Illustration, ArtRating } from "@/lib/types";
 
 interface IllustrationWithRating extends Illustration {
@@ -24,7 +24,6 @@ export default function ArtGallery({ illustrations, oracleId, cardName, cardSlug
     illustrations.map((ill) => ill.illustration_id)
   );
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
-  const { cardUrl } = useImageMode();
 
   const lightboxIll = lightboxIdx !== null ? illustrations[lightboxIdx] : null;
 
@@ -59,7 +58,11 @@ export default function ArtGallery({ illustrations, oracleId, cardName, cardSlug
             cheapest_price: lightboxIll.cheapest_price,
             illustration_count: illustrations.length,
           }}
-          imageUrl={cardUrl(lightboxIll.set_code, lightboxIll.collector_number, lightboxIll.image_version)}
+          imageUrl={
+            lightboxIll.is_full_art
+              ? largeCardUrl(lightboxIll.set_code, lightboxIll.collector_number, lightboxIll.image_version)
+              : artCropUrl(lightboxIll.set_code, lightboxIll.collector_number, lightboxIll.image_version)
+          }
           index={lightboxIdx!}
           total={illustrations.length}
           onClose={() => setLightboxIdx(null)}

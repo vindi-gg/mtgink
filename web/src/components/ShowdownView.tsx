@@ -10,7 +10,7 @@ import ShowdownSubnav, { ShowdownSidebar } from "./ShowdownSubnav";
 import type { ThemeRotation, VsThemeType } from "./ShowdownSubnav";
 import { VS_THEME_TYPES } from "./ShowdownSubnav";
 import { artCropUrl } from "@/lib/image-utils";
-import { useImageMode } from "@/lib/image-mode";
+import { useImageMode, useImageModeKeybinding } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ComparisonPair, ClashPair, CompareFilters, VoteResponse, CardVoteResponse } from "@/lib/types";
 
@@ -106,6 +106,7 @@ interface ShowdownViewProps {
 
 export default function ShowdownView({ mode, initialPair, initialFilters, themeLabel, themeType: initialThemeType }: ShowdownViewProps) {
   const { imageMode, cardUrl, toggleImageMode } = useImageMode();
+  useImageModeKeybinding();
   const isRemix = mode === "remix";
 
   const [sides, setSides] = useState(() => normalizePair(initialPair, mode));
@@ -476,7 +477,7 @@ export default function ShowdownView({ mode, initialPair, initialFilters, themeL
       return { label: filters.subtype, href: `/db/tribes/${filters.subtype.toLowerCase()}` };
     }
     if (filters.set_code) {
-      return { label: filters.set_code.toUpperCase(), href: `/db/expansions/${filters.set_code}` };
+      return { label: filters.set_code.toUpperCase(), href: `/sets/${filters.set_code}` };
     }
     if (currentThemeLabel && !filters.subtype && !filters.set_code) {
       const slug = currentThemeLabel.toLowerCase().replace(/\s+/g, "-");

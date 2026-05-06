@@ -19,6 +19,19 @@ interface CardLightboxProps {
 export default function CardLightbox({ card, imageUrl, backImageUrl, index, total, onClose, onPrev, onNext }: CardLightboxProps) {
   const touchStartX = useRef<number | null>(null);
   const [showBack, setShowBack] = useState(false);
+  // Hover-zoom state. Tracks cursor position as a percentage so the
+  // transform-origin centers magnification on whatever the user points at.
+  const [zoomOrigin, setZoomOrigin] = useState<{ x: number; y: number } | null>(null);
+
+  function handleZoomMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setZoomOrigin({ x, y });
+  }
+  function handleZoomLeave() {
+    setZoomOrigin(null);
+  }
 
   const handleKey = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") onClose();
@@ -77,12 +90,20 @@ export default function CardLightbox({ card, imageUrl, backImageUrl, index, tota
         ) : <div className="hidden md:block w-12" />}
 
         {/* Art + shelf */}
-        <div className="flex flex-col max-w-[90vw] md:max-w-[70vw]">
-          <div className="relative bg-gray-900 rounded-t-lg overflow-hidden p-[7px]">
+        <div className="flex flex-col max-w-[95vw] md:max-w-[75vw]">
+          <div
+            className="relative bg-gray-900 rounded-t-lg overflow-hidden p-[7px]"
+            onMouseMove={handleZoomMove}
+            onMouseLeave={handleZoomLeave}
+          >
             <img
               src={showBack && backImageUrl ? backImageUrl : imageUrl}
               alt={card.name}
-              className="max-h-[70vh] object-contain rounded-[18px]"
+              className="w-full max-h-[85vh] object-contain rounded-[18px] transition-transform duration-150"
+              style={{
+                transformOrigin: zoomOrigin ? `${zoomOrigin.x}% ${zoomOrigin.y}%` : "center center",
+                transform: zoomOrigin ? "scale(2.25)" : "scale(1)",
+              }}
             />
             {backImageUrl && (
               <button

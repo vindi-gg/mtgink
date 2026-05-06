@@ -4,7 +4,7 @@ import { useState } from "react";
 import CardImage from "@/components/CardImage";
 import CardPreviewOverlay from "@/components/CardPreviewOverlay";
 import DailyResultsPanel from "@/components/DailyResultsPanel";
-import { useImageMode } from "@/lib/image-mode";
+import { useImageMode, useImageModeKeybinding } from "@/lib/image-mode";
 import type { DailyChallenge, DailyChallengeStats, OracleCard } from "@/lib/types";
 
 function getSessionId(): string {
@@ -36,6 +36,7 @@ interface DailyVsClientProps {
 
 export default function DailyVsClient({ challenge, cardA, cardB, printingA, printingB }: DailyVsClientProps) {
   const { imageMode, cardUrl } = useImageMode();
+  useImageModeKeybinding();
   const [voted, setVoted] = useState(false);
   const [voting, setVoting] = useState(false);
   const [stats, setStats] = useState<DailyChallengeStats | null>(null);

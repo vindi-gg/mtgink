@@ -59,7 +59,7 @@ export default function ArtCard({
           {illustration.artist}
         </p>
         <p className="text-xs text-gray-400">
-          <Link href={`/db/expansions/${illustration.set_code}`} className="hover:text-amber-400 transition-colors">{illustration.set_name}</Link> ({illustration.set_code.toUpperCase()})
+          <Link href={`/sets/${illustration.set_code}`} className="hover:text-amber-400 transition-colors">{illustration.set_name}</Link> ({illustration.set_code.toUpperCase()})
         </p>
       </div>
     </div>

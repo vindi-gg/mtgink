@@ -6,7 +6,7 @@ import CardPreviewOverlay from "@/components/CardPreviewOverlay";
 import FavoriteButton from "@/components/FavoriteButton";
 import DailyResultsPanel from "@/components/DailyResultsPanel";
 import { artCropUrl } from "@/lib/image-utils";
-import { useImageMode } from "@/lib/image-mode";
+import { useImageMode, useImageModeKeybinding } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { DailyChallenge, DailyChallengeStats } from "@/lib/types";
 
@@ -52,6 +52,7 @@ export default function DailyRemixClient({
   const [stats, setStats] = useState<DailyChallengeStats | null>(null);
 
   const { imageMode, cardUrl } = useImageMode();
+  useImageModeKeybinding();
   const { favorites, toggle: toggleFavorite } = useFavorites(
     [illustrationA.illustration_id, illustrationB.illustration_id],
     "ink",

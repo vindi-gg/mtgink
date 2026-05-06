@@ -12,5 +12,5 @@ export async function GET() {
       .order("released_at", { ascending: false })
       .range(from, to),
   );
-  return buildSitemap(rows.map((s) => ({ loc: `/db/expansions/${s.set_code}`, priority: 0.6, lastmod })));
+  return buildSitemap(rows.map((s) => ({ loc: `/sets/${s.set_code}`, priority: 0.6, lastmod })));
 }

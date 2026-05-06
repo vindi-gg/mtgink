@@ -11,7 +11,7 @@ import ShowdownSubnav, { ShowdownSidebar, VS_THEME_TYPES } from "./ShowdownSubna
 import type { VsThemeType } from "./ShowdownSubnav";
 import RecentActivity from "./RecentActivity";
 import { artCropUrl } from "@/lib/image-utils";
-import { useImageMode } from "@/lib/image-mode";
+import { useImageMode, useImageModeKeybinding } from "@/lib/image-mode";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { GauntletEntry, CompareFilters } from "@/lib/types";
 
@@ -96,6 +96,7 @@ export default function GauntletView({
   themeLink: themeLinkProp,
 }: GauntletViewProps) {
   const { imageMode, cardUrl, toggleImageMode } = useImageMode();
+  useImageModeKeybinding();
   const isRemix = mode === "remix";
 
   const [pool, setPool] = useState(() =>
@@ -645,7 +646,7 @@ export default function GauntletView({
         return { label: filters.subtype, href: `/db/tribes/${filters.subtype.toLowerCase()}` };
       }
       if (filters?.set_code) {
-        return { label: filters.set_code.toUpperCase(), href: `/db/expansions/${filters.set_code}` };
+        return { label: filters.set_code.toUpperCase(), href: `/sets/${filters.set_code}` };
       }
       if (tag) {
         const basePath = tagType === "illustration" ? "/db/art-tags" : "/db/tags";

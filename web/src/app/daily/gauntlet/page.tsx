@@ -37,7 +37,7 @@ export default async function DailyGauntletPage() {
       .single();
     if (theme) {
       if (theme.theme_type === "set" && theme.set_code) {
-        themeLink = { label: theme.set_code.toUpperCase(), href: `/db/expansions/${theme.set_code}` };
+        themeLink = { label: theme.set_code.toUpperCase(), href: `/sets/${theme.set_code}` };
       } else if (theme.theme_type === "tribe" && theme.tribe) {
         themeLink = { label: theme.tribe, href: `/db/tribes/${theme.tribe.toLowerCase()}` };
       } else if (theme.theme_type === "artist" && theme.artist) {

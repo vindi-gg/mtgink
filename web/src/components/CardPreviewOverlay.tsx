@@ -17,6 +17,8 @@ interface CardPreviewOverlayProps {
   cardSlug?: string;
   isFavorited?: boolean;
   onToggleFavorite?: (illustrationId: string, oracleId: string) => Promise<string | null>;
+  /** Which side of the cursor to anchor the desktop preview on. Default "right". */
+  previewSide?: "left" | "right";
 }
 
 export default function CardPreviewOverlay({
@@ -30,6 +32,7 @@ export default function CardPreviewOverlay({
   cardSlug,
   isFavorited,
   onToggleFavorite,
+  previewSide = "right",
 }: CardPreviewOverlayProps) {
   const [showing, setShowing] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
@@ -165,7 +168,9 @@ export default function CardPreviewOverlay({
         <div
           className="fixed z-50 pointer-events-none hidden md:block"
           style={{
-            left: cursorPos.x + 20,
+            left: previewSide === "left"
+              ? Math.max(8, cursorPos.x - 336 - 20)
+              : cursorPos.x + 20,
             top: Math.min(cursorPos.y - 200, typeof window !== "undefined" ? window.innerHeight - 520 : 300),
             width: 336,
           }}

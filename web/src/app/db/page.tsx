@@ -13,7 +13,7 @@ const sections = [
     description: "Browse artists ranked by popularity and illustration count",
   },
   {
-    href: "/db/expansions",
+    href: "/sets",
     title: "Expansions",
     description: "Browse sets, expansions, and products",
   },

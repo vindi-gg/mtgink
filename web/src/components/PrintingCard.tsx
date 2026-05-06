@@ -90,7 +90,7 @@ function PrintingModal({
             <h3 className="text-base font-bold text-white">{cardName}</h3>
             <div className="flex items-center gap-2 text-sm">
               <Link
-                href={`/db/expansions/${setCode}`}
+                href={`/sets/${setCode}`}
                 className="text-gray-400 hover:text-amber-400 transition-colors"
               >
                 {setName}

@@ -82,8 +82,8 @@ function makePlayLinks(query: string, includeRemix = true): PlayLink[] {
 function getDetailContext(pathname: string): PlayLink[] | null {
   let m;
 
-  // /db/expansions/[set_code]
-  m = pathname.match(/^\/db\/expansions\/([^/]+)$/);
+  // /sets/[set_code]
+  m = pathname.match(/^\/sets\/([^/]+)$/);
   if (m) return makePlayLinks(`set_code=${m[1]}`, false);
 
   // /artists/[slug]
@@ -174,7 +174,7 @@ const MIN_BRACKET_COUNT = 5;
 export default function Sidebar({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
   const playLinks = getDetailContext(pathname);
-  const isExpansionPage = /^\/db\/expansions\/[^/]+$/.test(pathname);
+  const isExpansionPage = /^\/sets\/[^/]+$/.test(pathname);
   const bracketSource = useBracketSource();
   const showGenericBracket = bracketSource.sourceType !== null && bracketSource.totalCount >= MIN_BRACKET_COUNT;
 
@@ -212,7 +212,7 @@ export default function Sidebar({ children }: { children?: React.ReactNode }) {
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Explore</h3>
             <nav className="space-y-2 text-sm">
-              <a href="/db/expansions" className="block text-gray-300 hover:text-white transition-colors">Expansions</a>
+              <a href="/sets" className="block text-gray-300 hover:text-white transition-colors">Expansions</a>
               <a href="/db/cards" className="block text-gray-300 hover:text-white transition-colors">Cards</a>
               <a href="/artists" className="block text-gray-300 hover:text-white transition-colors">Artists</a>
               <a href="/db/tribes" className="block text-gray-300 hover:text-white transition-colors">Tribes</a>

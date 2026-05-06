@@ -9,6 +9,7 @@ import {
   getBackFaceUrls,
   getTagsForCard,
   getBestPricesForCard,
+  getSetByCode,
   slugify,
 } from "@/lib/queries";
 import ArtGallery from "@/components/ArtGallery";
@@ -81,13 +82,14 @@ export default async function CardPage({
 
   const isDFC = card.layout === "modal_dfc" || card.layout === "transform" || card.layout === "reversible_card";
 
-  const [illustrations, ratings, printingsMap, allPrices, cardFaces, tags] = await Promise.all([
+  const [illustrations, ratings, printingsMap, allPrices, cardFaces, tags, originalSet] = await Promise.all([
     getIllustrationsForCard(card.oracle_id),
     getRatingsForCard(card.oracle_id),
     getPrintingsForCard(card.oracle_id),
     getBestPricesForCard(card.oracle_id),
     isDFC ? getCardFaces(card.oracle_id) : Promise.resolve([]),
     getTagsForCard(card.oracle_id),
+    card.original_set_code ? getSetByCode(card.original_set_code) : Promise.resolve(null),
   ]);
 
   const backFaceUrls = isDFC ? await getBackFaceUrls(card.oracle_id) : {} as Record<string, string>;
@@ -134,6 +136,42 @@ export default async function CardPage({
   const setNames = [...new Set(illustrations.map((ill) => ill.set_name))];
   const setCount = setNames.length;
 
+  // Stat blurb: "X was first released in YYYY in the Y expansion. Since
+  // then there have been N new illustrations, for a total of Z. X averages
+  // a new illustration every A years and new printings every B years."
+  const totalIll = illustrations.length;
+  const firstYear = card.original_released_at?.slice(0, 4);
+  let blurb: string | null = null;
+  if (firstYear && originalSet?.name && totalIll > 0) {
+    const newIllCount = totalIll - 1;
+    const newPrintCount = totalPrintings - 1;
+    const yearsSinceFirst = Math.max(0, new Date().getFullYear() - parseInt(firstYear, 10));
+    const formatPace = (years: number) =>
+      years < 1
+        ? `${(years * 12).toFixed(1)} months`
+        : `${years.toFixed(1)} years`;
+
+    const paceParts: string[] = [];
+    if (newIllCount > 0 && yearsSinceFirst > 0) {
+      paceParts.push(`a new illustration every ${formatPace(yearsSinceFirst / newIllCount)}`);
+    }
+    if (newPrintCount > 0 && yearsSinceFirst > 0) {
+      paceParts.push(`new printings every ${formatPace(yearsSinceFirst / newPrintCount)}`);
+    }
+    const pace = paceParts.length ? ` ${card.name} averages ${paceParts.join(" and ")}.` : "";
+
+    const newCountText =
+      newIllCount === 0
+        ? "no other illustrations have been printed since"
+        : newIllCount === 1
+        ? "there has been 1 new illustration"
+        : `there have been ${newIllCount} new illustrations`;
+    blurb =
+      `${card.name} was first released in ${firstYear} in the ${originalSet.name} expansion. ` +
+      `Since then ${newCountText}, for a total of ${totalIll} illustration${totalIll !== 1 ? "s" : ""}.` +
+      pace;
+  }
+
   return (
     <div className="flex gap-8">
       <JsonLd data={[
@@ -169,6 +207,10 @@ export default async function CardPage({
             <FavoriteCardButton oracleId={card.oracle_id} />
           </div>
         </div>
+
+        {blurb && (
+          <p className="text-sm text-gray-300 mb-6 max-w-3xl">{blurb}</p>
+        )}
 
         <ArtGallery illustrations={illustrationsWithRatings} oracleId={card.oracle_id} cardName={card.name} cardSlug={card.slug} typeLine={card.type_line} />
 
@@ -221,7 +263,7 @@ export default async function CardPage({
                           )}
                           <div className="mt-1.5 px-0.5">
                             <p className="text-xs text-gray-400 truncate">
-                              <Link href={`/db/expansions/${p.set_code}`} className="hover:text-amber-400 transition-colors">{p.set_name}</Link>
+                              <Link href={`/sets/${p.set_code}`} className="hover:text-amber-400 transition-colors">{p.set_name}</Link>
                             </p>
                             <div className="flex items-center gap-2 text-xs">
                               <span className="text-gray-600">

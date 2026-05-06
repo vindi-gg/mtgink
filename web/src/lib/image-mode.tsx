@@ -35,18 +35,6 @@ export function ImageModeProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "w" || e.key === "W") {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        toggleImageMode();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleImageMode]);
-
   const cardUrl = useCallback(
     (setCode: string, collectorNumber: string, version?: string | null) =>
       imageMode === "card"
@@ -64,4 +52,22 @@ export function ImageModeProvider({ children }: { children: React.ReactNode }) {
 
 export function useImageMode() {
   return useContext(ImageModeContext);
+}
+
+/** Bind "W" to toggle art ↔ card image mode. Call this in surfaces where
+ *  the toggle is meaningful (showdown / gauntlet voting). Outside of those,
+ *  the shortcut would silently swap browse-mode imagery and surprise users. */
+export function useImageModeKeybinding() {
+  const { toggleImageMode } = useImageMode();
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "w" || e.key === "W") {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        toggleImageMode();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleImageMode]);
 }

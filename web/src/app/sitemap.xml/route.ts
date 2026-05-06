@@ -6,8 +6,6 @@ const SUBS = [
   "sitemap-static.xml",
   "sitemap-cards.xml",
   "sitemap-sets.xml",
-  "sitemap-tags.xml",
-  "sitemap-art-tags.xml",
   "sitemap-tribes.xml",
   "sitemap-artists.xml",
 ];

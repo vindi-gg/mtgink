@@ -134,7 +134,7 @@ export default function ExpansionsListClient({
         {rows.map(({ set, depth }) => (
           <Link
             key={set.set_code}
-            href={`/db/expansions/${set.set_code}`}
+            href={`/sets/${set.set_code}`}
             className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 bg-gray-900 border border-gray-800 rounded-lg hover:border-amber-500/50 transition-colors"
             style={{ marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined }}
           >

@@ -27,6 +27,8 @@ import type {
   DailyChallengeWithStatus,
   GauntletTheme,
   CardFace,
+  SetArtSort,
+  SetArtPage,
 } from "./types";
 
 /** Row shape returned by get_comparison_pair / get_cross_comparison_pair RPCs */
@@ -157,7 +159,12 @@ export async function getIllustrationsForCard(oracleId: string): Promise<(Illust
     p_oracle_id: oracleId,
   });
   if (error) throw new Error(`Failed to get illustrations: ${error.message}`);
-  return (data as any[]).map((row) => ({ ...row, cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null }));
+  return (data as any[]).map((row) => ({
+    ...row,
+    cheapest_price: row.cheapest_price != null ? Number(row.cheapest_price) : null,
+    is_full_art: row.is_full_art === true,
+    has_image_hd: row.has_image_hd === true,
+  }));
 }
 
 /** Get ELO rating for an illustration, or null if unrated */
@@ -478,6 +485,138 @@ export async function getAllSets(): Promise<MtgSet[]> {
     .gt("card_count", 0)
     .order("released_at", { ascending: false });
   return (data ?? []) as MtgSet[];
+}
+
+/** Sets featured at the top of the homepage and per-set art-listing pages:
+ *  the `limit` mainline expansions with the latest release date that have at
+ *  least one card in our DB. Hero fields (hero_set_code etc.) are precomputed
+ *  nightly by `scripts/compute_set_heroes.sql` so this is one query, not 8 RPCs. */
+export async function getHomepageMainlineSets(limit = 4): Promise<MtgSet[]> {
+  const { data } = await getAdminClient()
+    .from("sets")
+    .select("*")
+    .eq("set_type", "expansion")
+    .eq("digital", false)
+    .gt("card_count", 0)
+    .order("released_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as MtgSet[];
+}
+
+/** Paged illustrations across every (non-digital, non-token/art-series)
+ *  set — used by the homepage's "all art" listing. Same shape as
+ *  getIllustrationsForSet so SetArtListing can render either source. */
+export async function getTopIllustrations(
+  sort: SetArtSort = "popularity",
+  limit = 30,
+  offset = 0,
+): Promise<SetArtPage> {
+  const { data, error } = await getAdminClient().rpc("get_top_illustrations", {
+    p_sort: sort,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw new Error(`Failed to get top illustrations: ${error.message}`);
+  const rows = (data ?? []) as Array<{
+    illustration_id: string;
+    oracle_id: string;
+    card_name: string;
+    card_slug: string;
+    artist: string;
+    set_code: string;
+    set_name: string;
+    collector_number: string;
+    released_at: string | null;
+    image_version: string | null;
+    elo_rating: number;
+    vote_count: number;
+    cheapest_price: string | number | null;
+    is_full_art: boolean | null;
+    scryfall_id: string;
+    has_image_hd: boolean | null;
+    total_count: string | number;
+  }>;
+  const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  return {
+    total,
+    illustrations: rows.map((r) => ({
+      illustration_id: r.illustration_id,
+      oracle_id: r.oracle_id,
+      card_name: r.card_name,
+      card_slug: r.card_slug,
+      artist: r.artist,
+      set_code: r.set_code,
+      set_name: r.set_name,
+      collector_number: r.collector_number,
+      released_at: r.released_at,
+      image_version: r.image_version,
+      elo_rating: Number(r.elo_rating),
+      vote_count: Number(r.vote_count),
+      cheapest_price: r.cheapest_price != null ? Number(r.cheapest_price) : null,
+      is_full_art: r.is_full_art === true,
+      scryfall_id: r.scryfall_id,
+      has_image_hd: r.has_image_hd === true,
+    })),
+  };
+}
+
+/** Paged illustrations for a set, sorted by popularity / A-Z / price /
+ *  latest. One row per illustration_id; cheapest_price is the lowest
+ *  NM market price across all printings of that art. */
+export async function getIllustrationsForSet(
+  setCode: string,
+  sort: SetArtSort = "popularity",
+  limit = 60,
+  offset = 0,
+): Promise<SetArtPage> {
+  const { data, error } = await getAdminClient().rpc("get_illustrations_for_set", {
+    p_set_code: setCode,
+    p_sort: sort,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw new Error(`Failed to get illustrations for set: ${error.message}`);
+  const rows = (data ?? []) as Array<{
+    illustration_id: string;
+    oracle_id: string;
+    card_name: string;
+    card_slug: string;
+    artist: string;
+    set_code: string;
+    set_name: string;
+    collector_number: string;
+    released_at: string | null;
+    image_version: string | null;
+    elo_rating: number;
+    vote_count: number;
+    cheapest_price: string | number | null;
+    is_full_art: boolean | null;
+    scryfall_id: string;
+    has_image_hd: boolean | null;
+    total_count: string | number;
+  }>;
+  const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  return {
+    total,
+    illustrations: rows.map((r) => ({
+      illustration_id: r.illustration_id,
+      oracle_id: r.oracle_id,
+      card_name: r.card_name,
+      card_slug: r.card_slug,
+      artist: r.artist,
+      set_code: r.set_code,
+      set_name: r.set_name,
+      collector_number: r.collector_number,
+      released_at: r.released_at,
+      image_version: r.image_version,
+      elo_rating: Number(r.elo_rating),
+      vote_count: Number(r.vote_count),
+      cheapest_price: r.cheapest_price != null ? Number(r.cheapest_price) : null,
+      is_full_art: r.is_full_art === true,
+      scryfall_id: r.scryfall_id,
+      has_image_hd: r.has_image_hd === true,
+    })),
+  };
 }
 
 /** Get a single set by code */
