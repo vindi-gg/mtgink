@@ -510,12 +510,19 @@ export async function getTopIllustrations(
   sort: SetArtSort = "popularity",
   limit = 30,
   offset = 0,
+  version: "v1" | "v2" = "v1",
+  shareExponent?: number,
 ): Promise<SetArtPage> {
-  const { data, error } = await getAdminClient().rpc("get_top_illustrations", {
+  const rpc = version === "v2" ? "get_top_illustrations_v2" : "get_top_illustrations";
+  const params: Record<string, unknown> = {
     p_sort: sort,
     p_limit: limit,
     p_offset: offset,
-  });
+  };
+  if (version === "v2" && shareExponent !== undefined) {
+    params.p_share_exponent = shareExponent;
+  }
+  const { data, error } = await getAdminClient().rpc(rpc, params);
   if (error) throw new Error(`Failed to get top illustrations: ${error.message}`);
   const rows = (data ?? []) as Array<{
     illustration_id: string;

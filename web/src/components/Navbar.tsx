@@ -202,9 +202,10 @@ export default function Navbar() {
             onMouseEnter={() => setPlayMenuOpen(true)}
             onMouseLeave={() => setPlayMenuOpen(false)}
           >
-            <button
+            <Link
+              href="/play"
               className={`flex items-center gap-1 text-sm font-medium transition-colors cursor-pointer ${
-                PLAY_MODES.some((l) => isActiveLink(pathname, l.href))
+                pathname === "/play" || PLAY_MODES.some((l) => isActiveLink(pathname, l.href))
                   ? "text-white"
                   : "text-gray-400 hover:text-white"
               }`}
@@ -213,7 +214,7 @@ export default function Navbar() {
               <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
-            </button>
+            </Link>
             {playMenuOpen && (
               <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2 z-[71]">
                 <div className="w-[420px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-3 grid grid-cols-2 gap-2">

@@ -24,12 +24,20 @@ const HOMEPAGE_INITIAL_LIMIT = 30;
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ set?: string; sort?: string }>;
+  searchParams: Promise<{ set?: string; sort?: string; version?: string; exp?: string }>;
 }) {
-  const { set, sort: rawSort } = await searchParams;
+  const { set, sort: rawSort, version: rawVersion, exp: rawExp } = await searchParams;
   const sort: SetArtSort = VALID_SORTS.includes(rawSort as SetArtSort)
     ? (rawSort as SetArtSort)
     : "popularity";
+  const version: "v1" | "v2" =
+    rawVersion === "v2" ? "v2"
+    : rawVersion === "v1" ? "v1"
+    : process.env.POPULAR_SORT_VERSION === "v2" ? "v2"
+    : "v1";
+  const expNum = rawExp != null ? Number(rawExp) : NaN;
+  const shareExponent =
+    Number.isFinite(expNum) && expNum >= 0 && expNum <= 1 ? expNum : undefined;
 
   // Legacy ?set=foo URLs migrate to /sets/foo
   if (set) {
@@ -40,7 +48,7 @@ export default async function HomePage({
   const [tiles, allSets, page] = await Promise.all([
     getHomepageMainlineSets(8),
     getNonDigitalSets(),
-    getTopIllustrations(sort, HOMEPAGE_INITIAL_LIMIT, 0),
+    getTopIllustrations(sort, HOMEPAGE_INITIAL_LIMIT, 0, version, shareExponent),
   ]);
 
   return (
