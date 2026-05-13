@@ -128,6 +128,9 @@ export interface MtgSet {
   hero_set_code?: string | null;
   hero_collector_number?: string | null;
   hero_image_version?: string | null;
+  /** Count of distinct illustrations in this set — cached by migration
+   *  090 and refreshed by compute_set_heroes.sql. */
+  illustration_count?: number;
 }
 
 export type SetArtSort = "popularity" | "az" | "price" | "latest";

@@ -62,6 +62,11 @@ export default function SetGraphicalTile({
         </div>
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
+      {set.illustration_count && set.illustration_count > 0 ? (
+        <div className="absolute top-2 right-2 text-[10px] uppercase tracking-wide text-gray-200/90 bg-black/40 px-1.5 py-0.5 rounded backdrop-blur-sm drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+          {set.illustration_count} art
+        </div>
+      ) : null}
       <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center gap-2">
         {set.icon_svg_uri && (
           <img

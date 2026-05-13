@@ -5,10 +5,12 @@ import {
   getNonDigitalSets,
   getTopIllustrations,
 } from "@/lib/queries";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { websiteJsonLd, JsonLd } from "@/lib/jsonld";
 import SetArtPageBody from "@/components/SetArtPageBody";
 import SetTileRow from "@/components/SetTileRow";
-import type { SetArtSort } from "@/lib/types";
+import DailyChallengeMini from "@/components/DailyChallengeMini";
+import type { DailyChallenge, SetArtSort } from "@/lib/types";
 
 export const revalidate = 60;
 
@@ -20,6 +22,39 @@ export const metadata = {
 
 const VALID_SORTS: SetArtSort[] = ["latest", "popularity", "az", "price"];
 const HOMEPAGE_INITIAL_LIMIT = 30;
+
+/** Fetch today's bracket + gauntlet for the homepage mini row.
+ *  Auto-generates if missing (same pattern as /play). Returns at most one
+ *  of each type, ordered bracket-then-gauntlet. */
+async function fetchTodaysHeadlineChallenges(): Promise<DailyChallenge[]> {
+  try {
+    const admin = getAdminClient();
+    const today = new Date().toISOString().split("T")[0];
+    const select = "*";
+
+    let { data: rows } = await admin
+      .from("daily_challenges")
+      .select(select)
+      .eq("challenge_date", today)
+      .in("challenge_type", ["bracket", "gauntlet"]);
+
+    if (!rows || rows.length < 2) {
+      await admin.rpc("generate_daily_challenges", { p_date: today });
+      const refetched = await admin
+        .from("daily_challenges")
+        .select(select)
+        .eq("challenge_date", today)
+        .in("challenge_type", ["bracket", "gauntlet"]);
+      rows = refetched.data;
+    }
+
+    const list = (rows ?? []) as DailyChallenge[];
+    const order: Record<string, number> = { bracket: 0, gauntlet: 1 };
+    return list.sort((a, b) => (order[a.challenge_type] ?? 9) - (order[b.challenge_type] ?? 9));
+  } catch {
+    return [];
+  }
+}
 
 export default async function HomePage({
   searchParams,
@@ -45,10 +80,11 @@ export default async function HomePage({
     redirect(`/sets/${set}${qs}`);
   }
 
-  const [tiles, allSets, page] = await Promise.all([
+  const [tiles, allSets, page, dailies] = await Promise.all([
     getHomepageMainlineSets(8),
     getNonDigitalSets(),
     getTopIllustrations(sort, HOMEPAGE_INITIAL_LIMIT, 0, version, shareExponent),
+    fetchTodaysHeadlineChallenges(),
   ]);
 
   return (
@@ -64,6 +100,14 @@ export default async function HomePage({
             Browse art by set. <Link href="/play" className="text-amber-400 hover:text-amber-300">Play</Link> head-to-head matchups, brackets, and daily challenges.
           </p>
         </div>
+
+        {dailies.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            {dailies.map((c) => (
+              <DailyChallengeMini key={c.id} challenge={c} />
+            ))}
+          </div>
+        )}
 
         {tiles.length > 0 && (
           <SetTileRow
