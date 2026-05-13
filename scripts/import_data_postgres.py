@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Import Scryfall bulk data into Supabase Postgres."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -292,6 +294,7 @@ def import_printings(cur, conn, slugs):
             json.dumps(image_uris) if image_uris else None,
             None,  # local_image_normal
             None,  # local_image_art_crop
+            bool(image_uris),  # has_image — flag here so we don't need a separate refresh step
         ))
 
         # Card faces
@@ -345,12 +348,15 @@ def _insert_printing_batch(cur, conn, batch):
            (scryfall_id, oracle_id, set_code, collector_number, name, flavor_name, layout,
             mana_cost, type_line, illustration_id, artist, rarity, released_at,
             digital, tcgplayer_id, cardmarket_id, price_usd, price_eur,
-            purchase_uris, image_uris, local_image_normal, local_image_art_crop)
+            purchase_uris, image_uris, local_image_normal, local_image_art_crop,
+            has_image)
            VALUES %s
            ON CONFLICT (scryfall_id) DO UPDATE SET
              price_usd = EXCLUDED.price_usd, price_eur = EXCLUDED.price_eur,
              tcgplayer_id = EXCLUDED.tcgplayer_id, cardmarket_id = EXCLUDED.cardmarket_id,
-             flavor_name = EXCLUDED.flavor_name""",
+             flavor_name = EXCLUDED.flavor_name,
+             image_uris = COALESCE(EXCLUDED.image_uris, printings.image_uris),
+             has_image = printings.has_image OR EXCLUDED.has_image""",
         batch,
     )
     conn.commit()
