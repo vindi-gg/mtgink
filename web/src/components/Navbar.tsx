@@ -36,7 +36,6 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [playMenuOpen, setPlayMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [betaDismissed, setBetaDismissed] = useState(true);
   const [dbMenuOpen, setDbMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const playMenuRef = useRef<HTMLDivElement>(null);
@@ -54,15 +53,11 @@ export default function Navbar() {
   const { hidden: navHidden } = useNavFocus();
 
   // Measure actual nav height so the negative-margin collapse matches
-  // whatever the nav is currently rendering (beta banner, mobile user
-  // menu open, etc.). Re-measure when content-affecting state changes.
+  // whatever the nav is currently rendering (mobile user menu open,
+  // etc.). Re-measure when content-affecting state changes.
   useEffect(() => {
     if (navRef.current) setNavHeight(navRef.current.offsetHeight);
   }, [user, menuOpen, pathname]);
-
-  useEffect(() => {
-    setBetaDismissed(localStorage.getItem("mtgink_beta_dismissed") === "1");
-  }, []);
 
   useEffect(() => {
     if (!userMenuOpen && !playMenuOpen && !dbMenuOpen) return;
@@ -482,18 +477,6 @@ export default function Navbar() {
       )}
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </nav>
-    {/* Beta banner — homepage only */}
-    {!betaDismissed && pathname === "/" && (
-      <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-400/80">
-        MTG Ink is in beta — we&apos;ll do our best not to reset data, but we may have to!
-        <button
-          onClick={() => { setBetaDismissed(true); localStorage.setItem("mtgink_beta_dismissed", "1"); }}
-          className="ml-2 text-amber-500/50 hover:text-amber-400 cursor-pointer"
-        >
-          &times;
-        </button>
-      </div>
-    )}
     {/* Mobile DB panel */}
     {dbMenuOpen && (
         <div ref={dbMobileRef} className="md:hidden border-t border-gray-800 bg-gray-950 z-[61] fixed left-0 right-0 top-14">
