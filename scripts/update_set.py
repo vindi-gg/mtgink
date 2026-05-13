@@ -423,7 +423,7 @@ def main():
         help="Auto-select non-digital sets released in a window around today (use --past-days / --future-days to tune).",
     )
     parser.add_argument("--past-days", type=int, default=180, help="Days in the past to include with --recent (default: 180)")
-    parser.add_argument("--future-days", type=int, default=90, help="Days in the future to include with --recent (default: 90)")
+    parser.add_argument("--future-days", type=int, default=180, help="Days in the future to include with --recent (default: 180)")
     args = parser.parse_args()
 
     db_url = get_db_url()

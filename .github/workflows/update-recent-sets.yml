@@ -15,7 +15,7 @@ on:
       future_days:
         description: "Days in the future to include"
         required: false
-        default: "90"
+        default: "180"
       sets:
         description: "Optional explicit set codes (space-separated), e.g. 'soc sos soa'"
         required: false
@@ -51,7 +51,7 @@ jobs:
           R2_BUCKET: mtgink-cdn
         run: |
           PAST_DAYS="${{ github.event.inputs.past_days || '180' }}"
-          FUTURE_DAYS="${{ github.event.inputs.future_days || '90' }}"
+          FUTURE_DAYS="${{ github.event.inputs.future_days || '180' }}"
           EXTRA_SETS="${{ github.event.inputs.sets || '' }}"
           FORCE_FLAG=""
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
